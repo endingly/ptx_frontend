@@ -195,13 +195,13 @@ TEST(ParameterModifierIdentity, PlainHistoricalAndStagingSources) {
   auto ast = parser.parseModule();
   ASSERT_TRUE(ast);
   auto legacy = resolveModuleOnly(*ast);
-  EXPECT_FALSE(legacy);
-  if (!legacy) {
-    ASSERT_FALSE(legacy.error().empty());
-    EXPECT_NE(legacy.error().front().message.find("Body-local call .param"),
-              std::string::npos);
-  }
-  EXPECT_FALSE(resolveAndValidateModule(*ast));
+  ASSERT_TRUE(legacy) << legacy.error().front().message;
+  ASSERT_EQ(legacy->functions.front().parameter_declarations.size(), 1u);
+  EXPECT_EQ(legacy->functions.front().parameter_declarations.front().role,
+            ParameterDeclarationRole::LegacyEntryInput);
+  EXPECT_TRUE(legacy->functions.front().contract.signature.parameters.empty());
+  EXPECT_TRUE(validateModule(*legacy));
+  EXPECT_TRUE(resolveAndValidateModule(*ast));
 }
 /** Qualified source floors survive location erasure; current coherent edits choose identity. */
 TEST(ParameterModifierIdentity, QualifiedSourcesAndCurrentAddress) {

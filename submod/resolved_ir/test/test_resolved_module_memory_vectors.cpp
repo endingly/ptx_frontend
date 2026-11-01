@@ -1294,7 +1294,8 @@ TEST(ResolvedModule, RejectsParamAddressThroughExplicitGlobalLoad) {
 }
 
 TEST(ResolvedModule, ChecksExplicitParameterAddressSemantics) {
-  const auto parsed_module_1 = parseModule(R"ptx(
+  const auto parsed_module_1 = parseModule(R"ptx(.version 9.3
+
 .global .u32 global_value;
 .entry kernel(.param .u32 kernel_input) {
   .reg .u32 %r0;
@@ -1339,7 +1340,7 @@ TEST(ResolvedModule, ChecksExplicitParameterAddressSemantics) {
   ASSERT_TRUE(old_kernel_load.has_value());
   EXPECT_TRUE(kernel_load.check(supported_context).has_value());
 
-  const auto& syntax_device = std::get<syntax_ast::AstFunction>(ast.items[2]);
+  const auto& syntax_device = std::get<syntax_ast::AstFunction>(ast.items[3]);
   const auto& syntax_first_load =
       std::get<syntax_ast::AstInstruction>(syntax_device.body[2]);
   const auto& device_load = *resolved->functions[1].body[0];
@@ -2141,7 +2142,8 @@ TEST(ResolvedModule, RejectsLocallyScopedParamVariableAddress) {
 }
 
 TEST(ResolvedModule, ResolvesAndChecksLocalCallParameterAddresses) {
-  const auto parsed_module_1 = parseModule(R"ptx(
+  const auto parsed_module_1 = parseModule(R"ptx(.version 9.3
+
 .func (.param .u32 result) callee(.param .u32 input);
 .entry caller() {
   .reg .u32 %r0, %r1;
@@ -2199,7 +2201,8 @@ TEST(ResolvedModule, ResolvesAndChecksLocalCallParameterAddresses) {
 }
 
 TEST(ResolvedModule, IgnoresLocDirectivesForCallParameterStaging) {
-  const auto parsed_module_1 = parseModule(R"ptx(
+  const auto parsed_module_1 = parseModule(R"ptx(.version 9.3
+
 .file 1 "caller.ptx"
 .func (.param .u32 result) callee(.param .u32 input);
 .entry caller() {
@@ -2226,7 +2229,8 @@ TEST(ResolvedModule, IgnoresLocDirectivesForCallParameterStaging) {
 }
 
 TEST(ResolvedModule, IgnoresPragmasForCallParameterStaging) {
-  const auto parsed_module_1 = parseModule(R"ptx(
+  const auto parsed_module_1 = parseModule(R"ptx(.version 9.3
+
 .func (.param .u32 result) callee(.param .u32 input);
 .entry caller() {
   .reg .u32 %r0, %r1;

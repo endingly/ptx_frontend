@@ -255,3 +255,26 @@ of the other missing fact; unknown prerequisites alone may defer in
 Prototype-only/external callees and dynamic signature-only calls are open
 boundaries. They gain no fabricated return edges and no blanket strict rejection;
 success means modeled checks passed, not whole-program acyclicity across them.
+
+
+## Historical entry body inputs
+
+PTX 1.0–1.3 entry body `.param` declarations have the owning `LegacyEntryInput`
+role in the sole `parameter_declarations` table, including scoped/group/array
+identities. The function signature remains syntactic header ABI only, so an empty
+header signature does not imply no host inputs. Lexical metadata order assigns
+no launch addresses or packing. Resolution needs a version only for ambiguous
+entry body roles; it reports `MissingValidationContext` without guessing from SM.
+Typed modules retain their role when context is missing.
+
+The optional `ResolvedSymbolRef::parameter_role` cache is derived from the actual
+record while keeping structural `CallParameter`. Address/MOV/tensor projections
+share input/return/call-slot directions. Both validators rejoin current records
+and caches and enforce read-only entry-frame access, direct call-actual exclusion,
+shape/scope and logical capacity before context skips. Legacy input LD is not
+call-return staging; MOV preserves `.param`. Modern BodyLocal staging is unchanged.
+The checked sum of per-member bytes times compact count has the known32764-byte
+global ceiling; no double axes/vector multiplication or invented256 legacy cap.
+`D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` remains qualified for exact historical
+physical launch packing. See the [parameter contract](parameter_declarations.md)
+for context windows, intrinsic guarantees and preserved limitations.

@@ -719,6 +719,16 @@ void append_parameter_address_diagnostics(
     const OperandDescriptor& descriptor, const OperandView& operand,
     std::optional<MemoryStateSpace> selected_state_space,
     const Context& context, CheckDiagnostics& diagnostics) {
+  if (operand.tensor_operand) {
+    const auto& address = operand.tensor_operand->tensor_map.address;
+    const auto* symbol = std::get_if<ResolvedSymbolRef>(&address.base);
+    if (!valid_parameter_role_cache(symbol, address.enclosing_function_kind))
+      diagnostics.push_back(
+          {.kind = CheckDiagnosticKind::ParameterDirectionMismatch,
+           .range = diagnostic_range(operand.locations, context),
+           .message = "Resolved parameter-role cache contradicts known "
+                      "declaration or frame facts."});
+  }
   const auto& constraint = descriptor.parameter_constraint;
   // A known non-parameter base belongs to the exact state-space diagnostic;
   // do not infer parameter identity from the selected modifier alone.
@@ -890,19 +900,7 @@ OperandView project_tensor_operand(
           !address.offset || address_offset_fits_signed32(*address.offset),
       .address_alignment = alignment,
       .enclosing_function_kind = address.enclosing_function_kind,
-      .parameter_direction = symbol && symbol->declaration_kind &&
-                                     *symbol->declaration_kind ==
-                                         binding::SymbolKind::InputParameter
-                                 ? ParameterDirection::Input
-                             : symbol && symbol->declaration_kind &&
-                                     *symbol->declaration_kind ==
-                                         binding::SymbolKind::ReturnParameter
-                                 ? ParameterDirection::Return
-                             : symbol && symbol->declaration_kind &&
-                                     *symbol->declaration_kind ==
-                                         binding::SymbolKind::CallParameter
-                                 ? ParameterDirection::CallArgument
-                                 : ParameterDirection::None,
+      .parameter_direction = parameter_direction_from_symbol(symbol),
       .tensor_rank = tensor.rank,
       .tensor_operand = &tensor,
       .vector_arity = tensor.coordinates.elements.size(),

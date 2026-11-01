@@ -411,7 +411,7 @@ AST-backed validation 使用传入 AST 的 version 及独立重新绑定的 file
 `ResolvedFunction::parameter_declarations` 拥有通过验证的 `.param` 声明：先按列表顺序
 保存 return formal，再保存 input formal，最后按词法遍历顺序保存 body-local declarator
 （含嵌套 block）。每个 `ResolvedParameterDeclaration` 保留 `symbol_id`、`scope_id`、role
-（`EntryInput`、`DeviceInput`、`DeviceReturn` 或 `BodyLocal`）、基础 `scalar_type`、有效字节
+（`EntryInput`、`DeviceInput`、`DeviceReturn`、`BodyLocal` 或 `LegacyEntryInput`）、基础 `scalar_type`、有效字节
 `alignment`、`explicit_alignment`、`vector_width`、从外到内的 `array_extents`、经溢出检查的
 `byte_extent` 与可选 pointee property。scalar 的维度列表为空；受支持的 unsized device input
 array 仅外轴为空，保留并检查已知内轴，byte extent 为空。所属 function 与 symbol table 即使在局部同名遮蔽时仍
@@ -1379,3 +1379,29 @@ nullptr 重置。descriptor 与 span 仅在同步 bracket 内借用；collector 
 scalar/domain 事实，不保留借用指针。原 payload callback 和顺序保持不变。
 已有派生 source observer 无需新增 override，但 virtual slot 改变 ABI，observer
 与 producer library 必须使用匹配头文件重新构建。
+
+
+## 历史 entry body input
+
+PTX 1.0–1.3 entry body `.param` 在唯一 `parameter_declarations` 表中保留
+`LegacyEntryInput` role，以及 scope/group/array identity。Signature 仍只描述语法
+header ABI，空 header 不等于没有 host input；lexical metadata 顺序不分配 launch
+地址或 packing。只有 entry body role 歧义才要求 version 并报告
+`MissingValidationContext`，不按 SM 猜 role。已 typed module 缺 context 时保留 role。
+
+`ResolvedSymbolRef::parameter_role` 从 actual record 同步派生，structural kind 仍为
+`CallParameter`。Address/MOV/tensor 共用 input/return/call-slot 方向映射。两个
+validator 都在 context skip 前重连当前 record/cache，检查 readonly、entry frame、
+direct call-actual 排除、shape/scope 和 logical capacity。Legacy LD 不要求 call
+return staging，MOV 保持 `.param`；现代 BodyLocal staging 不变。Checked logical
+总量使用 per-member bytes 乘 compact count，检查32764-byte已知 global ceiling，
+不重复乘 axes/vector，也不套用1.4的256-byte header cap。
+`D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` 对精确历史 physical launch packing
+仍 qualified。详见[parameter contract](parameter_declarations.md)的窗口与边界。
+
+
+共用 current operand-domain pass 将 actual `EntryInput` 与 `LegacyEntryInput`
+record 都识别为 readonly entry object，在 context skip 前使用当前 typed
+layout/field requirement，覆盖非 LD/ST consumer。MOV 读取地址仍合法；明确要求
+writable operand 时拒绝。Legacy readonly 保留原 label 与 instruction range，
+仅合并相同 local cause，不按 opcode 推测 writer，也不新增历史指令权限。

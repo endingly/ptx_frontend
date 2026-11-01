@@ -164,9 +164,9 @@ struct FunctionSignature {
   bool is_entry{};
   /** Whether the source function carries `.noreturn`. */
   bool is_noreturn{};
-  /** Ordered return-parameter contracts. */
+  /** Ordered syntactic header returns; body storage never enters this ABI list. */
   std::vector<FunctionParameterContract> return_parameters;
-  /** Ordered input-parameter contracts. */
+  /** Ordered syntactic header inputs; legacy body inputs use owning IR records. */
   std::vector<FunctionParameterContract> parameters;
 
   /** Compare function-kind flags and ordered normalized parameter contracts. */

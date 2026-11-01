@@ -237,7 +237,8 @@ branches: .branchtargets label;
 }
 
 TEST(ResolvedModule, DoesNotStageCallsAcrossNestedBlockBoundaries) {
-  const auto parsed_module_1 = parseModule(R"ptx(
+  const auto parsed_module_1 = parseModule(R"ptx(.version 9.3
+
 .func callee(.param .u32 input);
 .entry caller() {
   .reg .u32 %value;

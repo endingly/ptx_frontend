@@ -152,3 +152,6 @@ be added only when normative grammar or verifiable `ptxas` behavior is
 available.
 
 For `.target debug`, zero section records are a definite error. Nonzero records only satisfy the absence check: actual DWARF recognition remains **D-DEBUG-DWARF-PRESENCE-RECOGNITION**, not certified by names, emptiness, labels or typed bytes.
+
+
+Historical entry body inputs: PTX 1.0–1.3 uses owned `LegacyEntryInput` roles with input LD/MOV, read-only/frame/cache joins and a checked 32764-byte logical ceiling; PTX 1.4+ header ABI and PTX 2.0+ body call slots stay distinct. Exact historical physical launch packing remains reference-boundary qualified. See [parameter contract](../parameter_declarations.md).

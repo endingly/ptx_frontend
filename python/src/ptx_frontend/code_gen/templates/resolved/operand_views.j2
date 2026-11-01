@@ -441,6 +441,10 @@
               }{% elif model.structure == "operand_view_address" %}              [&]() -> OperandView {
                 const auto* symbol = std::get_if<ResolvedSymbolRef>(
                     &{{ model.member_expr }}.value.base);
+                if (!valid_parameter_role_cache(symbol, {{ model.member_expr }}.value.enclosing_function_kind))
+                  diagnostics.push_back({.kind = checker::CheckDiagnosticKind::ParameterDirectionMismatch,
+                    .range = context.instruction_range,
+                    .message = "Resolved parameter-role cache contradicts known declaration or frame facts."});
                 std::optional<MemoryStateSpace> effective_state_space;
                 ParameterDirection parameter_direction = {{ model.parameter_directions_default }};
                 if (symbol != nullptr && symbol->address_state_space) {
@@ -467,18 +471,8 @@
                       break;
                   }
                 }
-                if (symbol != nullptr && symbol->declaration_kind) {
-                  if (*symbol->declaration_kind ==
-                      binding::SymbolKind::InputParameter) {
-                    parameter_direction = {{ model.input_cpp }};
-                  } else if (*symbol->declaration_kind ==
-                             binding::SymbolKind::ReturnParameter) {
-                    parameter_direction = {{ model.return_cpp }};
-                  } else if (*symbol->declaration_kind ==
-                             binding::SymbolKind::CallParameter) {
-                    parameter_direction = ParameterDirection::CallArgument;
-                  }
-                }
+                if (symbol != nullptr && (symbol->parameter_role || symbol->declaration_kind))
+                  parameter_direction = parameter_direction_from_symbol(symbol);
                 const std::optional<bool> declaration_is_unified =
                     symbol == nullptr ? std::nullopt
                                       : symbol->declaration_is_unified;
@@ -613,21 +607,6 @@
                   }
                   return std::nullopt;
                 };
-                const auto parameter_direction_from_symbol =
-                    [](const ResolvedSymbolRef* symbol) {
-                  if (symbol == nullptr || !symbol->declaration_kind)
-                    return ParameterDirection::None;
-                  if (*symbol->declaration_kind ==
-                      binding::SymbolKind::InputParameter)
-                    return {{ model.input_cpp }};
-                  if (*symbol->declaration_kind ==
-                      binding::SymbolKind::ReturnParameter)
-                    return {{ model.return_cpp }};
-                  if (*symbol->declaration_kind ==
-                      binding::SymbolKind::CallParameter)
-                    return ParameterDirection::CallArgument;
-                  return ParameterDirection::None;
-                };
                 if (const auto* immediate =
                         std::get_if<ResolvedImmediate>(&{{ model.member_expr }}.value)) {
                   return OperandView{
@@ -683,6 +662,10 @@
                 }
                 if (const auto* symbol = std::get_if<ResolvedSymbolRef>(
                         &{{ model.member_expr }}.value)) {
+                  if (!valid_parameter_role_cache(symbol))
+                    diagnostics.push_back({.kind = checker::CheckDiagnosticKind::ParameterDirectionMismatch,
+                      .range = context.instruction_range,
+                      .message = "Resolved parameter-role cache contradicts known declaration or frame facts."});
                   return OperandView{
                       .field_id = "{{ model.field_id }}",
                       .actual_shape = {{ model.symbol_cpp }},
@@ -714,6 +697,10 @@
                     std::get<ResolvedAddress>({{ model.member_expr }}.value);
                 const auto* symbol =
                     std::get_if<ResolvedSymbolRef>(&address.base);
+                if (!valid_parameter_role_cache(symbol, address.enclosing_function_kind))
+                  diagnostics.push_back({.kind = checker::CheckDiagnosticKind::ParameterDirectionMismatch,
+                    .range = context.instruction_range,
+                    .message = "Resolved parameter-role cache contradicts known declaration or frame facts."});
                 return OperandView{
                     .field_id = "{{ model.field_id }}",
                     .actual_shape = {{ model.address_cpp }},

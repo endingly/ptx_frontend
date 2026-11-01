@@ -626,9 +626,14 @@ resolve_call_parameter(const syntax_ast::AstIdentifierRef& identifier,
                                identifier.syntax.text),
     });
   }
+  const bool legacy_input = std::ranges::any_of(
+      context->parameter_declarations, [&](const auto& record) {
+        return record.symbol_id == symbol.id &&
+               record.role == ParameterDeclarationRole::LegacyEntryInput;
+      });
   if (*symbol.state_space == syntax_ast::AstStateSpace::Parameter &&
       (symbol.kind == binding::SymbolKind::InputParameter ||
-       symbol.kind == binding::SymbolKind::ReturnParameter)) {
+       symbol.kind == binding::SymbolKind::ReturnParameter || legacy_input)) {
     return std::unexpected(ResolveDiagnostic{
         .range = identifier.syntax.range,
         .message = fmt::format(
@@ -1155,7 +1160,16 @@ std::expected<ResolvedSymbolRef, ResolveDiagnostic> resolve_data_symbol(
     });
   }
   const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
-  if (!is_addressable_data_symbol(symbol, parameter_policy)) {
+  const auto parameter = std::ranges::find_if(
+      context->parameter_declarations,
+      [&](const auto& record) { return record.symbol_id == symbol.id; });
+  const bool legacy_input =
+      parameter != context->parameter_declarations.end() &&
+      parameter->role == ParameterDeclarationRole::LegacyEntryInput;
+  if (!is_addressable_data_symbol(
+          symbol, legacy_input
+                      ? FormalParameterAddressPolicy::PreserveParameterSpace
+                      : parameter_policy)) {
     return std::unexpected(ResolveDiagnostic{
         .range = identifier.syntax.range,
         .message = fmt::format("Symbol '{}' is not an addressable data symbol.",
@@ -1166,6 +1180,8 @@ std::expected<ResolvedSymbolRef, ResolveDiagnostic> resolve_data_symbol(
   resolved.symbol_id = lookup->symbol;
   resolved.parameterized_index = lookup->parameterized_index;
   resolved.declaration_kind = symbol.kind;
+  if (parameter != context->parameter_declarations.end())
+    resolved.parameter_role = parameter->role;
   resolved.declaration_state_space = symbol.state_space;
   resolved.address_state_space = symbol.state_space;
   resolved.declaration_is_unified =

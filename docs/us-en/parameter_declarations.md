@@ -13,6 +13,7 @@ validation before publishing metadata.
 | Device input / return scalar/vector / sized multidimensional array | Retained | Same type/extent checks; `.param` needs PTX 2.0 / SM 20; modern functions have at most one return | `parameter_declarations`, `DeviceInput` / `DeviceReturn` |
 | Final device input `.param .b8 bytes[]` | Retained | Only final input; PTX 6.0 / SM 30 minimum | Unknown outer extent, checked known inner axes and unknown byte extent, distinct from a scalar |
 | Unsized entry, return, non-final input, or non-`.b8` input | Retained | Rejected | No resolved module |
+| PTX 1.0–1.3 entry body input | Retained | Fully sized fundamental scalar/vector/axes/groups, read-only, actual entry scope, checked logical aggregate <=32764 | Sole `parameter_declarations` table, `LegacyEntryInput`; header signature remains header-only |
 | Body-local scalar/vector / sized array, including multiple dimensions | Retained | Fundamental non-predicate type, positive constant extents, checked size, alignment, PTX 2.0 / SM 20 | `parameter_declarations`, `BodyLocal`, lexical scope and full array shape |
 | Unsized body-local `.param` | Retained | Rejected | No resolved module |
 | `.callprototype` scalar/vector / array formals | Retained | Device signature rules; prototype itself requires PTX 2.1 / SM 20 | Owned `declaration_semantics::FunctionSignature` from the semantic API; not a declaration table entry |
@@ -80,13 +81,6 @@ and 32764 bytes at PTX 8.1 and later. Checked arithmetic rejects overflowing
 declaration extents and aggregates. These are ISA limits, not CUDA/OpenCL
 driver-specific limits; byte extents are not packed offsets or allocated memory.
 Missing version/target information cannot prove an availability violation.
-Legacy PTX 1.0–1.3 entry inputs declared inside the body are a retained
-exclusion. PTX 9.3 establishes that PTX 1.x had kernel `.param` objects while
-device `.param` formals arrived in PTX 2.0, but it does not provide the legacy
-body-input grammar and identity rules needed to map those declarations onto the
-current table. A body-local metadata role therefore never reinterprets such an
-object as an entry input. This is unresolved legacy grammar, not a claim that
-the historic form was ISA-illegal.
 Body-local `.param` initializers are rejected by the parser; semantic validation
 also guards against them in directly constructed ASTs.
 Calls may omit a validated final unsized byte input when there is no payload;
@@ -262,3 +256,68 @@ checks use explicit Write/ReadWrite operand requirements or the existing Return
 parameter constraint; DeviceInput is not generally readonly. Diagnostics merge
 only an identical local address cause, preserving unrelated failures. This
 check does not authorize new source forms or replace full target-aware checking.
+
+
+## Historical entry body inputs and typed roles
+
+PTX 1.0–1.3 entry body `.param` objects are read-only kernel inputs with
+`ParameterDeclarationRole::LegacyEntryInput`. Their sole owning handoff is
+`ResolvedFunction::parameter_declarations`, in lexical depth-first/declarator
+order, including nested scopes and distinct shadowed identities. Compact groups
+retain one record per bound group with per-member `byte_extent` and a count on
+the symbol; arrays retain all axes. This order defines metadata traversal, with
+no host launch slots, relative addresses, padding, or allocated offsets.
+
+`FunctionSignature::parameters` and returns describe syntactic header ABI only.
+A legacy entry can have an empty header signature and nonempty body inputs.
+Consumers enumerate `EntryInput` records for header inputs and `LegacyEntryInput`
+records for legacy body inputs; opaque header inputs remain separate. Legacy body
+inputs require fully sized fundamental objects and keep existing type-specific
+availability. This adds no legacy opaque, `.ptr`, unsized, or initializer permission.
+PTX 1.4–1.x rejects entry body `.param`; PTX 2.0 and later selects `BodyLocal`
+with independently known SM 20 minimum. Device body objects remain `BodyLocal`.
+
+Fresh `resolveModuleOnly` and `resolveModule` need a PTX version only when an
+entry contains body `.param` and its role cannot otherwise be selected. They
+report `MissingValidationContext`, including with an SM 1.x target; they do not
+guess a role from the target or require a target just to type it. Ordinary
+fragments, entries without body parameters, header inputs, and device body
+objects retain their previous context behavior. Already typed modules keep their
+current role with missing context: available-context validation defers only the
+unknown window; strict validation still requires complete context.
+
+`ResolvedSymbolRef::parameter_role` is a synchronous record-derived cache and
+preserves the structural `CallParameter` binding kind. Known legacy direct
+references require the matching cache. Every engaged cache rejoins the actual
+parameter record; corrupt, missing legacy, forged kind, or mismatched role caches
+reject. Address, MOV, and tensor projections share the role-to-direction mapping:
+entry/device/legacy inputs are `Input`, device returns `Return`, and body call
+slots `CallArgument`. Legacy LD is an ordinary input read without return-load
+staging. MOV takes its `.param` address without device-local materialization.
+Actual records independently enforce read-only/entry-frame semantics and exclude
+direct legacy input call actuals/returns; loading a value into a register preserves
+legal register ABI calls. Modern body call-store/call/load adjacency remains.
+Both validators check current records, caches, shapes, scopes, accesses, and
+logical capacity before a missing-target skip; valid original syntax cannot
+exempt a current corrupted payload. Replacement context checks the current role,
+with no automatic reinterpretation or producer history.
+
+The known global legacy-input ceiling is 32764 bytes. A checked logical sum uses
+each per-member `byte_extent` times its compact count (otherwise one), across
+all inputs, including unused and nested declarations. Axes/vector lanes already
+contribute to `byte_extent` and are not multiplied again. Overflow or a total
+above 32764 rejects during resolution and both validation routes, even without
+context. The PTX 1.4 header-specific 256-byte limit is not applied to legacy body
+inputs; existing later header limits remain unchanged.
+`D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` remains reference-boundary qualified:
+passing the known logical ceiling is not proof of physical ABI packing, a lower
+historical threshold, or acceptance by every legacy driver/hardware launch ABI.
+
+
+The shared current operand-domain pass classifies both actual `EntryInput` and
+`LegacyEntryInput` records as read-only entry objects. It uses current typed
+layout/field requirements before context skips, including non-LD/ST consumers;
+MOV address acquisition stays legal, while an explicit writable operand rejects.
+Legacy readonly diagnostics use their original label and instruction range;
+only identical local causes merge. No opcode-specific writer classification or
+new historical instruction permission is inferred.

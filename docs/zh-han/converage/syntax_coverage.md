@@ -140,3 +140,6 @@ PTX ISA 的 variable declaration 概述提到 optional fixed address，但当前
 `ptxas` 行为后才会增加对应节点。
 
 对 `.target debug`，零 section record 是确定错误。非零 record 仅通过缺失检查；实际 DWARF recognition 仍为 **D-DEBUG-DWARF-PRESENCE-RECOGNITION**，不由 name、空/非空、label 或 typed byte 认证。
+
+
+历史 entry body input：PTX 1.0–1.3 保留 owning `LegacyEntryInput`，支持 input LD/MOV、readonly/frame/cache 重连和32764-byte checked logical ceiling；1.4+ header ABI 与2.0+ body call slot 保持区分。精确历史 physical launch packing 仍 reference-boundary qualified。见[parameter contract](../parameter_declarations.md)。

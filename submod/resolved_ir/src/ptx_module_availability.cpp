@@ -74,6 +74,7 @@ enum class DirectiveAvailability {
   Weak,
   Recursion,
   PossibleRecursion,
+  BodyParameter,
   Noreturn,
   AbiPreserve,
   AbiPreserveControl,
@@ -82,6 +83,7 @@ enum class DirectiveAvailability {
 checker::AvailabilityDescriptor directive_availability(
     DirectiveAvailability directive) {
   switch (directive) {
+    case DirectiveAvailability::BodyParameter:
     case DirectiveAvailability::Recursion:
     case DirectiveAvailability::PossibleRecursion:
       return availability({2, 0}, 20);
@@ -1619,17 +1621,21 @@ void check_parameter_address_operand(
     return;
   }
   const auto& operand = *use.address_operand;
-  if (declaration->role == ParameterDeclarationRole::EntryInput &&
+  const bool legacy =
+      declaration->role == ParameterDeclarationRole::LegacyEntryInput;
+  if ((declaration->role == ParameterDeclarationRole::EntryInput || legacy) &&
       (operand.access == checker::OperandAccess::Write ||
        operand.access == checker::OperandAccess::ReadWrite ||
        operand.direction == ParameterDirection::Return)) {
     append_parameter_address_intrinsic(
         diagnostics, intrinsic_causes,
         {
-            .kind = checker::CheckDiagnosticKind::RuleViolation,
+            .kind = legacy ? checker::CheckDiagnosticKind::ModuleSourceMismatch
+                           : checker::CheckDiagnosticKind::RuleViolation,
             .range = operand.instruction_range,
-            .message =
-                "Entry input .param storage is read-only for this operand.",
+            .message = legacy ? "Legacy entry input parameters are read-only."
+                              : "Entry input .param storage is read-only for "
+                                "this operand.",
         });
     return;
   }
@@ -1839,6 +1845,103 @@ void check_module_references(
       check_parameter_address_operand(
           *symbol, use, function, diagnostics,
           intrinsic_causes[use.address_operand->instruction_index]);
+  }
+}
+
+/** Rejoin semantic role caches against current records before any context skip.
+ * Callback copies are local to this validation; the actual record remains the
+ * independent authority even when the operand cache has been corrupted.
+ */
+void check_parameter_reference_roles(const ResolvedModule& module,
+                                     const ResolvedFunction& function,
+                                     checker::CheckDiagnostics& destination) {
+  checker::CheckDiagnostics diagnostics;
+  std::vector<ModuleReferenceUse> uses;
+  for (size_t i = 0; i < function.body.size(); ++i) {
+    if (!function.body[i])
+      continue;
+    ReferenceCollector collector(uses,
+                                 i < function.instruction_ranges.size()
+                                     ? function.instruction_ranges[i]
+                                     : function.range,
+                                 diagnostics, i);
+    function.body[i]->visit_references(collector);
+  }
+  for (const auto& use : uses) {
+    const auto* symbol =
+        use.symbol_id ? owned_symbol(module, *use.symbol_id) : nullptr;
+    const auto record = std::ranges::find_if(
+        function.parameter_declarations,
+        [&](const auto& value) { return use.symbol_id == value.symbol_id; });
+    const bool legacy =
+        record != function.parameter_declarations.end() &&
+        record->role == ParameterDeclarationRole::LegacyEntryInput;
+    if (use.address_symbol) {
+      // The shared current-binding/domain pass owns identity, scope, member,
+      // and physical declaration proof in both module APIs before context skips.
+      if (!symbol)
+        continue;
+      const auto& cached = *use.address_symbol;
+      if (!valid_parameter_role_cache(
+              &cached, use.enclosing_address_function_kind.value_or(
+                           EnclosingFunctionKind::Unknown)) ||
+          (cached.parameter_role &&
+           (!symbol || record == function.parameter_declarations.end() ||
+            *cached.parameter_role != record->role)) ||
+          (legacy &&
+           (!cached.parameter_role ||
+            cached.declaration_kind != binding::SymbolKind::CallParameter ||
+            cached.declaration_state_space !=
+                base::DeclarationStateSpace::Parameter ||
+            cached.address_state_space !=
+                base::DeclarationStateSpace::Parameter ||
+            cached.enclosing_function_kind != EnclosingFunctionKind::Entry)))
+        append_model_mismatch(diagnostics, use.range,
+                              "Resolved symbol parameter-role cache disagrees "
+                              "with its current owned declaration.");
+      if (legacy) {
+        if (cached.parameter_qualifier == ParameterAddressQualifier::Function)
+          append_model_mismatch(
+              diagnostics, use.range,
+              "Legacy entry input requires the entry parameter frame.");
+      }
+    } else if (legacy) {
+      append_model_mismatch(
+          diagnostics, use.range,
+          "Legacy entry input cannot be used directly as a call argument or "
+          "return; load its value into a register.");
+    }
+  }
+  for (const auto& diagnostic : diagnostics)
+    if (std::ranges::none_of(destination, [&](const auto& previous) {
+          return previous.kind == diagnostic.kind &&
+                 previous.range == diagnostic.range &&
+                 previous.message == diagnostic.message;
+        }))
+      destination.push_back(diagnostic);
+}
+
+/** Check the currently typed body role with independently known context facts. */
+void check_body_parameter_roles(
+    const ResolvedFunction& function,
+    std::optional<checker::PtxVersion> version,
+    const std::optional<base::TargetProfile>& profile,
+    checker::CheckDiagnostics& diagnostics) {
+  DirectiveAvailabilityKeys emitted;
+  for (const auto& record : function.parameter_declarations) {
+    if (record.role == ParameterDeclarationRole::LegacyEntryInput) {
+      if (version && (*version < checker::PtxVersion{1, 0} ||
+                      *version >= checker::PtxVersion{1, 4}))
+        diagnostics.push_back(
+            {.kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+             .range = function.range,
+             .message =
+                 "Legacy entry input requires PTX ISA >= 1.0 and < 1.4."});
+    } else if (record.role == ParameterDeclarationRole::BodyLocal) {
+      append_minimum_requirement(
+          diagnostics, emitted, DirectiveAvailability::BodyParameter, version,
+          profile, function.range, "Body-local call .param");
+    }
   }
 }
 
@@ -2832,6 +2935,15 @@ void check_function_parameters(const ResolvedModule& module,
                            ? base::find_scalar_type_metadata(*symbol->type)
                            : nullptr;
     std::optional<uint64_t> extent;
+    const bool legacy =
+        record.role == ParameterDeclarationRole::LegacyEntryInput;
+    const auto* owner = owned_symbol(module, function.symbol_id);
+    const bool body_role =
+        symbol && symbol->kind == binding::SymbolKind::CallParameter &&
+        (record.role == ParameterDeclarationRole::BodyLocal ||
+         (legacy && function.is_entry && !function.is_prototype && owner &&
+          owner->kind == binding::SymbolKind::Function &&
+          owner->function_is_entry));
     const bool unsized = role == ParameterDeclarationRole::DeviceInput &&
                          record.scalar_type == ScalarType::B8 &&
                          record.vector_width == 1 &&
@@ -2841,9 +2953,8 @@ void check_function_parameters(const ResolvedModule& module,
         symbol->scope != record.scope_id ||
         !is_function_owned_scope(module, record.scope_id,
                                  function.declaration_scope) ||
-        record.role != role.value_or(ParameterDeclarationRole::BodyLocal) ||
-        (!role && symbol->kind != binding::SymbolKind::CallParameter) ||
-        !type || type->type != record.scalar_type ||
+        (role ? record.role != *role : !body_role) || !type ||
+        type->type != record.scalar_type ||
         type->register_declaration_usage !=
             base::ScalarDeclarationUsage::Fundamental ||
         record.scalar_type == ScalarType::Pred ||
@@ -4508,7 +4619,10 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   check_call_tables(module, diagnostics);
   for (const auto& diagnostic : detail::check_direct_call_visibility(module))
     append_model_mismatch(diagnostics, diagnostic.range, diagnostic.message);
-  for (const auto& diagnostic : detail::check_call_parameter_transfers(module))
+  for (const auto& diagnostic :
+       detail::check_call_parameter_transfers(module, false))
+    append_model_mismatch(diagnostics, diagnostic.range, diagnostic.message);
+  for (const auto& diagnostic : detail::check_legacy_entry_input_sizes(module))
     append_model_mismatch(diagnostics, diagnostic.range, diagnostic.message);
   check_cvta_constant_pointer_restriction(module, diagnostics);
   for (const auto& alias : module.function_aliases) {
@@ -4620,6 +4734,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
       check_typed_call_literals(module, function, signatures,
                                 parameter_properties, diagnostics);
     }
+    check_parameter_reference_roles(module, function, diagnostics);
     if (function.source_region &&
         *function.source_region >= module.header.regions.size()) {
       invalid(
@@ -4658,6 +4773,8 @@ checker::CheckResult validateModule(const ResolvedModule& module,
               ? std::optional<base::TargetProfile>{}
               : base::find_target_profile(region->target_options.front());
       DirectiveAvailabilityKeys emitted;
+      check_body_parameter_roles(function, region->version, profile,
+                                 diagnostics);
       check_target_list_availability(function, region->version, profile,
                                      emitted, diagnostics);
       check_prototype_availability(function, region->version, profile, emitted,
@@ -4765,6 +4882,12 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
   /** Owned per-function/per-instruction causes, immutable during full checks. */
   std::vector<std::vector<checker::CheckDiagnostics>> address_intrinsic_causes(
       module.functions.size());
+
+  for (const auto& diagnostic : detail::check_legacy_entry_input_sizes(module))
+    append_model_mismatch(diagnostics, diagnostic.range, diagnostic.message);
+  for (const auto& diagnostic :
+       detail::check_call_parameter_transfers(module, false))
+    append_model_mismatch(diagnostics, diagnostic.range, diagnostic.message);
   for (const auto& function : module.functions) {
     auto& intrinsic_causes =
         address_intrinsic_causes[&function - module.functions.data()];
@@ -4781,6 +4904,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
       append_model_mismatch(
           diagnostics, function.range,
           "Resolved function instruction provenance does not match its body.");
+    check_parameter_reference_roles(module, function, diagnostics);
   }
   /** Replacement source selects one texturing mode for every target region. */
   std::optional<TextureMode> explicit_texture_mode;
@@ -4929,6 +5053,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
       if (index < call_graph.recursive_calls.size())
         check_recursive_calls(call_graph.recursive_calls[index], version,
                               active_profile, emitted, diagnostics);
+      check_body_parameter_roles(*owned, version, active_profile, diagnostics);
       check_target_list_availability(*owned, version, active_profile, emitted,
                                      diagnostics);
       check_prototype_availability(*owned, version, active_profile, emitted,

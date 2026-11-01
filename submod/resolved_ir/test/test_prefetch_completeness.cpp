@@ -356,13 +356,21 @@ TEST(PrefetchCompleteness, RevalidatesOwnedGenericSpacesAndEntryInput) {
   entry_hint.address.value.enclosing_function_kind =
       EnclosingFunctionKind::Entry;
   for (const auto kind : {std::optional{binding::SymbolKind::ReturnParameter},
-                          std::optional{binding::SymbolKind::CallParameter},
-                          std::optional<binding::SymbolKind>{}}) {
+                          std::optional{binding::SymbolKind::CallParameter}}) {
     input.declaration_kind = kind;
     EXPECT_FALSE(entry_hint.check(context));
     EXPECT_FALSE(strict());
   }
+  // The explicit semantic cache still supplies Input to a standalone view;
+  // full-module binding proof independently requires the actual physical kind.
+  input.declaration_kind.reset();
+  EXPECT_TRUE(entry_hint.check(context));
+  EXPECT_FALSE(strict());
+  input.parameter_role.reset();
+  EXPECT_FALSE(entry_hint.check(context));
+  EXPECT_FALSE(strict());
   input.declaration_kind = binding::SymbolKind::InputParameter;
+  input.parameter_role = ParameterDeclarationRole::EntryInput;
   function.parameter_declarations.front().role =
       ParameterDeclarationRole::DeviceInput;
   EXPECT_FALSE(strict());
@@ -372,8 +380,18 @@ TEST(PrefetchCompleteness, RevalidatesOwnedGenericSpacesAndEntryInput) {
   EXPECT_FALSE(entry_hint.check(context));
   EXPECT_FALSE(strict());
   input.address_state_space = base::DeclarationStateSpace::Global;
+  EXPECT_FALSE(entry_hint.check(context));
+  EXPECT_FALSE(strict());
+  // A coherent standalone global reference must drop the input assertion and
+  // change its known declaration facts too; its stale module ID still rejects.
+  input.parameter_role.reset();
+  input.declaration_kind = binding::SymbolKind::Variable;
+  input.declaration_state_space = base::DeclarationStateSpace::Global;
   EXPECT_TRUE(entry_hint.check(context));
   EXPECT_FALSE(strict());
+  input.parameter_role = ParameterDeclarationRole::EntryInput;
+  input.declaration_kind = binding::SymbolKind::InputParameter;
+  input.declaration_state_space = base::DeclarationStateSpace::Parameter;
   input.address_state_space = base::DeclarationStateSpace::Parameter;
   auto& uniform = dynamic_cast<PrefetchuL1&>(*function.body[5]);
   auto& global = std::get<ResolvedSymbolRef>(uniform.address.value.base);

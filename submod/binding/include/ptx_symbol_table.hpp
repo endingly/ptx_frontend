@@ -40,6 +40,7 @@ enum class SymbolKind : uint8_t {
   Variable,
   InputParameter,
   ReturnParameter,
+  /** Structural body .param identity; semantic records distinguish legacy inputs from call slots. */
   CallParameter,
   Function,
   Label,

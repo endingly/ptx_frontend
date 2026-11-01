@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <limits>
 #include <vector>
 
 namespace ptx_frontend::resolved_ir::detail {
@@ -29,26 +30,29 @@ struct ParameterTransfer {
   /** Exact symbolic index carrier, separate from the compact member identity. */
   std::optional<ResolvedRegisterRef> index;
 };
-/** Borrow the address only from the canonical Parameter-capable LD/ST forms. */
+/** Borrow canonical LD/ST addresses independently of the mutable selected space.
+ * Known input readonly/frame facts apply before selection-based staging. Only
+ * Parameter-selected BodyLocal transfers enter the adjacency algorithm.
+ */
 const ResolvedAddress* parameter_address(const Instruction& instruction,
-                                         bool& store) {
-  if (const auto* value = dynamic_cast<const LdExplicitScalar*>(&instruction))
-    return value->state_space.value == MemoryStateSpace::Parameter
-               ? &value->address.value
-               : nullptr;
-  if (const auto* value = dynamic_cast<const LdExplicitVector*>(&instruction))
-    return value->state_space.value == MemoryStateSpace::Parameter
-               ? &value->address.value
-               : nullptr;
+                                         bool& store, bool& parameter_space) {
+  if (const auto* value = dynamic_cast<const LdExplicitScalar*>(&instruction)) {
+    parameter_space = value->state_space.value == MemoryStateSpace::Parameter;
+    return &value->address.value;
+  }
+  if (const auto* value = dynamic_cast<const LdExplicitVector*>(&instruction)) {
+    parameter_space = value->state_space.value == MemoryStateSpace::Parameter;
+    return &value->address.value;
+  }
   store = true;
-  if (const auto* value = dynamic_cast<const StExplicitScalar*>(&instruction))
-    return value->state_space.value == MemoryStateSpace::Parameter
-               ? &value->address.value
-               : nullptr;
-  if (const auto* value = dynamic_cast<const StExplicitVector*>(&instruction))
-    return value->state_space.value == MemoryStateSpace::Parameter
-               ? &value->address.value
-               : nullptr;
+  if (const auto* value = dynamic_cast<const StExplicitScalar*>(&instruction)) {
+    parameter_space = value->state_space.value == MemoryStateSpace::Parameter;
+    return &value->address.value;
+  }
+  if (const auto* value = dynamic_cast<const StExplicitVector*>(&instruction)) {
+    parameter_space = value->state_space.value == MemoryStateSpace::Parameter;
+    return &value->address.value;
+  }
   return nullptr;
 }
 /** Copy call identities while reference callbacks borrow the selected payload. */
@@ -80,9 +84,10 @@ struct CallObjects final : IReferenceObserver {
 std::optional<ParameterTransfer> parameter_transfer(
     const ResolvedModule& module, const ResolvedFunction& function,
     const Instruction& instruction, SourceRange range,
-    ModuleResolveDiagnostics& diagnostics) {
+    ModuleResolveDiagnostics& diagnostics, bool include_legacy_readonly) {
   bool store = false;
-  const auto* address = parameter_address(instruction, store);
+  bool parameter_space = false;
+  const auto* address = parameter_address(instruction, store, parameter_space);
   if (!address)
     return std::nullopt;
   const auto* base = std::get_if<ResolvedSymbolRef>(&address->base);
@@ -90,9 +95,22 @@ std::optional<ParameterTransfer> parameter_transfer(
       base->symbol_id->value >= module.symbols.symbols().size())
     return std::nullopt;
   const auto& symbol = module.symbols.symbol(*base->symbol_id);
-  const bool local = symbol.kind == binding::SymbolKind::CallParameter;
+  const auto declaration = std::ranges::find_if(
+      function.parameter_declarations,
+      [&](const auto& value) { return value.symbol_id == *base->symbol_id; });
+  const bool legacy =
+      declaration != function.parameter_declarations.end() &&
+      declaration->role == ParameterDeclarationRole::LegacyEntryInput;
+  const bool local = symbol.kind == binding::SymbolKind::CallParameter &&
+                     declaration != function.parameter_declarations.end() &&
+                     declaration->role == ParameterDeclarationRole::BodyLocal;
   const bool entry_input =
-      function.is_entry && symbol.kind == binding::SymbolKind::InputParameter;
+      function.is_entry &&
+      (symbol.kind == binding::SymbolKind::InputParameter || legacy);
+  if (include_legacy_readonly && legacy && store)
+    diagnostics.push_back(
+        {.range = range,
+         .message = "Legacy entry input parameters are read-only."});
   if ((address->parameter_qualifier == ParameterAddressQualifier::Entry &&
        !entry_input) ||
       (address->parameter_qualifier == ParameterAddressQualifier::Function &&
@@ -106,13 +124,8 @@ std::optional<ParameterTransfer> parameter_transfer(
                  : ".param::func may access only a device-function parameter "
                    "or function-local call parameter."});
   }
-  if (!local)
+  if (!local || !parameter_space)
     return std::nullopt;
-  const auto declaration = std::ranges::find_if(
-      function.parameter_declarations, [&](const auto& value) {
-        return value.symbol_id == *base->symbol_id &&
-               value.role == ParameterDeclarationRole::BodyLocal;
-      });
   if (declaration == function.parameter_declarations.end()) {
     diagnostics.push_back(
         {.range = range,
@@ -151,8 +164,39 @@ std::optional<ParameterTransfer> parameter_transfer(
 }
 }  // namespace
 
-ModuleResolveDiagnostics check_call_parameter_transfers(
+ModuleResolveDiagnostics check_legacy_entry_input_sizes(
     const ResolvedModule& module) {
+  ModuleResolveDiagnostics diagnostics;
+  for (const auto& function : module.functions) {
+    uint64_t total = 0;
+    for (const auto& record : function.parameter_declarations) {
+      if (record.role != ParameterDeclarationRole::LegacyEntryInput)
+        continue;
+      const auto* symbol =
+          record.symbol_id.value < module.symbols.symbols().size()
+              ? &module.symbols.symbol(record.symbol_id)
+              : nullptr;
+      const uint64_t count =
+          symbol ? symbol->parameterized_count.value_or(1) : 0;
+      if (!symbol || !record.byte_extent || !count ||
+          *record.byte_extent > std::numeric_limits<uint64_t>::max() / count ||
+          total > std::numeric_limits<uint64_t>::max() -
+                      *record.byte_extent * count ||
+          (total += *record.byte_extent * count) > 32764) {
+        diagnostics.push_back(
+            {.range = symbol ? symbol->declaration_range : function.range,
+             .message =
+                 "Legacy entry inputs exceed the known 32764-byte logical "
+                 "aggregate ceiling or have an invalid extent."});
+        break;
+      }
+    }
+  }
+  return diagnostics;
+}
+
+ModuleResolveDiagnostics check_call_parameter_transfers(
+    const ResolvedModule& module, bool include_legacy_readonly) {
   ModuleResolveDiagnostics diagnostics;
   for (const auto& function : module.functions) {
     std::vector<std::optional<ParameterTransfer>> transfers;
@@ -160,11 +204,11 @@ ModuleResolveDiagnostics check_call_parameter_transfers(
       const auto range = index < function.instruction_ranges.size()
                              ? function.instruction_ranges[index]
                              : SourceRange{};
-      transfers.push_back(function.body[index]
-                              ? parameter_transfer(module, function,
-                                                   *function.body[index], range,
-                                                   diagnostics)
-                              : std::nullopt);
+      transfers.push_back(
+          function.body[index]
+              ? parameter_transfer(module, function, *function.body[index],
+                                   range, diagnostics, include_legacy_readonly)
+              : std::nullopt);
     }
     for (size_t index = 0; index < transfers.size(); ++index) {
       if (!transfers[index])

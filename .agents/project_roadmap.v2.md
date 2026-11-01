@@ -537,7 +537,7 @@ initializer 信息；内存布局、分配及 CTA/thread instance 仍属于 cons
 
 `.param` 的声明覆盖与公共 metadata 边界另见 [parameter coverage](../docs/us-en/parameter_declarations.md)
 与[中文契约](../docs/zh-han/parameter_declarations.md)：保留 entry/device input、device return
-与 body-local parameter 的 typed shape、size/alignment、role 和 lexical identity；opaque 与
+与 PTX 1.0–1.3 `LegacyEntryInput`、现代 body-local parameter 的 typed shape、size/alignment、role 和 lexical identity；opaque 与
 其他 unsupported form 明确诊断，不扩展为 launch packing 或 simulator allocation。
 Device `.reg` input/return 支持 `.v2`/`.v4` 非 predicate fundamental vector（总大小至多
 128 bit）；default stack ABI 下，仅在 PTX 版本已知且不低于 2.0、当前 target 可识别且
@@ -1380,3 +1380,6 @@ M19 diagnostics/CI/reproducibility infrastructure
 frontend consumer。
 
 `.language` 的 source/ordered-redeclaration/current-owned domain 共用现有 semantic header 导出的 `languageCode`；raw list/order 与 source identity 不改，已知 PTX9.3 下限独立检查，非 backend language execution proof。
+
+
+Legacy entry body inputs retain owning role/cache and input LD/MOV semantics, distinct from syntactic header ABI and modern call slots. Fresh ambiguous entry body parameter typing requires PTX version; both validators recheck intrinsic current facts before context skips. The 32764-byte logical aggregate ceiling is enforced. `D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` remains qualified for exact physical legacy launch packing; no driver/runtime allocation is modeled.

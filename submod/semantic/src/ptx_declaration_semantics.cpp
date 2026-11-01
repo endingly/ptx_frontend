@@ -973,7 +973,7 @@ class Checker {
         checkIdentifier(function->name);
         checkFunctionParameters(*function, module_version, context->target_sm);
         checkFunctionBodyDeclarations(function->body, module_version,
-                                      context->target_sm);
+                                      context->target_sm, function->is_entry);
       } else if (const auto* alias =
                      std::get_if<syntax_ast::AstAliasDirective>(&item)) {
         checkIdentifier(alias->alias);
@@ -2286,10 +2286,11 @@ class Checker {
     }
   }
 
+  /** Check common body shapes and the entry-specific historical placement window. */
   void checkFunctionBodyDeclarations(
       const std::vector<syntax_ast::AstFunctionBodyItem>& body,
       std::optional<PtxVersion> module_version,
-      std::optional<uint32_t> module_sm) {
+      std::optional<uint32_t> module_sm, bool is_entry) {
     for (const auto& body_item : body) {
       if (const auto* label = std::get_if<syntax_ast::AstLabel>(&body_item))
         checkIdentifier(label->name);
@@ -2308,26 +2309,38 @@ class Checker {
         checkVariableDeclaration(*declaration, module_version);
         checkCommonVariable(*declaration, module_version, module_sm, false);
         if (declaration->state_space == syntax_ast::AstStateSpace::Parameter) {
-          checkBodyParameterDeclaration(*declaration, module_version,
-                                        module_sm);
+          checkBodyParameterDeclaration(*declaration, module_version, module_sm,
+                                        is_entry);
         }
       } else if (const auto* block =
                      std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
                          &body_item);
                  block != nullptr && *block) {
-        checkFunctionBodyDeclarations((*block)->body, module_version,
-                                      module_sm);
+        checkFunctionBodyDeclarations((*block)->body, module_version, module_sm,
+                                      is_entry);
       }
     }
   }
 
-  /** Validate body-local .param objects without assigning call ABI allocation. */
+  /** Validate body .param shapes and historical entry placement without allocating ABI slots. */
   void checkBodyParameterDeclaration(
       const syntax_ast::AstVariableDeclaration& declaration,
       std::optional<PtxVersion> module_version,
-      std::optional<uint32_t> module_sm) {
-    requireParameterAvailability(module_version, module_sm, {2, 0}, 20,
-                                 declaration.range, "Body-local call .param");
+      std::optional<uint32_t> module_sm, bool is_entry) {
+    const bool legacy =
+        is_entry && module_version && *module_version < PtxVersion{1, 4};
+    if (legacy)
+      requireParameterAvailability(module_version, std::nullopt, {1, 0}, 0,
+                                   declaration.range,
+                                   "Legacy entry input .param");
+    if (is_entry && module_version && *module_version >= PtxVersion{1, 4} &&
+        *module_version < PtxVersion{2, 0})
+      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+               declaration.range,
+               "Entry body .param requires PTX ISA < 1.4 or >= 2.0.");
+    else if (!is_entry || (module_version && !legacy))
+      requireParameterAvailability(module_version, module_sm, {2, 0}, 20,
+                                   declaration.range, "Body-local call .param");
     if (isOpaqueObjectType(declaration.type.text)) {
       diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                declaration.type.range,
@@ -2369,7 +2382,7 @@ class Checker {
       uint64_t bytes = base::scalar_size_of(*scalar) * lanes;
       for (const auto& dimension : declarator.array_dimensions) {
         if (!dimension.size) {
-          if (declarator.initializer) {
+          if (legacy || declarator.initializer) {
             diagnose(DeclarationDiagnosticKind::UnsizedArrayDimension,
                      dimension.range,
                      "Body-local .param array dimensions must be sized.");

@@ -235,3 +235,22 @@ compatibility 与 owned function integrity 统一调用该 decoder。quoted name
 只移除外层 quote，不解码 inner escape bytes 来扩展名称 alias；这是 frontend decoder
 边界，不是一般 PTX escape 禁令。directive 省略/default `ptx` 由 caller 处理，empty
 token 返回无 code。raw list 的顺序、quote 与 case 仍作为 owned data 保存，不新增 decoded cache。
+
+
+## 历史 entry body input
+
+PTX 1.0–1.3 entry body `.param` 在唯一 `parameter_declarations` 表中保留
+`LegacyEntryInput` role，以及 scope/group/array identity。Signature 仍只描述语法
+header ABI，空 header 不等于没有 host input；lexical metadata 顺序不分配 launch
+地址或 packing。只有 entry body role 歧义才要求 version 并报告
+`MissingValidationContext`，不按 SM 猜 role。已 typed module 缺 context 时保留 role。
+
+`ResolvedSymbolRef::parameter_role` 从 actual record 同步派生，structural kind 仍为
+`CallParameter`。Address/MOV/tensor 共用 input/return/call-slot 方向映射。两个
+validator 都在 context skip 前重连当前 record/cache，检查 readonly、entry frame、
+direct call-actual 排除、shape/scope 和 logical capacity。Legacy LD 不要求 call
+return staging，MOV 保持 `.param`；现代 BodyLocal staging 不变。Checked logical
+总量使用 per-member bytes 乘 compact count，检查32764-byte已知 global ceiling，
+不重复乘 axes/vector，也不套用1.4的256-byte header cap。
+`D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` 对精确历史 physical launch packing
+仍 qualified。详见[parameter contract](parameter_declarations.md)的窗口与边界。

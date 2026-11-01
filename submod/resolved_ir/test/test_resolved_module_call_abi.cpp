@@ -182,7 +182,8 @@ done:
 }
 
 TEST(ResolvedModule, ResolvesDirectCallGroupsAndPreservesBindings) {
-  const auto parsed_module_1 = parseModule(R"ptx(
+  const auto parsed_module_1 = parseModule(R"ptx(.version 9.3
+
 .func callee();
 .func callee_empty();
 .func (.param .u32 result) callee_full(
@@ -256,7 +257,8 @@ TEST(ResolvedModule, ResolvesDirectCallGroupsAndPreservesBindings) {
 }
 
 TEST(ResolvedModule, ChecksDirectCallAbiForMixedParametersAndLiterals) {
-  const auto parsed_module_1 = parseModule(R"ptx(
+  const auto parsed_module_1 = parseModule(R"ptx(.version 9.3
+
 .func (.param .u32 result) callee(
     .reg .u32 register_input, .param .u32 parameter_input,
     .param .s16 literal_input, .reg .u32 parameterized_register_input);
@@ -275,7 +277,8 @@ TEST(ResolvedModule, ChecksDirectCallAbiForMixedParametersAndLiterals) {
 }
 
 TEST(ResolvedModule, ReportsDirectCallAbiArityMismatches) {
-  const auto parsed_module_1 = parseModule(R"ptx(
+  const auto parsed_module_1 = parseModule(R"ptx(.version 9.3
+
 .func (.param .u32 return0, .param .u32 return1) callee(
     .param .u32 input0, .param .u32 input1);
 .entry caller() {
@@ -297,7 +300,8 @@ TEST(ResolvedModule, ReportsDirectCallAbiArityMismatches) {
 }
 
 TEST(ResolvedModule, ReportsDirectCallAbiPropertyAndLiteralMismatches) {
-  const auto parsed_module_1 = parseModule(R"ptx(
+  const auto parsed_module_1 = parseModule(R"ptx(.version 9.3
+
 .func scalar(.param .u32 input);
 .func bytes(.param .align 16 .b8 input[8]);
 .func literal(.param .u16 input);
@@ -377,7 +381,8 @@ TEST(ResolvedModule, AcceptsDirectCallsAcrossFunctionLifecycles) {
 }
 
 TEST(ResolvedModule, ReportsDirectCallArityAndElementRanges) {
-  const auto parsed_module_1 = parseModule(R"ptx(
+  const auto parsed_module_1 = parseModule(R"ptx(.version 9.3
+
 .func (.param .u32 result) one_return();
 .func no_returns();
 .func needs_input(.reg .u32 input);
@@ -419,7 +424,7 @@ TEST(ResolvedModule, ReportsDirectCallArityAndElementRanges) {
   EXPECT_EQ(resolved.error()[5].message,
             "Integer literal '128' is out of range for scalar type 'S8'.");
 
-  const auto& caller = std::get<syntax_ast::AstFunction>(ast.items[5]);
+  const auto& caller = std::get<syntax_ast::AstFunction>(ast.items[6]);
   const auto& extra_inputs =
       std::get<syntax_ast::AstInstruction>(caller.body[6]);
   const auto& type_mismatch =
@@ -458,7 +463,8 @@ TEST(ResolvedModule, RejectsLocalAndGlobalDirectCallActuals) {
 }
 
 TEST(ResolvedModule, EnforcesPtx93CallParameterContexts) {
-  const auto parsed_module_1 = parseModule(R"ptx(
+  const auto parsed_module_1 = parseModule(R"ptx(.version 9.3
+
 .func (.param .u32 result) callee(.param .u32 input0, .param .u32 input1);
 .entry caller(.param .u32 entry_input) {
   .reg .pred %p;
@@ -504,7 +510,8 @@ TEST(ResolvedModule, EnforcesPtx93CallParameterContexts) {
 
 TEST(ResolvedModule, RejectsInvalidPtx93CallParameterContexts) {
   const auto resolve_source = [](std::string_view body) {
-    const auto parsed = parseModule(fmt::format(R"ptx(
+    const auto parsed = parseModule(fmt::format(R"ptx(.version 9.3
+
 .func (.param .u32 result) callee(.param .u32 input);
 .entry caller(.param .u32 entry_input) {{
   .reg .pred %p;
@@ -575,7 +582,8 @@ TEST(ResolvedModule, RejectsInvalidPtx93CallParameterContexts) {
             "A function-local .param return load must be in the contiguous "
             "block immediately after a call that returns it.");
 
-  const auto parsed_module_2 = parseModule(R"ptx(
+  const auto parsed_module_2 = parseModule(R"ptx(.version 9.3
+
 .entry caller() {
   .reg .u32 %r0;
   .param .u32 output;
@@ -718,7 +726,8 @@ returning_prototype: .callprototype (.reg .u32 result) _ (.reg .u32 input);
 }
 
 TEST(ResolvedModule, ReportsIndirectCallAbiMismatches) {
-  const auto parsed_module_1 = parseModule(R"ptx(
+  const auto parsed_module_1 = parseModule(R"ptx(.version 9.3
+
 .func target(.reg .u32 input);
 .func another_target(.reg .u32 value);
 .entry caller() {

@@ -1285,11 +1285,14 @@ using base::ProxyKindPair;
 using base::RoundingMode;
 using base::ScalarType;
 using base::TestProperty;
+/** Semantic storage roles; header ABI formals and legacy body inputs remain distinct. */
 enum class ParameterDeclarationRole : uint8_t {
   EntryInput,
   DeviceInput,
   DeviceReturn,
-  BodyLocal
+  BodyLocal,
+  /** PTX 1.0–1.3 kernel input declared in an entry body, including nested scopes. */
+  LegacyEntryInput
 };
 /** Owned, validated `.param` declaration data with no allocation offsets. */
 struct ResolvedParameterDeclaration {
@@ -1920,9 +1923,100 @@ struct ResolvedSymbolRef {
   /** Parameter-space qualifier selected by an instruction for this direct address. */
   ParameterAddressQualifier parameter_qualifier =
       ParameterAddressQualifier::Default;
+  /** Resolution-derived role of the same SymbolId in parameter_declarations.
+   * No AST borrow or launch layout is retained. Known legacy input references
+   * require this cache; full-module validation rejoins it to the current record.
+   */
+  std::optional<ParameterDeclarationRole> parameter_role;
   /** Contextual availability has no value-equality contract. */
   bool operator==(const ResolvedSymbolRef&) const = delete;
 };
+/** Check only known standalone role-cache facts, without inventing binding proof.
+ * Unknown structural/frame facts defer; engaged contradictory or invalid facts
+ * reject. Full modules independently rejoin the cache to their current record.
+ */
+[[nodiscard]] inline bool valid_parameter_role_cache(
+    const ResolvedSymbolRef* symbol,
+    EnclosingFunctionKind address_owner = EnclosingFunctionKind::Unknown) {
+  if (!symbol || !symbol->parameter_role)
+    return true;
+  binding::SymbolKind kind;
+  EnclosingFunctionKind owner = EnclosingFunctionKind::Unknown;
+  bool materialized_device = false;
+  switch (*symbol->parameter_role) {
+    case ParameterDeclarationRole::EntryInput:
+      kind = binding::SymbolKind::InputParameter;
+      owner = EnclosingFunctionKind::Entry;
+      break;
+    case ParameterDeclarationRole::LegacyEntryInput:
+      kind = binding::SymbolKind::CallParameter;
+      owner = EnclosingFunctionKind::Entry;
+      break;
+    case ParameterDeclarationRole::DeviceInput:
+      kind = binding::SymbolKind::InputParameter;
+      owner = EnclosingFunctionKind::Device;
+      materialized_device = true;
+      break;
+    case ParameterDeclarationRole::DeviceReturn:
+      kind = binding::SymbolKind::ReturnParameter;
+      owner = EnclosingFunctionKind::Device;
+      materialized_device = true;
+      break;
+    case ParameterDeclarationRole::BodyLocal:
+      kind = binding::SymbolKind::CallParameter;
+      break;
+    default:
+      return false;
+  }
+  /** Unknown owners defer; every known owner must agree with this semantic role. */
+  const auto owner_agrees = [owner](EnclosingFunctionKind current) {
+    return current == EnclosingFunctionKind::Unknown ||
+           ((current == EnclosingFunctionKind::Entry ||
+             current == EnclosingFunctionKind::Device) &&
+            (owner == EnclosingFunctionKind::Unknown || current == owner));
+  };
+  return (!symbol->declaration_kind || symbol->declaration_kind == kind) &&
+         (!symbol->declaration_state_space ||
+          symbol->declaration_state_space ==
+              base::DeclarationStateSpace::Parameter) &&
+         (!symbol->address_state_space ||
+          symbol->address_state_space ==
+              base::DeclarationStateSpace::Parameter ||
+          (materialized_device && symbol->address_state_space ==
+                                      base::DeclarationStateSpace::Local)) &&
+         owner_agrees(symbol->enclosing_function_kind) &&
+         owner_agrees(address_owner);
+}
+
+/** Project the semantic role consistently for address, MOV, and tensor views.
+ * Absent caches preserve the structural fallback used by standalone operands;
+ * a full module must additionally prove the role against its owning records.
+ */
+[[nodiscard]] inline ParameterDirection parameter_direction_from_symbol(
+    const ResolvedSymbolRef* symbol) {
+  if (!symbol)
+    return ParameterDirection::None;
+  if (symbol->parameter_role) {
+    switch (*symbol->parameter_role) {
+      case ParameterDeclarationRole::EntryInput:
+      case ParameterDeclarationRole::DeviceInput:
+      case ParameterDeclarationRole::LegacyEntryInput:
+        return ParameterDirection::Input;
+      case ParameterDeclarationRole::DeviceReturn:
+        return ParameterDirection::Return;
+      case ParameterDeclarationRole::BodyLocal:
+        return ParameterDirection::CallArgument;
+    }
+    return ParameterDirection::None;
+  }
+  if (symbol->declaration_kind == binding::SymbolKind::InputParameter)
+    return ParameterDirection::Input;
+  if (symbol->declaration_kind == binding::SymbolKind::ReturnParameter)
+    return ParameterDirection::Return;
+  if (symbol->declaration_kind == binding::SymbolKind::CallParameter)
+    return ParameterDirection::CallArgument;
+  return ParameterDirection::None;
+}
 enum class ResolvedAddressOffsetOperator : uint8_t { Add, Subtract };
 struct ResolvedAddressOffset {
   ResolvedAddressOffsetOperator operation = ResolvedAddressOffsetOperator::Add;

@@ -198,7 +198,7 @@ struct ResolvedCallPrototypeContract {
 
 /** Owned resource and ABI attributes attached to one resolved function. */
 struct ResolvedFunctionContract {
-  /** Canonical source ABI; parameter identities remain in parameter_declarations. */
+  /** Syntactic header ABI only; legacy body inputs live in parameter_declarations. */
   declaration_semantics::FunctionSignature signature;
   /** Function linkage preserved from the owning module symbol. */
   binding::SymbolLinkage linkage{};
@@ -283,7 +283,8 @@ struct ResolvedFunction {
   /**
    * Owned .param returns, inputs, then body declarations in lexical traversal
    * order. Filter ParameterDeclarationRole::EntryInput for source-ordered
-   * entry inputs.
+   * header entry inputs, or LegacyEntryInput for PTX 1.0–1.3 body inputs.
+   * Lexical record order implies no host launch slots or allocation offsets.
    */
   std::vector<ResolvedParameterDeclaration> parameter_declarations;
   /** Name-only opaque entry inputs in source order, independent of scalar ABI. */

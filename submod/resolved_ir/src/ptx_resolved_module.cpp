@@ -897,11 +897,11 @@ ResolvedParameterDeclaration resolve_parameter_declaration(
   };
 }
 
-/** Project one body-local .param declarator with owned multidimensional shape. */
+/** Project a body .param object with its explicitly selected role and owned axes. */
 ResolvedParameterDeclaration resolve_parameter_declaration(
     const syntax_ast::AstVariableDeclaration& declaration,
     const syntax_ast::AstVariableDeclarator& declarator,
-    const binding::Symbol& symbol) {
+    const binding::Symbol& symbol, ParameterDeclarationRole role) {
   const auto type =
       declaration_semantics::parameterScalarType(declaration.type.text);
   if (!type || !symbol.address_alignment)
@@ -921,7 +921,7 @@ ResolvedParameterDeclaration resolve_parameter_declaration(
   return {
       .symbol_id = symbol.id,
       .scope_id = symbol.scope,
-      .role = ParameterDeclarationRole::BodyLocal,
+      .role = role,
       .scalar_type = *type,
       .alignment = *symbol.address_alignment,
       .explicit_alignment = declaration.alignment.has_value(),
@@ -946,7 +946,11 @@ void collect_body_parameters(
         if (!symbol)
           throw ResolveException("Bound body parameter has no local symbol.");
         function.parameter_declarations.push_back(resolve_parameter_declaration(
-            *declaration, declarator, symbols.symbol(*symbol)));
+            *declaration, declarator, symbols.symbol(*symbol),
+            function.is_entry && function.source_version &&
+                    *function.source_version < checker::PtxVersion{1, 4}
+                ? ParameterDeclarationRole::LegacyEntryInput
+                : ParameterDeclarationRole::BodyLocal));
       }
     } else if (const auto* block =
                    std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
@@ -1244,6 +1248,31 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
                           : ParameterDeclarationRole::DeviceInput);
     resolve_control_contracts(function->body, binding_result.table, scope,
                               signatures, resolved_function);
+    if (function->is_entry && !resolved_function.source_version) {
+      /** Find role-ambiguous entry body objects without requiring unrelated context. */
+      const auto has_body_parameter = [&](const auto& self,
+                                          const auto& body) -> bool {
+        for (const auto& item : body) {
+          if (const auto* declaration =
+                  std::get_if<syntax_ast::AstVariableDeclaration>(&item);
+              declaration &&
+              declaration->state_space == syntax_ast::AstStateSpace::Parameter)
+            return true;
+          if (const auto* block =
+                  std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
+              block && *block && self(self, (*block)->body))
+            return true;
+        }
+        return false;
+      };
+      if (has_body_parameter(has_body_parameter, function->body))
+        return std::unexpected(ModuleResolveDiagnostics{
+            {.range = function->range,
+             .message = "Resolving an entry body .param declaration requires a "
+                        "PTX version to select its semantic role.",
+             .checker_kind =
+                 checker::CheckDiagnosticKind::MissingValidationContext}});
+    }
     collect_body_parameters(function->body, binding_result.table, scope,
                             resolved_function);
     context.storage_declarations = *storage;
@@ -1299,6 +1328,9 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
       .call_tables = std::move(call_tables),
       .source_identity = detail::module_source_identity(ast),
   };
+  auto legacy_size = detail::check_legacy_entry_input_sizes(module);
+  if (!legacy_size.empty())
+    return std::unexpected(std::move(legacy_size));
   auto visibility = detail::check_direct_call_visibility(module);
   if (!visibility.empty())
     return std::unexpected(std::move(visibility));

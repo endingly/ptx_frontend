@@ -67,11 +67,6 @@ Entry header parameter 要求 PTX 1.4。对普通非 opaque entry parameter，�
 PTX 8.1 及以后为 32764 字节。Checked arithmetic 拒绝单个声明或累计大小溢出。
 这些是 ISA 限制，不是 CUDA/OpenCL driver 专属限制；byte extent 不是 packed offset 或
 已分配内存。缺失 version/target 时不能证明 availability 违规。
-PTX 1.0–1.3 将 entry input 声明放在 body 中的旧形式仍被排除。PTX 9.3 说明 PTX 1.x
-拥有 kernel `.param` object，而 device `.param` formal 到 PTX 2.0 才出现；但它没有给出
-把旧式 body input 映射到当前 declaration table 所需的 grammar 与 identity rule。因此
-body-local metadata role 绝不会将这类 object 重新解释成 entry input。这是 unresolved 的
-legacy grammar，而不是声称历史形式 ISA-illegal。
 Parser 会拒绝 body-local `.param` initializer；对直接构造的 AST，semantic validation
 也会拒绝该形式。
 没有 payload 时，call 可以省略通过验证的末尾 unsized byte input；其他必需的 input
@@ -220,3 +215,59 @@ entry input 的 readonly 检查仅使用显式 Write/ReadWrite operand 要求或
 Return parameter constraint，不把 DeviceInput 一概视为 readonly。诊断仅合并
 局部完全相同的 address cause，保留其他失败；此检查不增加 source form 权限，
 也不替代完整 target-aware 验证。
+
+
+## 历史 entry body input 与 typed role
+
+PTX 1.0–1.3 的 entry body `.param` 是只读 kernel input，role 为
+`ParameterDeclarationRole::LegacyEntryInput`。唯一 owning handoff 是
+`ResolvedFunction::parameter_declarations`，按 lexical depth-first/declarator
+顺序保留，包括 nested scope 与同名 shadow 的独立 identity。Compact group 每组
+一个 record，`byte_extent` 是每个 member 的大小，count 保留在 bound symbol；array
+保留所有轴。这个顺序只规定 metadata 遍历，不承诺 host launch slot、相对地址、
+padding 或 allocated offset。
+
+`FunctionSignature::parameters` 与 returns 只描述语法 header ABI；legacy entry
+可以有空 header signature 和非空 body input。Consumer 分别枚举 header 的
+`EntryInput` 与 body 的 `LegacyEntryInput`，opaque header input 仍独立保存。
+Legacy body input 必须是 fully-sized fundamental object，保留已有 type-specific
+availability，不新增旧版本 opaque、`.ptr`、unsized 或 initializer 权限。
+PTX 1.4–1.x 拒绝 entry body `.param`；2.0+ 选择 `BodyLocal`，独立要求已知
+SM >=20。Device body object 始终是 `BodyLocal`。
+
+只有含 body `.param` 且无法选择 role 的 entry，fresh `resolveModuleOnly` /
+`resolveModule` 才要求 PTX version；即便已知 SM 1.x 也报告精准
+`MissingValidationContext`，不按 target 猜 role，也不为 typing 要求 target。
+普通 fragment、无 body parameter 的 entry、header input 和 device body object
+保留原 context 行为。已 typed module 在缺 context 时保留当前 role；
+AvailableContext 只延迟未知 window，strict 仍要求完整 context。
+
+`ResolvedSymbolRef::parameter_role` 同步从 actual record 派生，structural binding
+仍为 `CallParameter`。已知 legacy direct reference 必须有匹配 cache；所有 engaged
+cache 都与 actual parameter record 重连，错误/缺失 legacy cache、伪造 kind 或
+role mismatch 均拒绝。Address、MOV、tensor 共用方向映射：entry/device/legacy input
+为 `Input`，device return 为 `Return`，body call slot 为 `CallArgument`。
+Legacy LD 是普通输入读取，不要求 call 后 return-load staging；MOV 保持 `.param`
+地址，不物化为 device-local 地址。Actual record 独立保证只读与 entry frame，
+禁止直接将 legacy input identity 作为 call actual/return；先 load 到 register 的
+合法 register ABI call 保留。现代 body call-store/call/load adjacency 不变。
+两个 validator 都在缺 target skip 前检查当前 record/cache/shape/scope/access/
+logical capacity；原合法 AST 不豁免当前损坏 payload。替换 context 检查当前 role，
+不自动重解释，也不引入 producer history。
+
+Legacy input 的已知 global ceiling 为 32764 bytes。Checked logical sum 对每个
+record 的 per-member `byte_extent` 乘 compact count（普通对象为1），遍历全部
+unused/nested input。Axes/vector lanes 已包含在 extent 中，不重复相乘。
+Overflow 或总量超32764在 fresh resolution 和两个 validator 中均拒绝，缺 context
+也不延迟这个 intrinsic 事实。不把1.4 header 的256-byte限制套给 legacy body input，
+已有较新 header 限制保持不变。
+`D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` 仍是 reference-boundary qualified：
+通过已知 logical ceiling 不证明 physical ABI packing、更低的历史阈值，或全部
+legacy driver/hardware launch ABI 都接受该布局。
+
+
+共用 current operand-domain pass 将 actual `EntryInput` 与 `LegacyEntryInput`
+record 都识别为 readonly entry object，在 context skip 前使用当前 typed
+layout/field requirement，覆盖非 LD/ST consumer。MOV 读取地址仍合法；明确要求
+writable operand 时拒绝。Legacy readonly 保留原 label 与 instruction range，
+仅合并相同 local cause，不按 opcode 推测 writer，也不新增历史指令权限。

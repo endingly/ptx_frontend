@@ -1485,6 +1485,8 @@ def _build_tensor_cta_group(
         and tensor_destination is TensorDestination.CLUSTER
     )
     if not restricted_cluster_mode:
+        qualified["any_of"][0] = {"ptx": "8.6", "sm": 100,
+                                  "targets": ["sm_100a", "sm_101a", "sm_101f"]}
         qualified["any_of"].append(
             {"ptx": "9.0", "sm": 110, "family": "sm_110f"}
         )

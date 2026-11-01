@@ -63,13 +63,11 @@ Tensor Memory word, but the known query cannot inspect actual matrix bytes,
 allocation, completion or numerical GPU behavior. A report with no supplied
 fact violations can still have unresolved obligations.
 
-The current target catalogue gives four ordinary unscaled branches:
-exact `sm_100a` from PTX 8.6, enabled `sm_100f` family from 8.8, exact
-`sm_110a` from 9.0, and enabled `sm_110f` family from 9.0. Target context
-is an explicit profile identity and feature intersection, not a numeric SM
-comparison. The manual's historical `sm_101a`/`sm_101f` spellings lack
-entries in the current catalogue; they are not silently mapped to `sm_110`.
-The i8 exact-only exclusion and f16/tf32 D-scale gates do not apply here.
+The modern100/110 unscaled target branches retain their original version floors.
+Explicit historical rows add 101A from PTX8.6 and 101F from PTX8.8, preserving
+exact source identity while matching the catalog's 110 validation-feature level.
+Family membership remains the canonical `sm_110f` label; Generic101 gains no
+A/F grant. i8 A-only and f16/tf32 D-scale restrictions remain separate.
 
 This is a bounded source and known-facts representation. Scaled MX kinds,
 sparse and WS forms, convolution, physical low-bit

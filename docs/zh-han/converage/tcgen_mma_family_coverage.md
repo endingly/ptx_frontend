@@ -39,3 +39,15 @@ ctest --preset ci-linux-clang-debug --output-on-failure
 本地运行时，unittest-parallel 默认使用逻辑 CPU 数；CI 可以显式指定 worker 数。
 
 有界汇编检查点使用完整 PTX 9.3 模块及 `/usr/local/cuda-13.3/bin/ptxas`，模块和日志包单独保留，未纳入本仓库。这里的 31/31 是已记录的工具观察；上面的命令与已链接测试则可直接从当前源码树复现。由此不能推断发布 CI、公开 ABI 冻结或模拟器／GPU 执行已获验证。
+
+## 历史101 source profile 与验证 feature
+
+`sm_101`/`compute_101` 及 A 形式从 PTX8.6 起支持，F 形式从 PTX8.8 起支持；PTX9.0/9.3 仍接受，rename 不引入上界。110 source profile 仍从 PTX9.0 起支持。`TargetIdentity` 保留 architecture101、flavor 和精确书写；`same_target_identity` 比较 source architecture/flavor，因此101A与110A仍不同。
+
+新增 base 函数 `target_feature_architecture(identity)` 读取显式 private catalog 数据：三个101 key 投影到 feature architecture110，其他 key 保持原 architecture；未收录的 typed key 不会因此被识别。公共 `TargetProfile` 与 `TargetInfo` 布局不变。source/owned/semantic factory 用此 feature level 作为 numeric SM，同时保留 source identity，并传递既有110基础能力 `cluster`、`aggregate_smem`、`reserved_smem`、`graph_exec`。Generic101 没有 family；101A/F 仅启用 canonical `sm_110f`，不继承100f/103f，也不支持 FP64 mapping option。此有限对应基于公布的 rename 与 family 关系，不是物理硬件或 driver 保证。
+
+availability 的 singular 与 span exact-target 要求通过该 helper 比较 validation-feature architecture 与精确 flavor；此关系不同于 source identity 和存储 key 相等。手动提供的 `TargetInfo::sm_version` 仍是 caller 的具体 feature 事实，checker 不会覆盖它。source profile 引入版本、instruction/PTX 门槛、capability 与 shape 条件仍独立。
+
+历史指令数据仅修改已采用的231个 parent：219个保留100A clause并加入101A，仅原有110F分支时加入101F；12个 block-selector parent 追加8.8历史101A/F clause。854个原110条件及其版本门槛全部保留，DNF上限仍为六，25个受限 cluster gather4/im2col-W parent 不变。TCGEN 闭合 row 保留 kind、scaled-D 与显式 scale-vector 限制：历史 written block16/32 门槛为8.8，100-only vector 和 scaled-D 路径仍限定100。生成的 operational query 先验证精确 source profile 及其最低版本，再匹配 feature；未知 word 与地址仍为未决义务，不从实时 register 推断事实。
+
+两个 module validator 均独立检查当前 function 的 `source_region`、`source_version`、精确 `source_target` 与当前 owned region 一致。合法 replacement AST 不能掩盖矛盾 cache。101/110 context 自身一致且当前 payload 在 supplied effective context 下合法时，允许通过 supplied header retarget；保留的 availability 不成为历史否决。缺少完整 instruction context 时继续既有 `AvailableContext` 推迟及严格 `MissingValidationContext` 政策。

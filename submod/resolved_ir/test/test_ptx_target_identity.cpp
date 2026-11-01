@@ -205,14 +205,14 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
   EXPECT_FALSE(find_target_profile("sm_30a").has_value());
   EXPECT_FALSE(find_target_profile("sm_30f").has_value());
   EXPECT_FALSE(find_target_profile("sm_90f").has_value());
-  for (const std::string_view target : {"sm_101a", "sm_101f"}) {
+  for (const std::string_view target : {"sm_102a", "sm_102f"}) {
     EXPECT_TRUE(parse_target_identity(target).has_value()) << target;
     EXPECT_FALSE(find_target_profile(target).has_value()) << target;
   }
   EXPECT_FALSE(find_target_profile("sm_123a").has_value());
   for (const std::string_view target :
        {"compute_14", "compute_31", "compute_50a", "compute_90f",
-        "compute_101a", "compute_101f", "compute_123a"}) {
+        "compute_102a", "compute_102f", "compute_123a"}) {
     const auto identity = parse_target_identity(target);
     ASSERT_TRUE(identity) << target;
     EXPECT_EQ(identity->source_spelling, target);

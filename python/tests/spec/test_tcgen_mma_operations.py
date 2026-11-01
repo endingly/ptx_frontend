@@ -42,7 +42,7 @@ class TcgenF16OperationTests(unittest.TestCase):
                           for row in rules.F16_PATHS}, {
                               (1, 64, "F", True), (1, 128, "D", False),
                               (2, 128, "B", False), (2, 256, "A", False)})
-        self.assertEqual(len(rules.F16_TARGET_GATES), 5)
+        self.assertEqual(len(rules.F16_TARGET_GATES), 7)
         self.assertEqual({gate.feature for gate in rules.F16_TARGET_GATES
                           if gate.scaled_d}, {"sm_100a", "sm_100f"})
 

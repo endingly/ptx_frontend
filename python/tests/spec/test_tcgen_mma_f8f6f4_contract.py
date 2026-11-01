@@ -193,7 +193,9 @@ class TcgenMmaF8F6F4ContractTests(unittest.TestCase):
                               ("sm_100a", True, 8, 6, False),
                               ("sm_100f", False, 8, 8, False),
                               ("sm_110a", True, 9, 0, False),
-                              ("sm_110f", False, 9, 0, False)})
+                              ("sm_110f", False, 9, 0, False),
+                              ("sm_101a", True, 8, 6, False),
+                              ("sm_101f", True, 8, 8, False)})
         header = emitter.render_tcgen_mma_header()
         source = emitter.render_tcgen_mma_source()
         self.assertIn("TcgenF8F6F4ShapeRow", header)

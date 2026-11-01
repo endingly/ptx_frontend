@@ -43,10 +43,12 @@ A 位于 Tensor Memory 时没有 A 共享描述符字的义务。非 WS 的 F/D/
 在 F 半路径上，仅当 A 位于 Tensor Memory 且调用方独立提供 A/D 的 0/16 通道半区身份时才能比较。
 完整 D/B/A 路径要求零；即使 A 来自 shared，也检查已知 D 半区。源码地址自身无法证明这些声明或分配历史。
 
-当前显式目标目录把 i8 源码门槛投影为 PTX 8.6 起的精确 `sm_100a`，或 PTX 9.0 起的精确 `sm_110a`。
-家族 `f` 目标不继承 i8 MMA，`sm_103a` 的其他家族特性也不能赋予它此运算能力。
-手册所述历史 `sm_101a` 拼写不在当前目录中，不能把 PTX 9.0 之前的它暗中映射到 `sm_110a`。
-表 43 对 103a 的字节步长描述符能力不代表 i8 运算可在 103a 上执行。
+i8 门槛保留 PTX8.6 起的 `sm_100a` 与 PTX9.0 起的 `sm_110a`，并加入
+PTX8.6 起的历史 source profile `sm_101a`。source identity 仍为101A，
+catalog 显式 feature 对应为110A。`sm_101f` 和 Generic101 不获得此 A-only 运算；
+family target 或不相关的 `sm_103a` 能力也不授予 i8 MMA。表43的 exact103A
+字节步长描述符规则独立。operational query 先要求实际 source profile 和其引入版本，
+再匹配 feature 门槛，不从 source register 推断描述符 word。
 
 其他固定稠密、稀疏与 WS 来源形式见[全族矩阵](tcgen_mma_family_coverage.md)。
 实时描述符内容、分配、完成与 GPU 行为仍是义务。TMA 的省略/group-1/group-2

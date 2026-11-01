@@ -132,7 +132,7 @@ TEST(HeaderCompatibility, CoversEveryExactProfileAndComputeSynonym) {
 
 /** Unknown and unsupported catalog keys never acquire guessed header minima. */
 TEST(HeaderCompatibility, UnknownProfilesRemainUnknown) {
-  for (const auto suffix : {"999", "101", "101a", "101f", "80a", "90f"}) {
+  for (const auto suffix : {"999", "102", "102a", "102f", "80a", "90f"}) {
     for (const auto prefix : {"sm_", "compute_"}) {
       const auto ast = parseHeader(".version 9.3\n.target " +
                                    std::string{prefix} + suffix + "\n");

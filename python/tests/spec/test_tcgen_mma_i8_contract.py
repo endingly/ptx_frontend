@@ -161,7 +161,8 @@ class TcgenI8ContractTests(unittest.TestCase):
         self.assertEqual({(row.feature, row.exact, row.ptx_major,
                            row.ptx_minor) for row in rules.I8_TARGET_GATES}, {
                                ("sm_100a", True, 8, 6),
-                               ("sm_110a", True, 9, 0)})
+                               ("sm_110a", True, 9, 0),
+                               ("sm_101a", True, 8, 6)})
         header = emitter.render_tcgen_mma_header()
         source = emitter.render_tcgen_mma_source()
         self.assertIn("TcgenI8ShapeRow", header)

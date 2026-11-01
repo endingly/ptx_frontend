@@ -7,8 +7,11 @@ from ptx_frontend.ir.resolved_ir import from_instruction_spec
 
 RESTRICTED = {"any_of": [{"ptx": "8.6", "sm": 100, "target": "sm_100a"},
                           {"ptx": "8.8", "sm": 100, "family": "sm_100f"}]}
-QUALIFIED = {"any_of": RESTRICTED["any_of"] +
-             [{"ptx": "9.0", "sm": 110, "family": "sm_110f"}]}
+QUALIFIED = {"any_of": [
+    {"ptx": "8.6", "sm": 100, "targets": ["sm_100a", "sm_101a", "sm_101f"]},
+    {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+    {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
+]}
 
 class TensorTargetRestrictionTests(unittest.TestCase):
     """Typed mode and destination intersect the existing CTA-group target grant."""

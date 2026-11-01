@@ -28,40 +28,39 @@ _SHARED_FIELDS = frozenset(SharedOperandFacts.__dataclass_fields__)
 _BOOL_FIELDS = frozenset(("sparse", "transpose_a", "transpose_b", "a_shared"))
 _INT_FIELDS = frozenset(("group", "m", "n", "k", "a_lane_half", "d_lane_half"))
 _STR_FIELDS = frozenset(("d_type", "a_type", "b_type"))
-_UNSCALED_TARGETS = {
-    "any_of": [
-        {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
-        {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
-        {"ptx": "9.0", "sm": 110, "target": "sm_110a"},
-        {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
-    ],
-}
-_SCALED_TARGETS = {"any_of": _UNSCALED_TARGETS["any_of"][:2]}
-_I8_TARGETS = {"any_of": [_UNSCALED_TARGETS["any_of"][0],
-                          _UNSCALED_TARGETS["any_of"][2]]}
-
-
+_UNSCALED_TARGETS = {"any_of": [
+    {"ptx": "8.6", "sm": 100, "targets": ["sm_100a", "sm_101a", "sm_101f"]},
+    {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+    {"ptx": "9.0", "sm": 110, "target": "sm_110a"},
+    {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
+]}
+# Scaling D and written scale-vector selectors retain their original 100-only gates.
+_SCALED_TARGETS = {"any_of": [
+    {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+    {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+]}
+_I8_TARGETS = {"any_of": [
+    {"ptx": "8.6", "sm": 100, "targets": ["sm_100a", "sm_101a"]},
+    _UNSCALED_TARGETS["any_of"][2],
+]}
 _MX8_VEC_TARGETS = {"any_of": [{"ptx": "8.6", "sm": 100, "target": "sm_100a"}]}
-_MX8_BLOCK_TARGETS = {
-    "any_of": [
-        {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
-        {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
-    ],
-}
+_MX8_BLOCK_TARGETS = {"any_of": [
+    {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+    {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
+    {"ptx": "8.8", "sm": 110, "targets": ["sm_101a", "sm_101f"]},
+]}
 _MXNV_TARGETS = {"any_of": [
-    {"ptx": "8.7", "sm": 100, "target": "sm_100a"},
+    {"ptx": "8.7", "sm": 100, "targets": ["sm_100a", "sm_101a", "sm_101f"]},
     *_UNSCALED_TARGETS["any_of"][1:],
 ]}
-_MXNV_VEC_TARGETS = {"any_of": [
-    {"ptx": "8.7", "sm": 100, "target": "sm_100a"},
-]}
+_MXNV_VEC_TARGETS = {"any_of": [{"ptx": "8.7", "sm": 100, "target": "sm_100a"}]}
 _SPARSE_MX4_TARGETS = {"any_of": [
-    {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+    {"ptx": "8.6", "sm": 100, "targets": ["sm_100a", "sm_101a"]},
     {"ptx": "8.8", "sm": 103, "target": "sm_103a"},
     {"ptx": "9.0", "sm": 110, "target": "sm_110a"},
 ]}
 _SPARSE_MXNV_TARGETS = {"any_of": [
-    {"ptx": "8.7", "sm": 100, "target": "sm_100a"},
+    {"ptx": "8.7", "sm": 100, "targets": ["sm_100a", "sm_101a"]},
     *_SPARSE_MX4_TARGETS["any_of"][1:],
 ]}
 

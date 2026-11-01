@@ -242,10 +242,10 @@ validator 都拒绝未知 option 或额外 architecture 项。词法合法但未
 仍可解析，在 validation 阶段产生 `UnknownTarget`。每个显式 catalog 中的
 `sm_<number>[a|f]` profile 都接受 `compute_<number>[a|f]` 同义形式，architecture、
 flavor、enabled family feature 和 capability 相同。词法解析及 owned source region
-保留实际书写的 prefix；语义 availability 和显式 checker target 比较使用 architecture
-与 flavor。`TargetIdentity::operator==` 仍比较 source spelling，source provenance
-一致性检查保持精确。未知 number 或未支持 flavor（包括 `compute_101a`、
-`compute_101f`）不会获得 catalog profile。Texture mode 继续检查重复与模块级冲突；
+保留实际书写的 prefix；语义 availability 和显式 checker target 比较通过显式 catalog
+rename 对应关系使用 validation-feature architecture 与 flavor。`TargetIdentity::operator==` 仍比较 source spelling，source provenance
+一致性检查保持精确。未知 number 或未支持 flavor（包括 `compute_102a`、
+`compute_102f`）不会获得 catalog profile。Texture mode 继续检查重复与模块级冲突；
 此契约不增加 DWARF 内容检查或浮点指令转换。
 源码形式依据归档的 [PTX ISA 9.3 target directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)。
 
@@ -1411,3 +1411,15 @@ plain availability 与每个 `any_of` clause 支持可选的 `sm_before: 70`。�
 `AvailabilityClause::sm_before` 和 `AvailabilityDescriptor::sm_before` 在 `ptx_before` 后追加默认缺省的 `std::optional<uint32_t>` member；此 aggregate 布局变化要求重新编译公共 consumer。谓词直接比较具体 `TargetInfo::sm_version`，不依赖 profile 拼写或 flavor；既有 exact-target、family、capability 和 mapping 条件仍为合取。variant、layout、modifier、operand-value、parameter-address 和 memory-vector 的 plain 失败均产生有位置的 `UnsupportedSmVersion`；DNF 失败仍为 `UnsupportedAvailability`。
 
 旧式 SHFL 使用 `any_of: [{ptx: "3.0", ptx_before: "6.4", sm: 30}, {ptx: "3.0", sm: 30, sm_before: 70}]`。source module 仍要求已知 profile 及合法 profile/version header。`AvailableContext` 中缺少 version 或已知 target 时继续推迟整个 instruction availability 检查，即使其他已知事实看似不兼容；成功不构成完整 ISA 认证。严格验证报告 `MissingValidationContext`；显式未知 profile 仍为 `UnknownTarget`。不新增 partial DNF evaluator 或 opcode 特定 context 规则。
+
+## 历史101 source profile 与验证 feature
+
+`sm_101`/`compute_101` 及 A 形式从 PTX8.6 起支持，F 形式从 PTX8.8 起支持；PTX9.0/9.3 仍接受，rename 不引入上界。110 source profile 仍从 PTX9.0 起支持。`TargetIdentity` 保留 architecture101、flavor 和精确书写；`same_target_identity` 比较 source architecture/flavor，因此101A与110A仍不同。
+
+新增 base 函数 `target_feature_architecture(identity)` 读取显式 private catalog 数据：三个101 key 投影到 feature architecture110，其他 key 保持原 architecture；未收录的 typed key 不会因此被识别。公共 `TargetProfile` 与 `TargetInfo` 布局不变。source/owned/semantic factory 用此 feature level 作为 numeric SM，同时保留 source identity，并传递既有110基础能力 `cluster`、`aggregate_smem`、`reserved_smem`、`graph_exec`。Generic101 没有 family；101A/F 仅启用 canonical `sm_110f`，不继承100f/103f，也不支持 FP64 mapping option。此有限对应基于公布的 rename 与 family 关系，不是物理硬件或 driver 保证。
+
+availability 的 singular 与 span exact-target 要求通过该 helper 比较 validation-feature architecture 与精确 flavor；此关系不同于 source identity 和存储 key 相等。手动提供的 `TargetInfo::sm_version` 仍是 caller 的具体 feature 事实，checker 不会覆盖它。source profile 引入版本、instruction/PTX 门槛、capability 与 shape 条件仍独立。
+
+历史指令数据仅修改已采用的231个 parent：219个保留100A clause并加入101A，仅原有110F分支时加入101F；12个 block-selector parent 追加8.8历史101A/F clause。854个原110条件及其版本门槛全部保留，DNF上限仍为六，25个受限 cluster gather4/im2col-W parent 不变。TCGEN 闭合 row 保留 kind、scaled-D 与显式 scale-vector 限制：历史 written block16/32 门槛为8.8，100-only vector 和 scaled-D 路径仍限定100。生成的 operational query 先验证精确 source profile 及其最低版本，再匹配 feature；未知 word 与地址仍为未决义务，不从实时 register 推断事实。
+
+两个 module validator 均独立检查当前 function 的 `source_region`、`source_version`、精确 `source_target` 与当前 owned region 一致。合法 replacement AST 不能掩盖矛盾 cache。101/110 context 自身一致且当前 payload 在 supplied effective context 下合法时，允许通过 supplied header retarget；保留的 availability 不成为历史否决。缺少完整 instruction context 时继续既有 `AvailableContext` 推迟及严格 `MissingValidationContext` 政策。

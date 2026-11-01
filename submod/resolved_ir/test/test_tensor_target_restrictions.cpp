@@ -40,13 +40,14 @@ checker::Context tensor_target_context(std::string_view target,
   EXPECT_TRUE(profile);
   if (!profile)
     return {};
-  return {
-      .target = {.ptx_version = version,
-                 .sm_version = profile->identity.architecture.number,
-                 .enabled_family_features = profile->enabled_family_features,
-                 .identity = profile->identity,
-                 .capabilities = profile->capabilities},
-      .instruction_range = range};
+  return {.target =
+              {.ptx_version = version,
+               .sm_version =
+                   base::target_feature_architecture(profile->identity).number,
+               .enabled_family_features = profile->enabled_family_features,
+               .identity = profile->identity,
+               .capabilities = profile->capabilities},
+          .instruction_range = range};
 }
 /** Return a draft after source text, parser and syntax tree have actually died. */
 std::expected<ResolvedModule, ModuleResolveDiagnostics> owned_tensor_target(
@@ -927,5 +928,45 @@ TEST(TensorTargetRestrictions,
         }));
   }
 }
+/** Historical feature contexts preserve every restricted parent and adjacent tensor permissions. */
+TEST(TensorTargetRestrictions,
+     Historical101PreservesRestrictedParentsAndPrefetch) {
+  const auto prefetch =
+      "cp.async.bulk.prefetch.tensor.2d.L2.global.tile::gather4 "
+      "[tensor_map,{%r0,%r1,%r2,%r3,%r4}];";
+  for (auto [target, version, ptx] :
+       {std::tuple{"sm_101a", "8.6", checker::PtxVersion{8, 6}},
+        {"sm_101f", "8.8", checker::PtxVersion{8, 8}},
+        {"sm_101a", "9.3", checker::PtxVersion{9, 3}},
+        {"sm_101f", "9.3", checker::PtxVersion{9, 3}}}) {
+    const auto positive = test_helpers::parseModule(
+        tensor_target_source(prefetch, target, version));
+    ASSERT_MODULE_PARSE_SUCCEEDS(positive);
+    auto allowed = resolveAndValidateModule(*positive);
+    ASSERT_TRUE(allowed) << (allowed.error().empty()
+                                 ? ""
+                                 : allowed.error()[0].message);
+    for (auto text : restricted_tensor_instructions) {
+      auto module = owned_tensor_target(tensor_target_source(text));
+      ASSERT_TRUE(module);
+      const auto ast = test_helpers::parseModule(
+          tensor_target_source(text, target, version));
+      ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+      expect_tensor_unavailable(validateModule(*ast, *module));
+      for (auto& r : module->header.regions) {
+        r.version = ptx;
+        r.version_provenance = SourceConfigurationProvenance::Explicit;
+        r.target_options = {target};
+        r.target_provenance = SourceConfigurationProvenance::Explicit;
+      }
+      for (auto& f : module->functions) {
+        f.source_version = ptx;
+        f.source_target = target;
+      }
+      expect_tensor_unavailable(validateModule(*module));
+    }
+  }
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

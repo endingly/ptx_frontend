@@ -1387,3 +1387,5 @@ Legacy entry body inputs retain owning role/cache and input LD/MOV semantics, di
 Historical reciprocal coverage includes a distinct `RcpImplicitF64` for PTX `[1.0, 1.4)`, with RN interpretation and the existing native SM13 or exact mapped SM10/11/12 requirements. Source headers retain their independent profile/version restrictions; this does not claim GPU numeric execution.
 
 Legacy SHFL availability uses the complete PTX/SM removal window: PTX >=3.0 and SM >=30 and (PTX <6.4 or SM <70). Optional numeric `sm_before` propagates through plain and DNF metadata and the existing full-context checker; public aggregate consumers must rebuild. This does not expand partial-context validation or the separate vote inventory.
+
+Historical101/101A source profiles begin at8.6,101F at8.8, including9.0/9.3. Their exact source identities remain101 while explicit catalog feature correspondence is110. The bounded231 historical metadata operations preserve854 original110 conditions and25 restricted parents; public consumers link the additive feature helper. This does not claim GPU execution or complete historical target coverage.

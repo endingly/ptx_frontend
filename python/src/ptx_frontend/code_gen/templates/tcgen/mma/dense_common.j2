@@ -36,6 +36,7 @@ std::span<const {{ model.cpp_prefix }}PathRow> {{ model.snake }}_path_rows() noe
 {% endmacro %}{% macro query_preamble(model) %}#include <algorithm>
 #include <array>
 #include <string_view>
+#include <span>
 #include <utility>
 
 namespace ptx_frontend::resolved_ir {
@@ -44,7 +45,7 @@ namespace {
 struct {{ model.cpp_prefix }}TargetGate {
   /** Exact target spelling or enabled family feature. */
   std::string_view feature;
-  /** Whether the spelling must match the identity exactly. */
+  /** Whether validation-feature architecture and flavor must match. */
   bool exact;
   /** PTX version from which the gate is available. */
   checker::PtxVersion minimum_ptx;
@@ -54,15 +55,22 @@ struct {{ model.cpp_prefix }}TargetGate {
 constexpr std::array<{{ model.cpp_prefix }}TargetGate, {{ model.targets | length }}> {{ model.target_array }} = {{ '{{' }}
 {% for row in model.targets %}{{ rows.target(row, model.cpp_prefix + 'TargetGate', '  ', false, model.scaled_d_gate) }}{{ ',\n' if not loop.last else '' }}{% endfor %}
 }};
+{% if model.block_targets %}/** Independent written block-selector target/version gates. */
+constexpr std::array<{{ model.cpp_prefix }}TargetGate, {{ model.block_targets | length }}> {{ model.target_array }}Block = {{ '{{' }}
+{% for row in model.block_targets %}{{ rows.target(row, model.cpp_prefix + 'TargetGate', '  ', false, model.scaled_d_gate) }}{{ ',\n' if not loop.last else '' }}{% endfor %}
+}};
+{% endif %}
 {% endmacro %}{% macro scaled_target_accept(model) %}/** Check a supplied target identity and version against the closed rows. */
 bool {{ model.target_checker }}(const {{ model.cpp_prefix }}KnownFacts& facts) {
   const auto profile = base::find_target_profile(facts.target->source_spelling);
-  if (!profile || profile->identity != *facts.target) return false;
+  if (!profile || profile->identity != *facts.target ||
+      *facts.ptx_version < checker::PtxVersion{profile->minimum_ptx_version.major, profile->minimum_ptx_version.minor}) return false;
   for (const auto& gate : {{ model.target_array }}) {
     if (gate.scaled_d != facts.scaled_d ||
         *facts.ptx_version < gate.minimum_ptx) continue;
     const auto exact = base::parse_target_identity(gate.feature);
-    if (gate.exact && exact && base::same_target_identity(*facts.target, *exact))
+    if (gate.exact && exact && (facts.target->flavor == exact->flavor &&
+        base::target_feature_architecture(*facts.target) == base::target_feature_architecture(*exact)))
       return true;
     if (!gate.exact &&
         std::find(profile->enabled_family_features.begin(),
@@ -271,7 +279,7 @@ void {{ model.shared_checker }}(bool is_a, bool transpose,
 struct {{ model.cpp_prefix }}TargetGate {
   /** Exact target spelling or enabled family feature. */
   std::string_view feature;
-  /** Whether the spelling must match the identity exactly. */
+  /** Whether validation-feature architecture and flavor must match. */
   bool exact;
   /** PTX version from which the gate is available. */
   checker::PtxVersion minimum_ptx;
@@ -279,14 +287,21 @@ struct {{ model.cpp_prefix }}TargetGate {
 constexpr std::array<{{ model.cpp_prefix }}TargetGate, {{ model.targets | length }}> {{ model.target_array }} = {{ '{{' }}
 {% for row in model.targets %}{{ rows.target(row, model.cpp_prefix + 'TargetGate', '  ', false, model.scaled_d_gate) }}{{ ',\n' if not loop.last else '' }}{% endfor %}
 }};
+{% if model.block_targets %}/** Independent written block-selector target/version gates. */
+constexpr std::array<{{ model.cpp_prefix }}TargetGate, {{ model.block_targets | length }}> {{ model.target_array }}Block = {{ '{{' }}
+{% for row in model.block_targets %}{{ rows.target(row, model.cpp_prefix + 'TargetGate', '  ', false, model.scaled_d_gate) }}{{ ',\n' if not loop.last else '' }}{% endfor %}
+}};
+{% endif %}
 {% endmacro %}{% macro unscaled_target_accept(model) %}/** Check a supplied target identity and version against the closed rows. */
 bool {{ model.target_checker }}(const {{ model.cpp_prefix }}KnownFacts& facts) {
   const auto profile = base::find_target_profile(facts.target->source_spelling);
-  if (!profile || profile->identity != *facts.target) return false;
+  if (!profile || profile->identity != *facts.target ||
+      *facts.ptx_version < checker::PtxVersion{profile->minimum_ptx_version.major, profile->minimum_ptx_version.minor}) return false;
   for (const auto& gate : {{ model.target_array }}) {
     if (*facts.ptx_version < gate.minimum_ptx) continue;
     const auto exact = base::parse_target_identity(gate.feature);
-    if (gate.exact && exact && base::same_target_identity(*facts.target, *exact))
+    if (gate.exact && exact && (facts.target->flavor == exact->flavor &&
+        base::target_feature_architecture(*facts.target) == base::target_feature_architecture(*exact)))
       return true;
     if (!gate.exact &&
         std::find(profile->enabled_family_features.begin(),
@@ -414,18 +429,22 @@ void {{ model.shared_checker }}(bool is_a, bool transpose,
 {% endmacro %}{% macro mx8_target_accept(model) %}/** Check a supplied target identity and version against the closed rows. */
 bool {{ model.target_checker }}(const {{ model.cpp_prefix }}KnownFacts& facts) {
   const auto profile = base::find_target_profile(facts.target->source_spelling);
-  if (!profile || profile->identity != *facts.target) return false;
-  for (const auto& gate : {{ model.target_array }}) {
+  if (!profile || profile->identity != *facts.target ||
+      *facts.ptx_version < checker::PtxVersion{profile->minimum_ptx_version.major, profile->minimum_ptx_version.minor}) return false;
+  const bool block_selector = facts.scale_selector == TcgenScaleVectorSize::Block32;
+  const auto gates = block_selector
+      ? std::span<const {{ model.cpp_prefix }}TargetGate>{ {{ model.target_array }}Block }
+      : std::span<const {{ model.cpp_prefix }}TargetGate>{ {{ model.target_array }} };
+  for (const auto& gate : gates) {
     if (*facts.ptx_version < gate.minimum_ptx) continue;
     if (facts.scale_selector == TcgenScaleVectorSize::Vec1X &&
         gate.feature != "sm_100a") continue;
-    if (facts.scale_selector == TcgenScaleVectorSize::Block32 && gate.exact)
-      continue;
     if (facts.scale_selector != TcgenScaleVectorSize::Absent &&
         facts.scale_selector != TcgenScaleVectorSize::Vec1X &&
         facts.scale_selector != TcgenScaleVectorSize::Block32) continue;
     const auto exact = base::parse_target_identity(gate.feature);
-    if (gate.exact && exact && base::same_target_identity(*facts.target, *exact))
+    if (gate.exact && exact && (facts.target->flavor == exact->flavor &&
+        base::target_feature_architecture(*facts.target) == base::target_feature_architecture(*exact)))
       return true;
     if (!gate.exact &&
         std::find(profile->enabled_family_features.begin(),
@@ -438,18 +457,22 @@ bool {{ model.target_checker }}(const {{ model.cpp_prefix }}KnownFacts& facts) {
 {% endmacro %}{% macro mx4_target_accept(model) %}/** Check a supplied target identity and version against the closed rows. */
 bool {{ model.target_checker }}(const {{ model.cpp_prefix }}KnownFacts& facts) {
   const auto profile = base::find_target_profile(facts.target->source_spelling);
-  if (!profile || profile->identity != *facts.target) return false;
-  for (const auto& gate : {{ model.target_array }}) {
+  if (!profile || profile->identity != *facts.target ||
+      *facts.ptx_version < checker::PtxVersion{profile->minimum_ptx_version.major, profile->minimum_ptx_version.minor}) return false;
+  const bool block_selector = facts.scale_selector == TcgenScaleVectorSize::Block32;
+  const auto gates = block_selector
+      ? std::span<const {{ model.cpp_prefix }}TargetGate>{ {{ model.target_array }}Block }
+      : std::span<const {{ model.cpp_prefix }}TargetGate>{ {{ model.target_array }} };
+  for (const auto& gate : gates) {
     if (*facts.ptx_version < gate.minimum_ptx) continue;
     if (facts.scale_selector == TcgenScaleVectorSize::Vec2X &&
         gate.feature != "sm_100a") continue;
-    if (facts.scale_selector == TcgenScaleVectorSize::Block32 && gate.exact)
-      continue;
     if (facts.scale_selector != TcgenScaleVectorSize::Absent &&
         facts.scale_selector != TcgenScaleVectorSize::Vec2X &&
         facts.scale_selector != TcgenScaleVectorSize::Block32) continue;
     const auto exact = base::parse_target_identity(gate.feature);
-    if (gate.exact && exact && base::same_target_identity(*facts.target, *exact))
+    if (gate.exact && exact && (facts.target->flavor == exact->flavor &&
+        base::target_feature_architecture(*facts.target) == base::target_feature_architecture(*exact)))
       return true;
     if (!gate.exact &&
         std::find(profile->enabled_family_features.begin(),
@@ -477,18 +500,23 @@ bool {{ model.target_checker }}(const {{ model.cpp_prefix }}KnownFacts& facts) {
 {% endmacro %}{% macro mxnv_target_accept(model) %}/** Check a supplied target identity and version against the closed rows. */
 bool {{ model.target_checker }}(const {{ model.cpp_prefix }}KnownFacts& facts) {
   const auto profile = base::find_target_profile(facts.target->source_spelling);
-  if (!profile || profile->identity != *facts.target) return false;
-  for (const auto& gate : {{ model.target_array }}) {
+  if (!profile || profile->identity != *facts.target ||
+      *facts.ptx_version < checker::PtxVersion{profile->minimum_ptx_version.major, profile->minimum_ptx_version.minor}) return false;
+  const bool block_selector = facts.scale_selector == TcgenScaleVectorSize::Block32 || facts.scale_selector == TcgenScaleVectorSize::Block16;
+  const auto gates = block_selector
+      ? std::span<const {{ model.cpp_prefix }}TargetGate>{ {{ model.target_array }}Block }
+      : std::span<const {{ model.cpp_prefix }}TargetGate>{ {{ model.target_array }} };
+  for (const auto& gate : gates) {
     if (*facts.ptx_version < gate.minimum_ptx) continue;
     const bool vector = facts.scale_selector == TcgenScaleVectorSize::Vec2X ||
                         facts.scale_selector == TcgenScaleVectorSize::Vec4X;
     const bool block = facts.scale_selector == TcgenScaleVectorSize::Block32 ||
                        facts.scale_selector == TcgenScaleVectorSize::Block16;
     if (vector && gate.feature != "sm_100a") continue;
-    if (block && gate.exact) continue;
     if (!vector && !block) continue;
     const auto exact = base::parse_target_identity(gate.feature);
-    if (gate.exact && exact && base::same_target_identity(*facts.target, *exact))
+    if (gate.exact && exact && (facts.target->flavor == exact->flavor &&
+        base::target_feature_architecture(*facts.target) == base::target_feature_architecture(*exact)))
       return true;
     if (!gate.exact &&
         std::find(profile->enabled_family_features.begin(),

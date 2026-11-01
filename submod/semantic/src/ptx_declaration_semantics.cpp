@@ -1365,7 +1365,9 @@ class Checker {
     if (target.targets.empty())
       return std::nullopt;
     const auto profile = base::find_target_profile(target.targets.front().text);
-    return profile ? std::optional{profile->identity.architecture.number}
+    return profile ? std::optional{base::target_feature_architecture(
+                                       profile->identity)
+                                       .number}
                    : std::nullopt;
   }
 

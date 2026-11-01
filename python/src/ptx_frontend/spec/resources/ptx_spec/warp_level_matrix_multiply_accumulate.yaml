@@ -52573,7 +52573,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -52654,7 +52654,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -52740,7 +52740,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -52826,7 +52826,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -52907,7 +52907,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -52993,7 +52993,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -53079,7 +53079,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -53162,7 +53162,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -53250,7 +53250,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -53338,7 +53338,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -53421,7 +53421,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -53509,7 +53509,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -53597,7 +53597,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -53680,7 +53680,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -53768,7 +53768,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -53856,7 +53856,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -53939,7 +53939,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -54027,7 +54027,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -54115,7 +54115,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -54193,7 +54193,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -54276,7 +54276,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -54359,7 +54359,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -54437,7 +54437,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -54520,7 +54520,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -54603,7 +54603,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -54681,7 +54681,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -54764,7 +54764,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -54847,7 +54847,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -54925,7 +54925,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -55008,7 +55008,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -55091,7 +55091,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -55169,7 +55169,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -55252,7 +55252,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -55335,7 +55335,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -55413,7 +55413,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -55496,7 +55496,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -56787,7 +56787,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -56867,7 +56867,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -56952,7 +56952,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -57037,7 +57037,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -57117,7 +57117,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -57202,7 +57202,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -57287,7 +57287,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -57367,7 +57367,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'
@@ -57452,7 +57452,7 @@ instructions:
     availability:
       any_of:
       - ptx: '8.6'
-        target: sm_100a
+        targets: [sm_100a, sm_101a, sm_101f]
       - ptx: '9.0'
         target: sm_110a
       - ptx: '8.7'

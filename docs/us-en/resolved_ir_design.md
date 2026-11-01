@@ -281,10 +281,11 @@ explicitly cataloged `sm_<number>[a|f]` profile, `compute_<number>[a|f]` is a
 synonym with the same architecture, flavor, enabled family features and
 capabilities. Both lexical parsing and owned source regions preserve the written
 prefix; semantic availability and explicit checker-target comparisons use
-architecture and flavor. `TargetIdentity::operator==` still compares retained
+validation-feature architecture and flavor through the explicit catalog rename
+correspondence. `TargetIdentity::operator==` still compares retained
 source spelling as well, so source-provenance consistency checks remain exact.
-Unknown numbers and unsupported flavors, including `compute_101a` and
-`compute_101f`, do not acquire catalog profiles. Texture-mode
+Unknown numbers and unsupported flavors, including `compute_102a` and
+`compute_102f`, do not acquire catalog profiles. Texture-mode
 selection is checked for repetition and module conflicts. This contract adds neither
 DWARF content checks nor floating-point instruction conversion. These source forms follow the archived
 [PTX ISA 9.3 target directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target).
@@ -1751,3 +1752,15 @@ Plain availability and each `any_of` clause accept optional `sm_before: 70`. Tog
 `AvailabilityClause::sm_before` and `AvailabilityDescriptor::sm_before` append disengaged `std::optional<uint32_t>` members after `ptx_before`; rebuild public consumers for this aggregate layout change. The predicate compares concrete `TargetInfo::sm_version`, independently of profile spelling or flavor, while all existing exact-target, family, capability and mapping requirements remain conjunctive. Plain failures produce located `UnsupportedSmVersion` in variant, layout, modifier, operand-value, parameter-address and memory-vector paths; DNF failures retain `UnsupportedAvailability`.
 
 Legacy SHFL uses `any_of: [{ptx: "3.0", ptx_before: "6.4", sm: 30}, {ptx: "3.0", sm: 30, sm_before: 70}]`. Source modules still require recognized profiles and legal profile/version headers. Under `AvailableContext`, missing version or recognized target continues to defer whole-instruction availability, even if another known fact appears incompatible; such success is not full ISA certification. Strict validation reports `MissingValidationContext`; an explicit unknown profile remains `UnknownTarget`. No partial DNF evaluator or opcode-specific context rule is added.
+
+## Historical 101 source profiles and validation features
+
+`sm_101`/`compute_101` and their A forms begin at PTX8.6; F forms begin at PTX8.8. They remain admitted at PTX9.0/9.3, with no rename-imposed upper window. The corresponding 110 source profiles still begin at PTX9.0. `TargetIdentity` retains architecture101, flavor and exact written spelling. `same_target_identity` compares source architecture/flavor, so101A and110A remain distinct.
+
+The additive base function `target_feature_architecture(identity)` consults explicit private catalog data: the three101 keys project to feature architecture110; other keys retain their architecture. Uncataloged typed keys do not become recognized. Public `TargetProfile` and `TargetInfo` layouts are unchanged. Source/owned/semantic factories use this feature level for numeric SM, retain source identity, and pass the existing110 baseline capabilities `cluster`, `aggregate_smem`, `reserved_smem`, `graph_exec`. Generic101 has no family; 101A/F enable only canonical `sm_110f`, with no100f/103f inheritance or FP64 mapping option. This bounded correspondence follows the published rename and family relation; it is not a physical hardware/driver guarantee.
+
+Availability singular and span exact-target requirements compare validation-feature architecture plus exact flavor through that helper. This matching relation differs from source identity and stored-key equality. A manually supplied `TargetInfo::sm_version` remains the caller's concrete feature fact and is never overwritten by the checker. Source profile introductions, instruction/PTX floors, capabilities and shape constraints remain independent.
+
+Historical instruction data changes only the adopted231 parents:219 preserve existing100A clauses and add101A, with101F only where an original110F branch exists;12 block-selector parents append an8.8 historical101A/F clause. All854 original110 conditions and their floors remain, the DNF limit stays six, and the25 restricted cluster gather4/im2col-W parents remain unchanged. TCGEN closed rows retain kind, scaled-D and explicit scale-vector restrictions: written block16/32 historical gates require8.8, while100-only vector and scaled-D paths remain100-only. Generated operational queries first validate the exact source profile and its minimum version, then apply feature matching. Unknown words and addresses remain unresolved obligations, not facts inferred from live registers.
+
+Both module validators independently join current function `source_region`, `source_version` and exact `source_target` to the current owned region. A valid replacement AST cannot mask contradictory caches. Intrinsically coherent101/110 contexts may be retargeted through a supplied header when the current payload is legal under that effective context; retained availability is not a historical veto. Missing full instruction context still follows the existing `AvailableContext` deferral and strict `MissingValidationContext` policy.

@@ -134,7 +134,8 @@ void append_minimum_requirement(
   const auto requirement = directive_availability(feature);
   if ((!version || *version >= requirement.minimum_ptx_version) &&
       (!profile ||
-       profile->identity.architecture.number >= requirement.minimum_sm_version))
+       base::target_feature_architecture(profile->identity).number >=
+           requirement.minimum_sm_version))
     return;
   if (!emitted
            .emplace(feature, range.start.line, range.start.column,
@@ -3359,7 +3360,7 @@ void check_module_declaration_placement(
           continue;
         }
         if (*region.version >= checker::PtxVersion{3, 0} &&
-            profile->identity.architecture.number >= 20)
+            base::target_feature_architecture(profile->identity).number >= 20)
           diagnostics.push_back({
               .kind = checker::CheckDiagnosticKind::RuleViolation,
               .range = range,
@@ -3559,7 +3560,8 @@ void check_common_availability(const ResolvedModule& module,
           region.target_options.empty()
               ? std::nullopt
               : base::find_target_profile(region.target_options.front());
-      if (profile && profile->identity.architecture.number < 20)
+      if (profile &&
+          base::target_feature_architecture(profile->identity).number < 20)
         diagnostics.push_back({
             .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
             .range = declaration.range,
@@ -4397,6 +4399,32 @@ void check_recursive_calls(const std::vector<detail::RecursiveCall>& calls,
                                              : "Syntactic recursion");
 }
 
+/** Check current function/region cache coherence independently of effective validation context. */
+bool check_current_function_source_context(
+    const ResolvedModule& module, const ResolvedFunction& function,
+    checker::CheckDiagnostics& diagnostics) {
+  if (function.source_region &&
+      *function.source_region >= module.header.regions.size()) {
+    append_model_mismatch(
+        diagnostics, function.range,
+        "Resolved function refers to a missing owned source configuration.");
+    return false;
+  }
+  const auto* region = function.source_region
+                           ? &module.header.regions[*function.source_region]
+                           : nullptr;
+  if (region &&
+      (function.source_version != region->version ||
+       function.source_target !=
+           (region->target_options.empty()
+                ? std::optional<std::string>{}
+                : std::optional<std::string>{region->target_options.front()})))
+    append_model_mismatch(
+        diagnostics, function.range,
+        "Resolved function source configuration does not match its region.");
+  return true;
+}
+
 /** Build checker target context from an owned source region rather than syntax. */
 std::optional<checker::TargetInfo> owned_target_context(
     const ResolvedSourceTargetRegion& region,
@@ -4415,7 +4443,7 @@ std::optional<checker::TargetInfo> owned_target_context(
   }
   return checker::TargetInfo{
       .ptx_version = *region.version,
-      .sm_version = profile->identity.architecture.number,
+      .sm_version = base::target_feature_architecture(profile->identity).number,
       .enabled_family_features = profile->enabled_family_features,
       .identity = profile->identity,
       .capabilities = profile->capabilities,
@@ -4735,27 +4763,11 @@ checker::CheckResult validateModule(const ResolvedModule& module,
                                 parameter_properties, diagnostics);
     }
     check_parameter_reference_roles(module, function, diagnostics);
-    if (function.source_region &&
-        *function.source_region >= module.header.regions.size()) {
-      invalid(
-          function.range,
-          "Resolved function refers to a missing owned source configuration.");
+    if (!check_current_function_source_context(module, function, diagnostics))
       continue;
-    }
-    const auto region = function.source_region
-                            ? &module.header.regions[*function.source_region]
-                            : nullptr;
-    if (region != nullptr &&
-        (function.source_version != region->version ||
-         function.source_target !=
-             (region->target_options.empty()
-                  ? std::optional<std::string>{}
-                  : std::optional<std::string>{
-                        region->target_options.front()}))) {
-      invalid(
-          function.range,
-          "Resolved function source configuration does not match its region.");
-    }
+    const auto* region = function.source_region
+                             ? &module.header.regions[*function.source_region]
+                             : nullptr;
     if (policy == ModuleValidationPolicy::RequireCompleteContext &&
         (!region || !region->version || region->target_options.empty())) {
       diagnostics.push_back({
@@ -4983,6 +4995,8 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
   check_call_graph_joins(module, graph_joins);
   const auto call_graph = current_call_graph(module, graph_joins);
   append_call_graph_diagnostics(diagnostics, graph_joins);
+  for (const auto& function : module.functions)
+    check_current_function_source_context(module, function, diagnostics);
   std::optional<checker::TargetInfo> active_target;
   /** Recognized target facts remain usable when no PTX version is supplied. */
   std::optional<base::TargetProfile> active_profile;
@@ -5020,7 +5034,8 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
       } else if (version) {
         active_target = checker::TargetInfo{
             .ptx_version = *version,
-            .sm_version = profile->identity.architecture.number,
+            .sm_version =
+                base::target_feature_architecture(profile->identity).number,
             .enabled_family_features = profile->enabled_family_features,
             .identity = profile->identity,
             .capabilities = profile->capabilities,

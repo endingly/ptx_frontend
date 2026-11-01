@@ -30,6 +30,13 @@ struct TargetIdentity {
 [[nodiscard]] bool same_target_identity(const TargetIdentity& left,
                                         const TargetIdentity& right) noexcept;
 
+/** Return the validation-feature architecture for an exact catalog key.
+ * Explicit historical rename entries may differ from the source architecture.
+ * Uncataloged keys return their input architecture without implying recognition;
+ * source spelling and same_target_identity remain unchanged. */
+[[nodiscard]] TargetArchitecture target_feature_architecture(
+    const TargetIdentity& identity) noexcept;
+
 /** PTX ISA version attached to base target metadata, independent of IR types. */
 struct PtxIsaVersion {
   /** Decimal ISA version components, compared lexicographically. */

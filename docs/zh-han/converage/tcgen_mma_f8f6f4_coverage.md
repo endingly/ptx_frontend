@@ -49,11 +49,10 @@ major/swizzle 规则。E4M3/E5M2 为 8 位，E2M3/E3M2 为 6 位，E2M1 为 4 �
 但已知查询不能检查真实矩阵字节、分配、完成或 GPU 数值行为。已提供事实没有违例时，
 仍可能存在未决义务。
 
-当前目标目录使用四个普通无缩放分支：PTX 8.6 起的精确 `sm_100a`、8.8 起启用的
-`sm_100f` 家族、9.0 起的精确 `sm_110a` 和启用的 `sm_110f` 家族。
-目标判断基于显式身份与 feature 交集，不按 SM 数值大小推断。手册中的历史
-`sm_101a`／`sm_101f` 不在当前目录中，不能暗中映射到 `sm_110`。
-i8 的精确目标排除规则以及 f16/tf32 的 D 缩放门槛不适用于本切片。
+现代100/110无缩放 target 分支保留原有版本门槛。显式历史 row 加入 PTX8.6
+起的101A和 PTX8.8 起的101F，source identity 保持原值，验证 feature level
+按 catalog 对应为110。family 使用 canonical `sm_110f` label，Generic101
+没有 A/F grant；i8 的 A-only 与 f16/tf32 的 D-scale 限制仍独立。
 
 这是有限的源码与已知事实表示。缩放 MX kind、稀疏和 WS 形式、
 卷积、物理低位 packing 证明、活描述符位、Tensor Memory 生命周期及 GPU 执行均在

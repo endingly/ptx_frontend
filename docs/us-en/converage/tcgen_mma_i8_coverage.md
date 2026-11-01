@@ -63,13 +63,14 @@ compared when A is in Tensor Memory. Full D/B/A paths require zero; a known D
 half is checked even with shared A. Source addresses do not prove the claimed
 halves or allocation history.
 
-The current explicit target catalogue projects the i8 source gate to exact
-`sm_100a` from PTX 8.6 or exact `sm_110a` from PTX 9.0. Family-f targets,
-including `sm_103a` despite its unrelated family features, do not inherit
-i8 MMA. The historical `sm_101a` spelling mentioned in the manual is absent
-from the current catalogue and is **not** silently mapped to `sm_110a` for
-pre-9.0 PTX. Table 43's exact-103a byte-stride descriptor capability does
-not grant an i8 operation on 103a.
+The explicit i8 gates retain `sm_100a` from PTX8.6 and `sm_110a` from PTX9.0,
+and add the historical `sm_101a` source profile from PTX8.6. Its source identity
+stays 101A while the catalog's explicit feature correspondence is 110A.
+`sm_101f` and Generic101 do not acquire this A-only operation. Family targets
+and the unrelated `sm_103a` capability do not grant i8 MMA. Table43's exact103A
+byte-stride descriptor rule remains independent. Operational queries require
+the exact supplied source profile and its own introduction version before
+matching feature gates; they do not infer descriptor words from source registers.
 
 The other fixed dense, sparse and WS source forms appear in the
 [family matrix](tcgen_mma_family_coverage.md). Runtime descriptor contents,

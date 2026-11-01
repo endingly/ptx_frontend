@@ -198,6 +198,8 @@ F16_TARGET_GATES = (
     F16TargetGate("sm_110f", False, 9, 0, False),
     F16TargetGate("sm_100a", True, 8, 6, True),
     F16TargetGate("sm_100f", False, 8, 8, True),
+    F16TargetGate("sm_101a", True, 8, 6, False),
+    F16TargetGate("sm_101f", True, 8, 8, False),
 )
 
 TF32_SHAPES = (
@@ -217,10 +219,11 @@ I8_SHAPES = (
 )
 # Table 54 uses the same group/M-selected non-WS path as the accepted kinds.
 I8_PATHS = F16_PATHS
-# Exact identities only; the current target catalogue lacks historical 101a.
+# Exact feature identities retain independent historical source-profile floors.
 I8_TARGET_GATES = (
     F16TargetGate("sm_100a", True, 8, 6, False),
     F16TargetGate("sm_110a", True, 9, 0, False),
+    F16TargetGate("sm_101a", True, 8, 6, False),
 )
 
 _F8F6F4_TYPES = ("E4M3", "E5M2", "E2M3", "E3M2", "E2M1")
@@ -238,6 +241,8 @@ F8F6F4_TARGET_GATES = (
     F16TargetGate("sm_100f", False, 8, 8, False),
     F16TargetGate("sm_110a", True, 9, 0, False),
     F16TargetGate("sm_110f", False, 9, 0, False),
+    F16TargetGate("sm_101a", True, 8, 6, False),
+    F16TargetGate("sm_101f", True, 8, 8, False),
 )
 
 # Table 57 applies to each 16-bit shared operand independently. The accepted
@@ -273,9 +278,9 @@ def validate_catalogue() -> None:
         raise ValueError("dense f16 datapath mapping changed")
     if _TRANSPOSE_EXCLUDED not in {name for _, name in descriptor.SWIZZLES}:
         raise ValueError("Table 57 exclusion lacks accepted swizzle identity")
-    if len(F16_TARGET_GATES) != 5 or len({
+    if len(F16_TARGET_GATES) != 7 or len({
         (gate.feature, gate.exact, gate.scaled_d)
-        for gate in F16_TARGET_GATES}) != 5:
+        for gate in F16_TARGET_GATES}) != 7:
         raise ValueError("dense f16 target gates overlap or are missing")
     tf32 = next((kind for kind in descriptor.KINDS if kind.name == "Tf32"), None)
     if tf32 is None:
@@ -308,7 +313,8 @@ def validate_catalogue() -> None:
             {(gate.feature, gate.exact, gate.ptx_major, gate.ptx_minor,
               gate.scaled_d) for gate in I8_TARGET_GATES} != {
                   ("sm_100a", True, 8, 6, False),
-                  ("sm_110a", True, 9, 0, False)} or
+                  ("sm_110a", True, 9, 0, False),
+                  ("sm_101a", True, 8, 6, False)} or
             {name.upper() for _, name in i8.a_types} != {"U8", "S8"} or
             {name.upper() for _, name in i8.b_types} != {"U8", "S8"} or
             {name.upper() for _, name in i8.d_types} != {"S32"} or
@@ -335,7 +341,9 @@ def validate_catalogue() -> None:
                   ("sm_100a", True, 8, 6, False),
                   ("sm_100f", False, 8, 8, False),
                   ("sm_110a", True, 9, 0, False),
-                  ("sm_110f", False, 9, 0, False)}):
+                  ("sm_110f", False, 9, 0, False),
+                  ("sm_101a", True, 8, 6, False),
+                  ("sm_101f", True, 8, 8, False)}):
         raise ValueError("dense f8f6f4 rows drifted from Tables 42/45")
 
     mx8 = next((kind for kind in descriptor.KINDS
@@ -409,7 +417,8 @@ def validate_catalogue() -> None:
             {(gate.feature, gate.exact, gate.ptx_major, gate.ptx_minor)
              for gate in MXNV_TARGET_GATES} != {
                  ("sm_100a", True, 8, 7), ("sm_100f", False, 8, 8),
-                 ("sm_110a", True, 9, 0), ("sm_110f", False, 9, 0)} or
+                 ("sm_110a", True, 9, 0), ("sm_110f", False, 9, 0),
+                 ("sm_101a", True, 8, 7), ("sm_101f", True, 8, 8)} or
             {(row.role, row.selector, row.k, row.factor_count,
               row.subcolumn_alignment_bytes, row.valid_ids,
               row.layout_id, row.id_alignment_policy)
@@ -458,7 +467,7 @@ def validate_catalogue() -> None:
                  *((kind, SparseMetadataGranularity.TWO_OF_FOUR,
                     (4, 8, 12, 9, 13, 6, 14))
                    for kind in ("F16", "F8F6F4", "I8"))} or
-            len(SPARSE_TARGET_GATES) != 5 + 5 + 4 + 2):
+            len(SPARSE_TARGET_GATES) != 7 + 7 + 6 + 3):
         raise ValueError("sparse MMA rows drifted from Tables 42/45 and 10.8")
 
     if ({(row.kind, row.group, row.d_type, row.m_values, row.k)
@@ -892,7 +901,10 @@ MX8_SCALE_LAYOUTS = tuple(
 MX8_TARGET_GATES = F8F6F4_TARGET_GATES
 MX8_VEC_TARGET_GATES = (F16TargetGate("sm_100a", True, 8, 6, False),)
 MX8_BLOCK_TARGET_GATES = tuple(gate for gate in MX8_TARGET_GATES
-                              if gate.feature in ("sm_100f", "sm_110f"))
+                              if gate.feature in ("sm_100f", "sm_110f")) + (
+    F16TargetGate("sm_101a", True, 8, 8, False),
+    F16TargetGate("sm_101f", True, 8, 8, False),
+)
 
 
 def mx8_scale_layout(role: str, selector: str) -> MxScaleLayoutRow | None:
@@ -1153,6 +1165,8 @@ MXNV_TARGET_GATES = (
     F16TargetGate("sm_100f", False, 8, 8, False),
     F16TargetGate("sm_110a", True, 9, 0, False),
     F16TargetGate("sm_110f", False, 9, 0, False),
+    F16TargetGate("sm_101a", True, 8, 7, False),
+    F16TargetGate("sm_101f", True, 8, 8, False),
 )
 MXNV_SCALE_LAYOUTS = tuple(
     MxScaleLayoutRow(role, "MxF4NvF4", False, k, selector, count, align,
@@ -1566,11 +1580,13 @@ SPARSE_MX_BASE_GATES = tuple(
         ("MxF4", (
             F16TargetGate("sm_100a", True, 8, 6, False),
             F16TargetGate("sm_103a", True, 8, 8, False),
-            F16TargetGate("sm_110a", True, 9, 0, False))),
+            F16TargetGate("sm_110a", True, 9, 0, False),
+            F16TargetGate("sm_101a", True, 8, 6, False))),
         ("MxF4NvF4", (
             F16TargetGate("sm_100a", True, 8, 7, False),
             F16TargetGate("sm_103a", True, 8, 8, False),
-            F16TargetGate("sm_110a", True, 9, 0, False))))
+            F16TargetGate("sm_110a", True, 9, 0, False),
+            F16TargetGate("sm_101a", True, 8, 7, False))))
     for gate in gates)
 
 SPARSE_MX_VEC_GATES = (
@@ -1582,7 +1598,9 @@ SPARSE_MX_BLOCK_GATES = tuple(
     (kind, gate)
     for kind in ("MxF8F6F4", "MxF4", "MxF4NvF4")
     for gate in (F16TargetGate("sm_100f", False, 8, 8, False),
-                 F16TargetGate("sm_110f", False, 9, 0, False)))
+                 F16TargetGate("sm_110f", False, 9, 0, False),
+                 F16TargetGate("sm_101a", True, 8, 8, False),
+                 F16TargetGate("sm_101f", True, 8, 8, False)))
 
 
 def check_sparse_mx_known_facts(facts: SparseMxKnownFacts

@@ -5567,7 +5567,7 @@ instructions:
       - name: clusterlaunchcontrol_try_cancel_async_multicast_generic
         availability:
           any_of:
-            - {ptx: "8.6", sm: 100, target: sm_100a, capabilities: [cluster]}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f], capabilities: [cluster]}
             - {ptx: "8.6", sm: 120, target: sm_120a, capabilities: [cluster]}
             - {ptx: "8.8", sm: 100, family: sm_100f, capabilities: [cluster]}
             - {ptx: "8.8", sm: 120, family: sm_120f, capabilities: [cluster]}
@@ -5583,7 +5583,7 @@ instructions:
       - name: clusterlaunchcontrol_try_cancel_async_multicast_shared_cta
         availability:
           any_of:
-            - {ptx: "8.6", sm: 100, target: sm_100a, capabilities: [cluster]}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f], capabilities: [cluster]}
             - {ptx: "8.6", sm: 120, target: sm_120a, capabilities: [cluster]}
             - {ptx: "8.8", sm: 100, family: sm_100f, capabilities: [cluster]}
             - {ptx: "8.8", sm: 120, family: sm_120f, capabilities: [cluster]}

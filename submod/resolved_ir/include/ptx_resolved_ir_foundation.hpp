@@ -720,13 +720,13 @@ struct PtxVersion {
 inline constexpr size_t kMaxAvailabilityClauses = 6;
 /** Maximum capabilities retained by one generated availability clause. */
 inline constexpr size_t kMaxAvailabilityCapabilities = 4;
-/** Exact architecture and flavor required independently of catalog capabilities. */
+/** Required feature architecture and flavor, modulo explicit catalog rename correspondence. */
 struct AvailabilityTarget {
-  /** Numeric source architecture; membership never implies neighboring targets. */
+  /** Stored architecture key projected by the explicit feature helper during matching. */
   base::TargetArchitecture architecture{};
-  /** Exact source flavor, without family or architecture-specific inference. */
+  /** Exact flavor; feature correspondence never promotes Generic, A or F. */
   base::TargetFlavor flavor = base::TargetFlavor::Generic;
-  /** Compare exactly the architecture/flavor membership key. */
+  /** Compare stored keys; availability separately applies explicit feature correspondence. */
   bool operator==(const AvailabilityTarget&) const = default;
 };
 /** Process-lifetime storage for generated exact-target membership spans. */
@@ -737,6 +737,7 @@ inline constexpr std::array<AvailabilityTarget, sizeof...(Targets)>
 struct AvailabilityClause {
   PtxVersion minimum_ptx_version{};
   uint32_t minimum_sm_version = 0;
+  /** Exact validation-feature architecture modulo explicit catalog rename correspondence. */
   base::TargetArchitecture exact_target_architecture{};
   base::TargetFlavor exact_target_flavor = base::TargetFlavor::Generic;
   bool has_exact_target = false;
@@ -746,7 +747,7 @@ struct AvailabilityClause {
   std::string_view required_family{};
   /** Borrowed capability names; only the first ``capability_count`` are live. */
   std::array<std::string_view, kMaxAvailabilityCapabilities> capabilities{};
-  /** Borrowed exact alternatives; empty adds no identity requirement.
+  /** Borrowed exact feature alternatives; empty adds no identity requirement.
    * Generated storage has process lifetime; manual consumers retain ownership.
    * When singular identity fields are also supplied, both requirements apply. */
   std::span<const AvailabilityTarget> exact_targets{};
@@ -1039,8 +1040,10 @@ struct OperandView {
 /** Borrowed target properties used by checker availability validation. */
 struct TargetInfo {
   PtxVersion ptx_version{};
+  /** Concrete validation-feature SM, projected by source factories; manual callers own this fact. */
   uint32_t sm_version = 0;
   std::span<const std::string_view> enabled_family_features{};
+  /** Exact written source identity; feature matching never rewrites this value. */
   std::optional<base::TargetIdentity> identity;
   std::span<const std::string_view> capabilities{};
   /** Effective source option, independent of hardware capabilities and widths. */

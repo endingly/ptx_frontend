@@ -80,6 +80,17 @@ void append_sm_upper_bound_diagnostic(
   }
 }
 
+/** Compare feature identity through explicit catalog rename data without rewriting source identity. */
+bool matches_feature_target(const base::TargetIdentity& actual,
+                            base::TargetArchitecture required,
+                            base::TargetFlavor flavor) noexcept {
+  const base::TargetIdentity expected{.architecture = required,
+                                      .flavor = flavor};
+  return actual.flavor == flavor &&
+         base::target_feature_architecture(actual) ==
+             base::target_feature_architecture(expected);
+}
+
 bool has_enabled_family_feature(
     std::span<const std::string_view> enabled_family_features,
     std::string_view required_family) noexcept {
@@ -994,18 +1005,20 @@ bool is_available(const AvailabilityDescriptor& availability,
           (clause.requires_map_f64_to_f32 && !target.map_f64_to_f32) ||
           (clause.has_exact_target &&
            (!target.identity ||
-            target.identity->architecture != clause.exact_target_architecture ||
-            target.identity->flavor != clause.exact_target_flavor)) ||
+            !matches_feature_target(*target.identity,
+                                    clause.exact_target_architecture,
+                                    clause.exact_target_flavor))) ||
           (!clause.required_family.empty() &&
            !has_enabled_family_feature(target.enabled_family_features,
                                        clause.required_family)))
         continue;
       if (!clause.exact_targets.empty() &&
           (!target.identity ||
-           std::ranges::find(clause.exact_targets,
-                             AvailabilityTarget{target.identity->architecture,
-                                                target.identity->flavor}) ==
-               clause.exact_targets.end()))
+           !std::ranges::any_of(
+               clause.exact_targets, [&](const AvailabilityTarget& required) {
+                 return matches_feature_target(
+                     *target.identity, required.architecture, required.flavor);
+               })))
         continue;
       bool capabilities_match = true;
       for (size_t capability = 0; capability < clause.capability_count;

@@ -1363,3 +1363,19 @@ payload。关联的真实 written qualifier 必须一致。现有 typed paramete
 preservation policy 可从固定普通 modifier 派生 Entry frame qualifier；该 frame
 事实单独验证，不改变固定 modifier identity。既有 frame、readonly、declaration、
 source identity 以及 Shared/atomic qualifier guard 继续生效。
+
+两个 `validateModule` overload 均在缺少 version/target 导致 instruction 检查跳过
+之前验证 current-owned Parameter address。精确 variant/layout operand descriptor
+提供封闭 address-space domain 与当前关联 state-space 的相等约束。空 domain
+仍不施加限制，也不推断 runtime register pointee。Device formal 的地址
+materialization 继续遵循既有 policy，可得到 Local space。已知 entry input
+不能提供显式要求可写的 operand 或 Return parameter operand。
+`OperandAccess::Read` 表示 operand value access，不代表 memory effect；MOV
+地址获取和 tensor-map 读取仍合法。
+
+`detail::IReferenceObserver::operand_context` 追加为默认 no-op virtual callback。
+非空 descriptor 为紧随其后的顶层 address-bearing payload callback 建立 bracket，
+nullptr 重置。descriptor 与 span 仅在同步 bracket 内借用；collector 复制所需
+scalar/domain 事实，不保留借用指针。原 payload callback 和顺序保持不变。
+已有派生 source observer 无需新增 override，但 virtual slot 改变 ABI，observer
+与 producer library 必须使用匹配头文件重新构建。

@@ -253,3 +253,12 @@ This is a formal rule: ordinary small/predicate register declarations, small
 `.param` formals and matching small-register actuals to `.param` remain legal.
 
 Otherwise eligible scalar F16 Reg and Param inputs share numeric literal conversion, including direct and metadata-backed indirect calls. A floating 1.5 or evaluated F64 equivalent becomes F16 word 0x3e00; original lexical/precast source is retained for owned recomputation. Modern Register-formal minimum width still rejects scalar Reg F16 independently, while established nonstack legacy calls and partial AvailableContext follow their existing gates. Strict missing context and scalar-to-vector no-splat remain. This does not add a packed F16x2 constructor.
+
+Parameter address validation also rejoins the current symbol ID, lexical scope,
+compact member and declaration record before context can be skipped. A known
+Parameter object's effective space must belong to a nonempty operand domain
+and agree with an associated current state-space modifier. Readonly entry input
+checks use explicit Write/ReadWrite operand requirements or the existing Return
+parameter constraint; DeviceInput is not generally readonly. Diagnostics merge
+only an identical local address cause, preserving unrelated failures. This
+check does not authorize new source forms or replace full target-aware checking.

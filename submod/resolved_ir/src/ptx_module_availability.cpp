@@ -500,11 +500,26 @@ bool valid_instruction_range(SourceRange range) noexcept {
            range.start.column < range.end.column));
 }
 
+/** Merge only an identical address-intrinsic cause in the local validation sink. */
+void append_parameter_address_intrinsic(
+    checker::CheckDiagnostics& diagnostics,
+    checker::CheckDiagnostics& intrinsic_causes,
+    checker::CheckDiagnostic diagnostic) {
+  if (!std::ranges::any_of(intrinsic_causes, [&](const auto& previous) {
+        return previous.kind == diagnostic.kind &&
+               previous.range == diagnostic.range &&
+               previous.message == diagnostic.message;
+      })) {
+    intrinsic_causes.push_back(diagnostic);
+    diagnostics.push_back(std::move(diagnostic));
+  }
+}
+
 /** Check every IR instruction using its owned source location. */
-void check_instruction_body(const ResolvedFunction& function,
-                            const checker::TargetInfo& target,
-                            TextureMode texture_mode,
-                            checker::CheckDiagnostics& diagnostics) {
+void check_instruction_body(
+    const ResolvedFunction& function, const checker::TargetInfo& target,
+    TextureMode texture_mode, checker::CheckDiagnostics& diagnostics,
+    std::span<const checker::CheckDiagnostics> intrinsic_causes) {
   for (size_t i = 0; i < function.body.size(); ++i) {
     if (!function.body[i])
       continue;
@@ -521,9 +536,22 @@ void check_instruction_body(const ResolvedFunction& function,
         .instruction_range = function.instruction_ranges[i],
     };
     const auto result = function.body[i]->check(context);
-    if (!result)
-      diagnostics.insert(diagnostics.end(), result.error().begin(),
-                         result.error().end());
+    if (!result) {
+      const auto causes =
+          i < intrinsic_causes.size()
+              ? std::span<const checker::CheckDiagnostic>{intrinsic_causes[i]}
+              : std::span<const checker::CheckDiagnostic>{};
+      for (const auto& diagnostic : result.error()) {
+        // Only this instruction's intrinsic causes can merge a full-check result.
+        // Ordinary result keys are never added to this immutable provenance set.
+        if (!std::ranges::any_of(causes, [&](const auto& intrinsic) {
+              return intrinsic.kind == diagnostic.kind &&
+                     intrinsic.range == diagnostic.range &&
+                     intrinsic.message == diagnostic.message;
+            }))
+          diagnostics.push_back(diagnostic);
+      }
+    }
     check_texture_instruction_payload(*function.body[i], texture_mode, target,
                                       function.instruction_ranges[i],
                                       diagnostics);
@@ -657,6 +685,24 @@ void check_texture_instruction_payload(const Instruction& instruction,
   }
 }
 
+/** Owned operand requirements copied from one synchronous metadata bracket. */
+struct ParameterAddressOperandFacts {
+  /** Copied closed domain; empty remains unconstrained. */
+  std::vector<MemoryStateSpace> allowed_spaces;
+  /** Current associated modifier, absent when no association exists. */
+  std::optional<MemoryStateSpace> selected_space;
+  /** Value access is not a memory-effect classification. */
+  checker::OperandAccess access;
+  /** Existing parameter access contract, independent of value access. */
+  ParameterDirection direction;
+  /** Owned diagnostic field identity; no descriptor/string_view borrow escapes. */
+  std::string field;
+  /** Whole instruction fallback shared by readonly diagnostics. */
+  SourceRange instruction_range;
+  /** Zero-based current body position, not source history or an owning payload field. */
+  size_t instruction_index;
+};
+
 /** One binding identity projected from a generated resolved operand payload. */
 struct ModuleReferenceUse {
   std::optional<binding::SymbolId> symbol_id;
@@ -686,6 +732,8 @@ struct ModuleReferenceUse {
   bool named_vector_projection{};
   bool function_local{};
   SourceRange range;
+  /** Present only for an actual address symbol, never a register/index child. */
+  std::optional<ParameterAddressOperandFacts> address_operand;
 };
 
 /** Return whether a symbol may back a register-typed instruction operand. */
@@ -1088,8 +1136,29 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   /** Borrow destination and instruction fallback only for one synchronous visit. */
   ReferenceCollector(std::vector<ModuleReferenceUse>& uses,
                      SourceRange fallback,
-                     checker::CheckDiagnostics& diagnostics)
-      : uses_(uses), fallback_(fallback), diagnostics_(diagnostics) {}
+                     checker::CheckDiagnostics& diagnostics,
+                     size_t instruction_index)
+      : instruction_index_(instruction_index),
+        uses_(uses),
+        fallback_(fallback),
+        diagnostics_(diagnostics) {}
+  /** Copy required facts during the bracket; nullptr drops all prior context. */
+  void operand_context(const checker::OperandDescriptor* operand,
+                       std::optional<MemoryStateSpace> selected) override {
+    address_operand_.reset();
+    if (!operand)
+      return;
+    ParameterAddressOperandFacts facts{
+        .selected_space = selected,
+        .access = operand->access,
+        .direction = operand->parameter_constraint.direction,
+        .field = std::string(operand->target_field_id),
+        .instruction_range = fallback_,
+        .instruction_index = instruction_index_};
+    for (const auto& entry : operand->allowed_address_state_spaces)
+      facts.allowed_spaces.push_back(entry.state_space);
+    address_operand_ = std::move(facts);
+  }
   /** Collect a video carrier independently of its retained selector or minus. */
   void video_operand(const ResolvedVideoOperand& value,
                      std::span<const SourceRange> locations,
@@ -1105,7 +1174,11 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void address(const ResolvedAddress& value,
                std::span<const SourceRange> locations,
                checker::AddressSymbolResolutionPolicy policy) override {
+    const auto begin = uses_.size();
     collect_operand_references(value, locations, fallback_, uses_, policy);
+    for (auto index = begin; index < uses_.size(); ++index)
+      if (uses_[index].address_symbol)
+        uses_[index].address_operand = address_operand_;
   }
   /** Collect declaration identities from a borrowed ResolvedBranchTarget. */
   void branch_target(const ResolvedBranchTarget& value,
@@ -1169,7 +1242,11 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void mov_source(const ResolvedMovSource& value,
                   std::span<const SourceRange> locations,
                   checker::AddressSymbolResolutionPolicy policy) override {
+    const auto begin = uses_.size();
     collect_operand_references(value, locations, fallback_, uses_, policy);
+    for (auto index = begin; index < uses_.size(); ++index)
+      if (uses_[index].address_symbol)
+        uses_[index].address_operand = address_operand_;
   }
   /** Collect declaration identities from a borrowed ResolvedPredicate. */
   void predicate(const ResolvedPredicate& value,
@@ -1259,7 +1336,11 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void symbol_ref(const ResolvedSymbolRef& value,
                   std::span<const SourceRange> locations,
                   checker::AddressSymbolResolutionPolicy policy) override {
+    const auto begin = uses_.size();
     collect_operand_references(value, locations, fallback_, uses_, policy);
+    for (auto index = begin; index < uses_.size(); ++index)
+      if (uses_[index].address_symbol)
+        uses_[index].address_operand = address_operand_;
   }
   /** Collect declaration identities from a borrowed ResolvedTensorCoordinate. */
   void tensor_coordinate(
@@ -1279,7 +1360,11 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void tensor_operand(const ResolvedTensorOperand& value,
                       std::span<const SourceRange> locations,
                       checker::AddressSymbolResolutionPolicy policy) override {
+    const auto begin = uses_.size();
     collect_operand_references(value, locations, fallback_, uses_, policy);
+    for (auto index = begin; index < uses_.size(); ++index)
+      if (uses_[index].address_symbol)
+        uses_[index].address_operand = address_operand_;
   }
   /** Collect each bound register in a borrowed transport handle. */
   void fabric_handle(const ResolvedFabricHandle& value,
@@ -1361,6 +1446,11 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   }
 
  private:
+  /** Current owning body position copied into address-use facts. */
+  size_t instruction_index_;
+
+  /** Owned copied metadata, valid only until the next context/reset callback. */
+  std::optional<ParameterAddressOperandFacts> address_operand_;
   /** Borrowed ordered destination, valid for this visitor's stack lifetime. */
   std::vector<ModuleReferenceUse>& uses_;
   /** Owned instruction source range used when an operand has no explicit range. */
@@ -1490,6 +1580,95 @@ void check_address_symbol_binding(const binding::Symbol& bound_symbol,
   }
 }
 
+/** Format typed spaces for the same address diagnostics as operand checking. */
+std::string_view parameter_address_space_name(MemoryStateSpace space) {
+  switch (space) {
+    case MemoryStateSpace::Generic:
+      return "generic";
+    case MemoryStateSpace::Global:
+      return "global";
+    case MemoryStateSpace::Shared:
+      return "shared";
+    case MemoryStateSpace::Local:
+      return "local";
+    case MemoryStateSpace::Parameter:
+      return "param";
+    case MemoryStateSpace::Constant:
+      return "const";
+    default:
+      return "invalid";
+  }
+}
+
+/** Check known current Parameter objects without requiring target/version context. */
+void check_parameter_address_operand(
+    const binding::Symbol& symbol, const ModuleReferenceUse& use,
+    const ResolvedFunction& function, checker::CheckDiagnostics& diagnostics,
+    checker::CheckDiagnostics& intrinsic_causes) {
+  if (!use.address_symbol || !use.address_operand ||
+      symbol.state_space != base::DeclarationStateSpace::Parameter)
+    return;
+  const auto declaration = std::ranges::find_if(
+      function.parameter_declarations,
+      [&](const auto& parameter) { return parameter.symbol_id == symbol.id; });
+  if (declaration == function.parameter_declarations.end() ||
+      declaration->scope_id != symbol.scope) {
+    append_model_mismatch(
+        diagnostics, use.range,
+        "Resolved Parameter address has no current declaration record.");
+    return;
+  }
+  const auto& operand = *use.address_operand;
+  if (declaration->role == ParameterDeclarationRole::EntryInput &&
+      (operand.access == checker::OperandAccess::Write ||
+       operand.access == checker::OperandAccess::ReadWrite ||
+       operand.direction == ParameterDirection::Return)) {
+    append_parameter_address_intrinsic(
+        diagnostics, intrinsic_causes,
+        {
+            .kind = checker::CheckDiagnosticKind::RuleViolation,
+            .range = operand.instruction_range,
+            .message =
+                "Entry input .param storage is read-only for this operand.",
+        });
+    return;
+  }
+  const bool materialized =
+      use.address_resolution_policy ==
+          checker::AddressSymbolResolutionPolicy::MaterializeDeviceParameter &&
+      !function.is_entry &&
+      (symbol.kind == binding::SymbolKind::InputParameter ||
+       symbol.kind == binding::SymbolKind::ReturnParameter);
+  const auto effective =
+      materialized ? MemoryStateSpace::Local : MemoryStateSpace::Parameter;
+  if (operand.selected_space && *operand.selected_space != effective) {
+    append_parameter_address_intrinsic(
+        diagnostics, intrinsic_causes,
+        {
+            .kind = checker::CheckDiagnosticKind::AddressStateSpaceMismatch,
+            .range = use.range,
+            .message = fmt::format(
+                "Address operand '{}' has effective .{} state space but the "
+                "instruction requires .{}.",
+                operand.field, parameter_address_space_name(effective),
+                parameter_address_space_name(*operand.selected_space)),
+        });
+  }
+  if (!operand.allowed_spaces.empty() &&
+      !std::ranges::contains(operand.allowed_spaces, effective)) {
+    append_parameter_address_intrinsic(
+        diagnostics, intrinsic_causes,
+        {
+            .kind = checker::CheckDiagnosticKind::AddressStateSpaceMismatch,
+            .range = use.range,
+            .message = fmt::format(
+                "Address operand '{}' has effective .{} state space, which "
+                "this instruction operand does not accept.",
+                operand.field, parameter_address_space_name(effective)),
+        });
+  }
+}
+
 /** Compare cached stack ownership to the actual containing module function. */
 struct StackContextObserver final : detail::IReferenceObserver {
   /** Borrowed containing function, valid throughout immediate traversal. */
@@ -1530,10 +1709,10 @@ struct StackContextObserver final : detail::IReferenceObserver {
 };
 
 /** Revalidate operand identities; calls_only limits recursion preflight to actual calls. */
-void check_module_references(const ResolvedModule& module,
-                             const ResolvedFunction& function,
-                             checker::CheckDiagnostics& diagnostics,
-                             bool calls_only = false) {
+void check_module_references(
+    const ResolvedModule& module, const ResolvedFunction& function,
+    checker::CheckDiagnostics& diagnostics, bool calls_only = false,
+    std::span<checker::CheckDiagnostics> intrinsic_causes = {}) {
   std::vector<ModuleReferenceUse> uses;
   for (size_t index = 0; index < function.body.size(); ++index) {
     if (!function.body[index] ||
@@ -1543,7 +1722,7 @@ void check_module_references(const ResolvedModule& module,
                                        function.instruction_ranges[index]);
     function.body[index]->visit_references(stack_context);
     ReferenceCollector collector(uses, function.instruction_ranges[index],
-                                 diagnostics);
+                                 diagnostics, index);
     function.body[index]->visit_references(collector);
   }
   for (const auto& use : uses) {
@@ -1651,8 +1830,15 @@ void check_module_references(const ResolvedModule& module,
       append_model_mismatch(
           diagnostics, use.range,
           "Resolved module operand has an invalid parameterized member index.");
+      continue;
     }
+    const auto before_address = diagnostics.size();
     check_address_symbol_binding(*symbol, use, function, module, diagnostics);
+    if (diagnostics.size() == before_address && use.address_operand &&
+        use.address_operand->instruction_index < intrinsic_causes.size())
+      check_parameter_address_operand(
+          *symbol, use, function, diagnostics,
+          intrinsic_causes[use.address_operand->instruction_index]);
   }
 }
 
@@ -4347,6 +4533,9 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     }
   }
   for (const auto& function : module.functions) {
+    /** Exact intrinsic causes by instruction, never populated by full checks. */
+    std::vector<checker::CheckDiagnostics> address_intrinsic_causes(
+        function.body.size());
     const auto* symbol = owned_symbol(module, function.symbol_id);
     if (symbol == nullptr || symbol->kind != binding::SymbolKind::Function ||
         symbol->name != function.name ||
@@ -4425,7 +4614,8 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     check_resource_contracts(function, diagnostics);
     check_control_contracts(module, function, diagnostics);
     if (complete_instruction_provenance) {
-      check_module_references(module, function, diagnostics);
+      check_module_references(module, function, diagnostics, false,
+                              address_intrinsic_causes);
       check_tcgen_cta_groups(function, diagnostics);
       check_typed_call_literals(module, function, signatures,
                                 parameter_properties, diagnostics);
@@ -4481,7 +4671,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
         check_function_contract_availability(function, *target, diagnostics);
         if (complete_instruction_provenance)
           check_instruction_body(function, *target, region->texture_mode,
-                                 diagnostics);
+                                 diagnostics, address_intrinsic_causes);
       }
     }
   }
@@ -4572,12 +4762,25 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
   check_register_arrays(module, diagnostics);
   check_storage_declarations(module, diagnostics);
   check_opaque_storage(module, version, diagnostics);
+  /** Owned per-function/per-instruction causes, immutable during full checks. */
+  std::vector<std::vector<checker::CheckDiagnostics>> address_intrinsic_causes(
+      module.functions.size());
   for (const auto& function : module.functions) {
+    auto& intrinsic_causes =
+        address_intrinsic_causes[&function - module.functions.data()];
+    intrinsic_causes.resize(function.body.size());
     check_signature(function.contract.signature, function.range, diagnostics);
     check_function_parameters(module, function, diagnostics);
     check_function_contract_integrity(function, diagnostics);
     check_opaque_entry_parameters(module, function, version, diagnostics);
     check_entry_parameter_size(function, version, diagnostics);
+    if (function.instruction_ranges.size() == function.body.size())
+      check_module_references(module, function, diagnostics, false,
+                              intrinsic_causes);
+    else
+      append_model_mismatch(
+          diagnostics, function.range,
+          "Resolved function instruction provenance does not match its body.");
   }
   /** Replacement source selects one texturing mode for every target region. */
   std::optional<TextureMode> explicit_texture_mode;
@@ -4749,7 +4952,8 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
                            *active_target, resource.range,
                            resource_name(resource.kind));
       check_function_register_formals(*owned, *active_target, diagnostics);
-      check_instruction_body(*owned, *active_target, texture_mode, diagnostics);
+      check_instruction_body(*owned, *active_target, texture_mode, diagnostics,
+                             address_intrinsic_causes[index]);
     }
   }
   if (diagnostics.empty())

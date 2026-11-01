@@ -1693,3 +1693,23 @@ can derive an Entry frame qualifier from a fixed plain modifier; that frame
 fact is validated separately and does not change the fixed modifier identity.
 Existing frame, readonly, declaration, source identity, and Shared/atomic
 qualifier guards continue to apply.
+
+Current-owned Parameter address checks run before missing version/target context
+can skip instruction validation, in both `validateModule` overloads. Exact
+variant/layout operand descriptors provide closed address-space domains and
+current associated state-space equality. Empty domains stay unconstrained;
+unknown runtime register pointees are not inferred. Device formal address
+materialization still uses its existing policy and may produce Local space.
+Known entry inputs cannot supply an explicitly writable operand or a Return
+parameter operand. `OperandAccess::Read` describes operand value access and
+never classifies memory effects; MOV address acquisition and tensor-map reads
+remain legal.
+
+`detail::IReferenceObserver::operand_context` is an appended default no-op
+virtual callback. A nonnull descriptor brackets the immediately following
+address-bearing top-level payload callback; nullptr resets the context.
+Descriptors and spans are borrowed synchronously. Collectors copy needed
+scalar/domain facts and retain no borrowed descriptor. Existing payload
+callbacks and their order stay unchanged. Existing derived source observers
+need no new override, but the added virtual slot changes ABI: rebuild observers
+and producer libraries against matching headers.

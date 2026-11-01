@@ -470,8 +470,14 @@ TEST(ResolvedModule, ChecksGenericLoadStoreAddressStateSpacePolicy) {
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto& ast = *parsed_module_1;
-  const auto resolved = resolveModule(ast);
+  // Payload-only resolution lets the checker tests inspect deliberately invalid addresses.
+  EXPECT_FALSE(resolveModule(ast));
+  const auto resolved = resolveModuleOnly(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  EXPECT_FALSE(
+      validateModule(*resolved, ModuleValidationPolicy::AvailableContext));
+  EXPECT_FALSE(
+      validateModule(ast, *resolved, ModuleValidationPolicy::AvailableContext));
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 12u);
   const checker::Context generic_context{
@@ -1268,8 +1274,14 @@ TEST(ResolvedModule, RejectsParamAddressThroughExplicitGlobalLoad) {
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto& ast = *parsed_module_1;
-  const auto resolved = resolveModule(ast);
+  // Payload-only resolution lets the checker tests inspect deliberately invalid addresses.
+  EXPECT_FALSE(resolveModule(ast));
+  const auto resolved = resolveModuleOnly(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  EXPECT_FALSE(
+      validateModule(*resolved, ModuleValidationPolicy::AvailableContext));
+  EXPECT_FALSE(
+      validateModule(ast, *resolved, ModuleValidationPolicy::AvailableContext));
   const auto& load = *resolved->functions.front().body.front();
   const auto checked = load.check(checker::Context{
       .target = {.ptx_version = {1, 0}, .sm_version = 0},
@@ -2088,9 +2100,15 @@ TEST(ResolvedModule, PreservesDirectDeviceParameterAddressSpace) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto& ast = *parsed_module_1;
 
-  const auto resolved = resolveModule(ast);
+  // Payload-only resolution lets the checker tests inspect deliberately invalid addresses.
+  EXPECT_FALSE(resolveModule(ast));
+  const auto resolved = resolveModuleOnly(ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  EXPECT_FALSE(
+      validateModule(*resolved, ModuleValidationPolicy::AvailableContext));
+  EXPECT_FALSE(
+      validateModule(ast, *resolved, ModuleValidationPolicy::AvailableContext));
   const auto& address = dynamic_cast<const LdGenericScalar&>(
                             *resolved->functions.front().body.front())
                             .address.value;

@@ -212,3 +212,11 @@ source-aware validation 使用所提供 AST，AST-free validation 使用 owned r
 小宽度 `.param` formal，以及传给匹配 `.param` 的小 register actual，仍合法。
 
 其余条件合法的 scalar F16 Reg 与 Param input 共用 numeric literal 转换，覆盖 direct 及 metadata-backed indirect call。浮点 1.5 或等值 F64 expression 生成 F16 word 0x3e00；原 lexical／转换前 source 保留用于 owned 重算。现代 Register-formal minimum width 仍独立拒绝 scalar Reg F16；已建立的 nonstack legacy call 与 partial AvailableContext 遵循既有 gate。Strict missing context 及 scalar-to-vector no-splat 保留；不增加 packed F16x2 构造。
+
+Parameter address 验证还在 context 可跳过之前重新关联当前 symbol ID、lexical
+scope、compact member 和 declaration record。已知 Parameter 对象的 effective
+space 必须属于非空 operand domain，并与关联的当前 state-space modifier 一致。
+entry input 的 readonly 检查仅使用显式 Write/ReadWrite operand 要求或既有
+Return parameter constraint，不把 DeviceInput 一概视为 readonly。诊断仅合并
+局部完全相同的 address cause，保留其他失败；此检查不增加 source form 权限，
+也不替代完整 target-aware 验证。

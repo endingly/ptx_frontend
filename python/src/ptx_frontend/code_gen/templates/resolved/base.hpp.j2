@@ -38,6 +38,13 @@ struct IReferenceObserver {
   virtual void {{ callback.name }}(const {{ callback.cpp_type }}&, std::span<const SourceRange>,
       checker::AddressSymbolResolutionPolicy) {}{% if not loop.last %}
 {% endif %}{% endfor %}
+  /** Bracket the next top-level operand callback with synchronous borrowed metadata.
+   * nullptr resets the context. Neither the descriptor nor its spans may escape
+   * the bracket. Existing observers may ignore this optional metadata hook.
+   * Adding this virtual slot requires rebuilding observers with matching libraries.
+   */
+  virtual void operand_context(const checker::OperandDescriptor*,
+      std::optional<MemoryStateSpace>) {}
 };
 }  // namespace detail
 

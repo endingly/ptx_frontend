@@ -23,7 +23,12 @@ def _write(output_path: Path, template: str, model: Any) -> None:
 
 def _emit_visit(entry: GenerationInstruction, variant: Any, backend: Any) -> str:
     """Render the supported ordered reference visitor fragment."""
-    return render_template('resolved/fragment_visit.j2', build_visit(entry, variant, backend))
+    indices = [index for index, candidate in enumerate(entry.resolved.variants)
+               if candidate.variant_id == variant.variant_id and candidate == variant]
+    if len(indices) != 1:
+        raise ValueError("reference visitor variant is not an exact entry variant")
+    return render_template('resolved/fragment_visit.j2',
+                           build_visit(entry, variant, backend, indices[0]))
 
 
 def _emit_construction_cases(entry: GenerationInstruction, variants: Iterable[Any], backend: Any, *, borrowed_fields: bool) -> str:

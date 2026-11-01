@@ -25,6 +25,8 @@ class ReferenceCallback:
     method: str
     member: str
     policy: str
+    operand_descriptor: str | None = None
+    selected_space: str = "std::nullopt"
 
 @dataclass(frozen=True)
 class VisitLayout:
@@ -172,7 +174,36 @@ def _wgmma_construction_helper_name(shard_index: int) -> str:
     return f"wgmma_construct_{shard_index:03d}"
 
 
-def build_visit(entry: GenerationInstruction, variant: ResolvedVariant, backend: CodegenUnit) -> VisitModel:
+def _reference_address_context(
+    entry: GenerationInstruction, variant: ResolvedVariant,
+    layout: ResolvedOperandLayout, field: ResolvedField,
+    variant_index: int, layout_index: int, field_index: int,
+) -> tuple[str | None, str]:
+    """Associate current address payloads with existing exact checker metadata."""
+
+    address_kinds = {ResolvedValueKind.ADDRESS, ResolvedValueKind.MOV_SOURCE,
+                     ResolvedValueKind.TENSOR_OPERAND, ResolvedValueKind.SYMBOL}
+    if field.value_kind not in address_kinds:
+        return None, "std::nullopt"
+    binding = layout.bindings[field_index]
+    if binding.target_field_id != field.name:
+        raise ValueError(f"{variant.variant_id}: operand descriptor order mismatch")
+    selected = "std::nullopt"
+    if binding.state_space_modifier_field_id is not None:
+        modifier = next((item for item in variant.modifier_fields
+                         if item.name == binding.state_space_modifier_field_id), None)
+        if modifier is None or modifier.value_kind is not ResolvedValueKind.MEMORY_STATE_SPACE:
+            raise ValueError(f"{variant.variant_id}: unsupported address state-space association")
+        selected = modifier.name
+        if modifier.storage is not ResolvedFieldStorage.STATIC_CONSTANT:
+            selected += ".value"
+    prefix = entry.specification.opcode.replace(".", "_")
+    descriptor = (f"&{prefix}_resolved_descriptor().variants[{variant_index}]"
+                  f".operand_layouts[{layout_index}].bindings[{field_index}]")
+    return descriptor, selected
+
+
+def build_visit(entry: GenerationInstruction, variant: ResolvedVariant, backend: CodegenUnit, variant_index: int) -> VisitModel:
     """Project ordered reference observer calls without rendering source."""
     slots = operand_slots(variant, backend)
     layouts = []
@@ -180,13 +211,15 @@ def build_visit(entry: GenerationInstruction, variant: ResolvedVariant, backend:
         validity = tuple(f"{slot.member_name}.has_value() == {'true' if index in slot.layout_indices else 'false'}"
                          for slot in slots if slot.optional)
         callbacks = []
-        for field in layout.fields:
+        for field_index, field in enumerate(layout.fields):
             if field.value_kind not in REFERENCE_VALUE_KINDS:
                 continue
             slot = operand_slot_for_field(slots, field, backend)
             callbacks.append(ReferenceCallback(method_name(field_value_cpp_type(field, backend=backend)),
                 f"(*{slot.member_name})" if slot.optional else slot.member_name,
-                _address_symbol_resolution_policy(field, layout)))
+                _address_symbol_resolution_policy(field, layout),
+                *_reference_address_context(entry, variant, layout, field,
+                                            variant_index, index, field_index)))
         layouts.append(VisitLayout(index, validity, tuple(callbacks)))
     return VisitModel(form_name(entry, variant), tuple(layouts))
 
@@ -242,7 +275,7 @@ def build_resolve(entry: GenerationInstruction, backend: CodegenUnit, context: G
 def build_form_methods(entry: GenerationInstruction, indexed_variants: Iterable[tuple[int, ResolvedVariant]], backend: CodegenUnit) -> tuple[FormMethodsModel, ...]:
     """Preserve global descriptor indices while composing exact-form methods."""
     return tuple(FormMethodsModel(form_name(entry, variant), build_check(entry, variant, index, backend),
-        build_visit(entry, variant, backend)) for index, variant in indexed_variants)
+        build_visit(entry, variant, backend, index)) for index, variant in indexed_variants)
 
 
 def build_descriptor_getters(entry: GenerationInstruction, shard_count: int) -> DescriptorGettersModel:

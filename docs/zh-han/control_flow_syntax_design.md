@@ -184,3 +184,19 @@ region；已知 legacy context 不应用该下限，缺失 context 在 partial c
 Module/function copy 与 instruction clone 保留 prototype identity。该 metadata-integrity
 规则独立于 formal ABI width、feature availability 与 supplied-source association；
 不重建 source spelling/history 来检查该 flag。
+
+## 静态 recursion 边界
+
+已知 local call cycle 要求 PTX 2.0 与 SM 20；acyclic device function 在支持的旧 context
+仍合法。两个 module validator 均重算私有 current typed may-call graph，按 canonical local
+device definition 建图，包含 unused definition。实际 direct call 是 exact edge；只有实际
+consumed 且验证过的 finite `.calltargets`/call-table alternative 才是 candidate edge。
+Unused metadata 与 implicit-zero table tail 不建边。依赖 finite alternative 的 cycle 是
+statically possible recursion，不证明会执行。Predicated call 仍是 may edge；不做 CFG、
+predicate feasibility、stack execution 或 dataflow analysis。
+
+参与 caller 使用 selected region，source-aware API 则使用 supplied active context。
+已知旧 PTX 或可识别低 SM 独立拒绝，不能被另一缺失事实遮蔽；只有未知 prerequisite 可在
+`AvailableContext` 中延后。Strict context 与 unknown-target 行为不变。Prototype-only、external
+callee 和 dynamic signature-only call 是 open boundary；不伪造返边，也不因 strict 而一律拒绝。
+成功只表示 modeled check 通过，不是跨这些 open edge 的 whole-program acyclic 证明。

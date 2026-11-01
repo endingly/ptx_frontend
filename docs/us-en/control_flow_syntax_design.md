@@ -235,3 +235,23 @@ whose types and widths are otherwise valid. Module/function copies and instructi
 clones preserve prototype identity. This metadata-integrity rule is independent
 of formal ABI width, feature availability and supplied-source association; no
 source spelling/history is reconstructed to validate the flag.
+
+## Static recursion boundary
+
+Known local call cycles require PTX 2.0 and SM 20. Acyclic device functions remain
+legal on supported older contexts. Both module validators recompute a private
+current typed may-call graph over canonical local device definitions, including
+unused definitions. Actual direct calls create exact edges; only consumed,
+validated finite `.calltargets` or call-table alternatives create candidate edges.
+Unused metadata and implicit zero table tails create no edges. A cycle requiring
+a finite alternative is statically possible recursion, not proof it executes.
+Predicated calls remain may-call edges; no CFG, predicate feasibility, stack
+execution or dataflow analysis is performed.
+
+Each participating caller uses its selected region, or supplied active context
+in the source-aware API. Known old PTX or recognized low SM rejects independently
+of the other missing fact; unknown prerequisites alone may defer in
+`AvailableContext`. Strict context and unknown-target handling remain unchanged.
+Prototype-only/external callees and dynamic signature-only calls are open
+boundaries. They gain no fabricated return edges and no blanket strict rejection;
+success means modeled checks passed, not whole-program acyclicity across them.

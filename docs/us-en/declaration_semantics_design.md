@@ -125,6 +125,12 @@ function definitions or prototypes before storage metadata or a future function
 metadata backend consumes the value. Placement, PTX-version, and target checks
 remain separate declaration rules.
 
+Recursion legality is a module-validation check over current typed calls after
+binding, visibility, signature and table joins. `resolveModuleOnly` remains a
+transport operation; its success alone does not validate recursion support.
+PTX 2.0 / SM 20 is required for identified direct or finite-candidate cycles;
+open calls are not certified acyclic. See [control flow](control_flow_syntax_design.md).
+
 ## Redeclarations
 
 Binding first maps same-name module items to a stable `SymbolId`; this pass then

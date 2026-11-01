@@ -471,6 +471,16 @@ inline attribute 要求 PTX 7.2，无架构下限。缺少 version 时 `Availabl
 availability 判断，但不能推迟 numeric、identity 或 precedence 错误。
 这不表示 instruction attachment、解码 line table 或 string-address execution。
 
+私有 iterative SCC check 在每次 validation 重算 current canonical local-definition
+call relation。Direct cycle 是 syntactic recursion；依赖实际 consumed finite target-set/table
+alternative 的 cycle 是 statically possible recursion。每个参与 caller 的 selected context
+均需已知 PTX 2.0 / SM 20；source-aware 以 supplied context 检查同一 current owned graph，
+原始 acyclic AST 不能遮蔽 coherent current callee edit。Copy/clone 不保留陈旧 graph state。
+Call identity/ABI/table join 先于建图，edge collection 不遍历 non-call instruction 的 lane。
+不保留 public graph/cache。External/prototype/dynamic open edge 不提供 whole-program
+acyclic 证明，`AvailableContext` 延后也不是 acyclic certificate；不建模 CFG 或 runtime
+stack/linker execution。
+
 Canonical symbol、storage occurrence record 与 function contract 中的 current weak
 linkage 对已知版本要求 PTX 3.1，不依赖 target context。每个 Weak symbol（包含
 symbol-only function）与 storage record 使用既有全部 region 版本相等约束保证的 common

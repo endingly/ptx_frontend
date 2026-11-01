@@ -608,7 +608,7 @@ numeric packed `.f16x2` literal representation。
 | M6-I07 | ✅ | function-local call `.param` | scope/lifetime/direction/address |
 | M6-I08 | ✅ | call-context semantics | `::entry/::func`、adjacency、predication |
 | M6-C01 | ✅ | ABI checker | arity/order/type/shape/literal |
-| M6-C02 | ✅ | direct-call regression | prototype/extern/recursive/error |
+| M6-C02 | ✅ | direct-call regression | prototype/extern/recursive/error；current local may-call cycles PTX 2.0/SM20，open boundary 非 whole-program acyclic proof |
 | M6-C03 | ✅ | docs/package regression | installed consumer 闭环 |
 
 ## M7：Indirect call 与 control-flow metadata

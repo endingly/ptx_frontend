@@ -576,6 +576,19 @@ defer availability under `AvailableContext`, never numeric, identity or preceden
 failures. No instruction attachment, decoded line table or string-address execution
 is implied.
 
+A private iterative SCC check recomputes current canonical local-definition call
+relations on each validation. Direct cycles are syntactic recursion; cycles that
+need consumed finite target-set/table alternatives are statically possible
+recursion. Both require independently known PTX 2.0 / SM 20 at every participating
+caller's selected context; source-aware validation substitutes supplied context
+while keeping the current owned graph. An original acyclic AST cannot mask a
+coherent current callee edit. Copies and cloned calls retain no stale graph state.
+Call identity/ABI/table joins precede the graph, and non-call instruction lanes
+are not walked for edge collection. No public graph/cache is retained. Open
+external/prototype/dynamic edges preclude whole-program acyclicity claims, and
+`AvailableContext` deferral is not an acyclic certificate. This is no CFG or
+runtime stack/linker execution model.
+
 Current weak linkage in canonical symbols, storage occurrence records and
 function contracts requires known PTX 3.1, independently of target context.
 Every Weak symbol, including a symbol-only function, and storage record uses the

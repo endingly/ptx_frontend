@@ -98,6 +98,11 @@ target check 仍是独立的 declaration rule。
 
 ## Redeclaration
 
+Recursion legality 在 module validation 中、binding/visibility/signature/table join 后
+检查 current typed call。`resolveModuleOnly` 仍是 transport，成功本身不验证 recursion
+support。已识别 direct/finite-candidate cycle 要求 PTX 2.0 / SM 20；open call 不被认证为
+acyclic。参见 [control flow](control_flow_syntax_design.md)。
+
 module scope 的同名 item 先由 binding 合并到稳定的 `SymbolId`，再由本 pass 判断是否合法：
 
 - 多个签名相同的 `.extern` variable declaration 合法；

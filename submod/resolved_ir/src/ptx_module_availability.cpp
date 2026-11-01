@@ -7,6 +7,7 @@
 #include <ptx_frontend/resolved_ir/model/tensor_memory/tcgen05.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
+#include "ptx_call_graph.hpp"
 #include "ptx_call_parameter_transfers.hpp"
 #include "ptx_call_tables.hpp"
 #include "ptx_call_target_visibility.hpp"
@@ -71,6 +72,8 @@ enum class DirectiveAvailability {
   BranchTargets,
   CallTargets,
   Weak,
+  Recursion,
+  PossibleRecursion,
   Noreturn,
   AbiPreserve,
   AbiPreserveControl,
@@ -79,6 +82,9 @@ enum class DirectiveAvailability {
 checker::AvailabilityDescriptor directive_availability(
     DirectiveAvailability directive) {
   switch (directive) {
+    case DirectiveAvailability::Recursion:
+    case DirectiveAvailability::PossibleRecursion:
+      return availability({2, 0}, 20);
     case DirectiveAvailability::Weak:
       return availability({3, 1});
     case DirectiveAvailability::Alias:
@@ -1523,13 +1529,15 @@ struct StackContextObserver final : detail::IReferenceObserver {
   }
 };
 
-/** Revalidate identities embedded in generated instruction operand payloads. */
+/** Revalidate operand identities; calls_only limits recursion preflight to actual calls. */
 void check_module_references(const ResolvedModule& module,
                              const ResolvedFunction& function,
-                             checker::CheckDiagnostics& diagnostics) {
+                             checker::CheckDiagnostics& diagnostics,
+                             bool calls_only = false) {
   std::vector<ModuleReferenceUse> uses;
   for (size_t index = 0; index < function.body.size(); ++index) {
-    if (!function.body[index])
+    if (!function.body[index] ||
+        (calls_only && !instruction_if<CallDirect>(function.body[index])))
       continue;
     StackContextObserver stack_context(function, diagnostics,
                                        function.instruction_ranges[index]);
@@ -3420,10 +3428,11 @@ void check_opaque_storage(const ResolvedModule& module,
   }
 }
 
-/** Check metadata declarations against their owning function's binding table. */
+/** Check metadata ownership; calls_only omits unrelated branch metadata during recursion preflight. */
 void check_control_contracts(const ResolvedModule& module,
                              const ResolvedFunction& function,
-                             checker::CheckDiagnostics& diagnostics) {
+                             checker::CheckDiagnostics& diagnostics,
+                             bool calls_only = false) {
   const auto expect = [&](binding::SymbolId id, binding::SymbolKind kind,
                           binding::ScopeId scope, SourceRange range,
                           std::string_view subject) -> const binding::Symbol* {
@@ -3438,20 +3447,21 @@ void check_control_contracts(const ResolvedModule& module,
     }
     return symbol;
   };
-  for (const auto& branches : function.branch_target_sets) {
-    const auto* metadata =
-        expect(branches.symbol_id, binding::SymbolKind::BranchTargetSet,
-               function.declaration_scope, branches.range, ".branchtargets");
-    if (metadata != nullptr && branches.scope_id != metadata->scope) {
-      append_model_mismatch(
-          diagnostics, branches.range,
-          "Resolved .branchtargets has a mismatched owner scope.");
+  if (!calls_only)
+    for (const auto& branches : function.branch_target_sets) {
+      const auto* metadata =
+          expect(branches.symbol_id, binding::SymbolKind::BranchTargetSet,
+                 function.declaration_scope, branches.range, ".branchtargets");
+      if (metadata != nullptr && branches.scope_id != metadata->scope) {
+        append_model_mismatch(
+            diagnostics, branches.range,
+            "Resolved .branchtargets has a mismatched owner scope.");
+      }
+      for (const auto& target : branches.targets) {
+        expect(target.symbol_id, binding::SymbolKind::Label,
+               function.declaration_scope, target.range, "branch target");
+      }
     }
-    for (const auto& target : branches.targets) {
-      expect(target.symbol_id, binding::SymbolKind::Label,
-             function.declaration_scope, target.range, "branch target");
-    }
-  }
   for (const auto& targets : function.call_target_sets) {
     const auto* metadata =
         expect(targets.symbol_id, binding::SymbolKind::CallTargetSet,
@@ -3894,7 +3904,7 @@ void check_call_tables(const ResolvedModule& module,
   };
   for (const auto& function : module.functions) {
     for (size_t index = 0; index < function.body.size(); ++index) {
-      if (!function.body[index])
+      if (!instruction_if<CallDirect>(function.body[index]))
         continue;
       TableObserver observer;
       function.body[index]->visit_references(observer);
@@ -3992,6 +4002,102 @@ void check_call_tables(const ResolvedModule& module,
                                   "storage or function signatures."
                                 : reconstructed.error());
   }
+}
+
+/** Context failures do not prevent analysis, but malformed joins cannot yield cycle witnesses. */
+bool has_call_graph_structure_error(
+    const checker::CheckDiagnostics& diagnostics) {
+  return std::ranges::any_of(diagnostics, [](const auto& diagnostic) {
+    return diagnostic.kind !=
+               checker::CheckDiagnosticKind::UnsupportedAvailability &&
+           diagnostic.kind !=
+               checker::CheckDiagnosticKind::MissingValidationContext &&
+           diagnostic.kind != checker::CheckDiagnosticKind::UnknownTarget;
+  });
+}
+
+/** Reuse current context-free call joins before graph analysis in either entry point. */
+void check_call_graph_joins(const ResolvedModule& module,
+                            checker::CheckDiagnostics& diagnostics) {
+  const auto signatures = build_signature_index(module, diagnostics);
+  const auto properties = build_parameter_properties(module);
+  check_call_tables(module, diagnostics);
+  for (const auto& error : detail::check_direct_call_visibility(module))
+    append_model_mismatch(diagnostics, error.range, error.message);
+  for (const auto& function : module.functions) {
+    check_signature(function.contract.signature, function.range, diagnostics);
+    check_function_contract_integrity(function, diagnostics);
+    const auto scope = module.symbols.functionScope(function.range);
+    if (!scope || *scope != function.declaration_scope ||
+        module.symbols.scope(*scope).owner != function.symbol_id) {
+      append_model_mismatch(
+          diagnostics, function.range,
+          "Call graph function has no actual declaration occurrence.");
+      continue;
+    }
+    const bool complete =
+        function.body.size() == function.instruction_ranges.size() &&
+        function.body.size() == function.instruction_opcodes.size() &&
+        std::ranges::all_of(function.body, [](const auto& instruction) {
+          return bool(instruction);
+        });
+    if (!complete) {
+      append_model_mismatch(
+          diagnostics, function.range,
+          "Call graph requires complete current instruction provenance.");
+      continue;
+    }
+    check_control_contracts(module, function, diagnostics, true);
+    check_module_references(module, function, diagnostics, true);
+    check_typed_call_literals(module, function, signatures, properties,
+                              diagnostics);
+  }
+}
+
+/** Recompute an ephemeral graph only after the existing current joins are admissible. */
+detail::CallGraphAnalysis current_call_graph(
+    const ResolvedModule& module, checker::CheckDiagnostics& diagnostics) {
+  if (has_call_graph_structure_error(diagnostics))
+    return {};
+  auto graph = detail::analyze_call_cycles(module);
+  diagnostics.insert(diagnostics.end(), graph.diagnostics.begin(),
+                     graph.diagnostics.end());
+  return graph;
+}
+
+/** Keep original diagnostics intact and append each new graph-join failure once. */
+void append_call_graph_diagnostics(checker::CheckDiagnostics& destination,
+                                   const checker::CheckDiagnostics& additions) {
+  const auto key = [](const checker::CheckDiagnostic& diagnostic) {
+    return std::tuple{diagnostic.kind,
+                      diagnostic.range.start.line,
+                      diagnostic.range.start.column,
+                      diagnostic.range.end.line,
+                      diagnostic.range.end.column,
+                      diagnostic.message};
+  };
+  std::set<decltype(key(checker::CheckDiagnostic{}))> known;
+  for (const auto& diagnostic : destination)
+    known.insert(key(diagnostic));
+  for (const auto& diagnostic : additions)
+    if (known.insert(key(diagnostic)).second)
+      destination.push_back(diagnostic);
+}
+
+/** Apply independently known recursion minima at each actual participating call. */
+void check_recursive_calls(const std::vector<detail::RecursiveCall>& calls,
+                           std::optional<checker::PtxVersion> version,
+                           const std::optional<base::TargetProfile>& profile,
+                           DirectiveAvailabilityKeys& emitted,
+                           checker::CheckDiagnostics& diagnostics) {
+  for (const auto& call : calls)
+    append_minimum_requirement(diagnostics, emitted,
+                               call.possible
+                                   ? DirectiveAvailability::PossibleRecursion
+                                   : DirectiveAvailability::Recursion,
+                               version, profile, call.range,
+                               call.possible ? "Statically possible recursion"
+                                             : "Syntactic recursion");
 }
 
 /** Build checker target context from an owned source region rather than syntax. */
@@ -4379,6 +4485,24 @@ checker::CheckResult validateModule(const ResolvedModule& module,
       }
     }
   }
+  checker::CheckDiagnostics graph_joins;
+  check_call_graph_joins(module, graph_joins);
+  const auto call_graph = current_call_graph(module, graph_joins);
+  append_call_graph_diagnostics(diagnostics, graph_joins);
+  DirectiveAvailabilityKeys recursion_emitted;
+  for (size_t i = 0; i < call_graph.recursive_calls.size(); ++i) {
+    const auto& function = module.functions[i];
+    if (!function.source_region ||
+        *function.source_region >= module.header.regions.size())
+      continue;
+    const auto& region = module.header.regions[*function.source_region];
+    const auto profile =
+        region.target_options.empty()
+            ? std::optional<base::TargetProfile>{}
+            : base::find_target_profile(region.target_options.front());
+    check_recursive_calls(call_graph.recursive_calls[i], region.version,
+                          profile, recursion_emitted, diagnostics);
+  }
   if (diagnostics.empty())
     return {};
   return std::unexpected(std::move(diagnostics));
@@ -4528,6 +4652,10 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
         .message = diagnostic.message,
     });
   }
+  checker::CheckDiagnostics graph_joins;
+  check_call_graph_joins(module, graph_joins);
+  const auto call_graph = current_call_graph(module, graph_joins);
+  append_call_graph_diagnostics(diagnostics, graph_joins);
   std::optional<checker::TargetInfo> active_target;
   /** Recognized target facts remain usable when no PTX version is supplied. */
   std::optional<base::TargetProfile> active_profile;
@@ -4594,6 +4722,10 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
       const auto* owned = source_function(*function, module);
       check_function_weak_availability(module, *owned, version, diagnostics);
       DirectiveAvailabilityKeys emitted;
+      const auto index = static_cast<size_t>(owned - module.functions.data());
+      if (index < call_graph.recursive_calls.size())
+        check_recursive_calls(call_graph.recursive_calls[index], version,
+                              active_profile, emitted, diagnostics);
       check_target_list_availability(*owned, version, active_profile, emitted,
                                      diagnostics);
       check_prototype_availability(*owned, version, active_profile, emitted,

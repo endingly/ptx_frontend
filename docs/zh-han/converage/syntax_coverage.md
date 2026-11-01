@@ -104,7 +104,7 @@ feasibility、simulator execution 或 hardware behavior；`—` = 该阶段无�
 | `.explicitcluster` | D | T | T | — | Y | C / V | entry-only、零参数、PTX 7.8 modeled availability；target launch feasibility deferred |
 | `.extern` | D | E | E | Y | Y | C | 既有 linkage qualifier |
 | `.file` | D | T | T | Y | — | C | decimal/octal/hex uint64 identity；重复的规范化 ID 一律诊断；按源码顺序拥有 payload；file_size 在 current 与独立 supplied data 中检查完整 unsigned64 单叶（0 至 UINT64_MAX）；timestamp domain 不变；显式数值 metadata 要求 PTX >= 3.2（缺失 version 时 `AvailableContext` 延后检查；replacement AST 提供 version/metadata） |
-| `.func` | D | E | E | Y | Y | C | 既有 function node |
+| `.func` | D | E | E | Y | Y | C | Current local direct/consumed-finite may-call cycle 要求 PTX 2.0 / SM 20；包含 unused definition，open edge 非 acyclic proof；无 runtime stack/CFG |
 | `.global` | D | E | E | Y | Y | C | 既有 variable declaration |
 | `.local` | D | E | E | Y | Y | C | 既有 variable declaration |
 | `.loc` | D | T | T | Y | — | C | 拥有有序 full64 triple、prior-base inline reference 与独立 current/replacement metadata join；不做 attachment |

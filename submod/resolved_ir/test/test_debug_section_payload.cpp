@@ -236,7 +236,8 @@ TEST(DebugSectionPayload, JoinsForwardLabelsAcrossSameNameFragmentsOnly) {
       ".section .debug_info {.b32 end-begin begin: .b8 0}"
       ".section .debug_str {name: .b8 110,0}"
       ".section .debug_info {end: .b64 .debug_info-begin .b64 .debug_str}"
-      ".file 1 \"a.cu\"\n.entry kernel(){.loc 1 1 0, function_name name, "
+      ".file 1 \"a.cu\"\n.entry kernel(){.loc 1 1 0 .loc 1 1 0, function_name "
+      "name, "
       "inlined_at 1 1 0 ret;}";
   auto owned = section_owned(valid);
   ASSERT_TRUE(owned);
@@ -467,7 +468,7 @@ TEST(DebugSectionPayload,
   EXPECT_FALSE(validateModule(*lower, *owned));
   const std::string debug =
       ".version 9.3\n.target sm_90\n.file 1 \"a.cu\"\n.global .b8 name;"
-      ".section .debug_str {name: .b8 0}.entry kernel(){.loc 1 1 0, "
+      ".section .debug_str {name: .b8 0}.entry kernel(){.loc 1 1 0 .loc 1 1 0, "
       "function_name name, inlined_at 1 1 0 ret;}";
   auto labelled = section_owned(debug);
   ASSERT_TRUE(labelled);

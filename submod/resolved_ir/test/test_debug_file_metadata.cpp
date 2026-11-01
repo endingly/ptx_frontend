@@ -69,6 +69,7 @@ TEST(DebugFileMetadata, RetainsPayloadAndReferencesAfterSourceDestruction) {
 .file 02 "same\\name.cu"
 .section .debug_str { name: .b8 0; };
 .entry k() {
+.loc 0x2U 1 0
 .loc 1 1 0, function_name name, inlined_at 0x2U 1 0
 ret;
 }
@@ -103,10 +104,10 @@ ret;
       continue;
     ASSERT_TRUE(reference.target);
     EXPECT_EQ(reference.target->symbol,
-              references == 0 ? first.symbol_id : second.symbol_id);
+              references == 1 ? first.symbol_id : second.symbol_id);
     ++references;
   }
-  EXPECT_EQ(references, 2u);
+  EXPECT_EQ(references, 3u);
   EXPECT_TRUE(validateModule(*module));
   EXPECT_TRUE(
       validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));

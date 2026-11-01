@@ -1347,7 +1347,7 @@ begin:
 }
 .section .debug_info {end: .b8 -128,255}
 .section .debug_str {name: .b8 110,97,109,101,0}
-.entry kernel(){.loc 1 1 0, function_name name, inlined_at 1 1 0 ret;}
+.entry kernel(){.loc 1 1 0 .loc 1 1 0, function_name name, inlined_at 1 1 0 ret;}
 )ptx";
     ptx_frontend::PtxCstParser cst_parser(source);
     const auto cst = cst_parser.parseModule();
@@ -1418,8 +1418,54 @@ begin:
   return bool(ir::validateModule(assigned));
 }
 
+/** Verify installed owning locations retain full-width leaves and independent datasets. */
+bool checkInstalledDebugLocations() {
+  namespace ir = ptx_frontend::resolved_ir;
+  std::optional<ir::ResolvedModule> module;
+  {
+    const std::string source =
+        ".version 9.3\n.target sm_90\n.address_size 64\n"
+        ".file 18446744073709551615U \"a.cu\"\n"
+        ".section .debug_str { name: .b8 0; }\n.entry loc_kernel() {\n"
+        ".loc 18446744073709551615U 4294967296 0\n"
+        ".loc 18446744073709551615U 1 0, function_name name + "
+        "18446744073709551615U, "
+        "inlined_at 18446744073709551615U 4294967296 0\nret;\n}\n";
+    ptx_frontend::PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return false;
+    auto resolved = ir::resolveAndValidateModule(*ast);
+    if (!resolved)
+      return false;
+    module.emplace(std::move(*resolved));
+  }
+  auto copied = *module;
+  ir::ResolvedModule assigned;
+  assigned = copied;
+  auto moved = std::move(assigned);
+  const auto records = moved.symbols.debugLocations();
+  if (records.size() != 2 || !records[1].inline_context ||
+      records[0].base.file_index.text != "18446744073709551615U" ||
+      records[0].base.line_number.text != "4294967296" ||
+      records[1].inline_context->function_name_offset->text !=
+          "18446744073709551615U" ||
+      records[1].range.start.line <= 0 ||
+      records[1].inline_context->target.column_position.text != "0" ||
+      !ir::validateModule(moved) || !ir::validateModule(copied))
+    return false;
+  const std::string replacement =
+      ".version 9.3\n.target sm_90\n.address_size 64\n.file 2 \"b.cu\"\n"
+      ".entry loc_kernel() { .loc 2 4294967297 0 ret; }\n";
+  ptx_frontend::PtxSyntaxParser parser(replacement);
+  const auto ast = parser.parseModule();
+  return ast && ast.diagnostics.empty() && ir::validateModule(*ast, moved);
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledDebugLocations())
+    return 37;
   if (!checkInstalledDebugSections())
     return 36;
   if (!checkInstalledRequiredTcgenMasks())

@@ -1033,7 +1033,33 @@ struct SymbolTableBuilder {
     return result.table.references_.back();
   }
 
+  /** Copy the already parsed location once at its lexical reference visit. */
   void bindLoc(ScopeId scope, const syntax_ast::AstLocDirective& directive) {
+    DebugLocationDeclaration location{
+        .scope = scope,
+        .base = {{directive.file_index.text, directive.file_index.range},
+                 {directive.line_number.text, directive.line_number.range},
+                 {directive.column_position.text,
+                  directive.column_position.range}},
+        .range = directive.range,
+    };
+    if (directive.inline_context) {
+      const auto& context = *directive.inline_context;
+      location.inline_context = DebugLocationInlineContext{
+          .function_name_label = {context.function_name_label.syntax.text,
+                                  context.function_name_label.syntax.range},
+          .target = {{context.file_index.text, context.file_index.range},
+                     {context.line_number.text, context.line_number.range},
+                     {context.column_position.text,
+                      context.column_position.range}},
+          .range = context.range,
+      };
+      if (context.function_name_offset)
+        location.inline_context->function_name_offset =
+            DebugFileSourceLeaf{context.function_name_offset->text,
+                                context.function_name_offset->range};
+    }
+    result.table.debug_locations_.push_back(std::move(location));
     addMetadataReference(scope, ReferenceKind::DebugFile, directive.file_index);
     if (!directive.inline_context)
       return;

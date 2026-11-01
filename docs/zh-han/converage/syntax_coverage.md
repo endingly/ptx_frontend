@@ -16,7 +16,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | 单 instruction fragment | 部分支持 | predicate guard、opcode/modifier、普通 operand、address、普通 `.xyzw/.rgba` scalar component 与 brace lane、vector member/vector pack，以及 call/branch 专用 operand shape；call argument、address base 与 named-array index 中的 component 尚不支持 |
 | Module header | 支持子集 | `.version`、`.target`、`.address_size` 会 lower 为有序且 independent 于 AST 的 source-configuration region。每个 region 拥有 effective version、target-option spelling、address width 与 explicit/defaulted provenance；省略 address size 时拥有 PTX 的 32-bit default，而非 host property。已识别的 region 会提供 target-aware module validation，但不构成 hardware configuration 或 execution contract。 |
 | Debug file directive | 支持子集 | outermost `.file file_index "filename"` 与可选且成对的 `, timestamp, file_size`；decimal/octal/hex uint64 ID 在 debug-only namespace 中 binding，重复的规范化 ID 一律诊断（包括相同 metadata），symbol table 拥有 payload，overflow 会诊断；显式数值 metadata（包括 `0, 0`）要求 PTX ISA >= 3.2，不依赖 SM/debug option |
-| Debug location directive | 支持子集 | function/nested-block `.loc file line column` 的 decimal/octal/hex file ID 与成对 PTX 7.2 `function_name`/`inlined_at` payload 会验证已绑定 file ID 与 `.debug_str` section/label identity；不附着到 instruction，也不进入 Resolved IR |
+| Debug location directive | 支持子集 | function/nested-block `.loc file line column` 的 decimal/octal/hex file ID 与成对 PTX 7.2 `function_name`/`inlined_at` payload 会验证已绑定 file ID 与 `.debug_str` section/label identity；保存 owning SymbolTable record 并检查 modulewide preceding base triple，不生成可执行 instruction |
 | Debug section directive | 支持子集 | CST 保留 raw token/trivia 与 typed entry；拥有式 AST/module integer list、signed byte addend、single symbol 与同 section label difference 检查原始范围/locality/版本；`.debug_str` typed label 在 metadata namespace 绑定，链接后的 DWARF 值仍未知 |
 | Backend pragma directive | 支持子集 | module、`.entry` header 与 function/nested-block statement 的 `.pragma` 保留非空 comma-separated string list 到 CST/AST；pragma 不进入 binding 或 Resolved IR |
 | Kernel resource directive | 支持子集 | entry header 的 `.maxnreg n`、`.maxntid nx[,ny[,nz]]`、`.reqntid nx[,ny[,nz]]`、`.minnctapersm ncta`、`.reqnctapercluster nx[,ny[,nz]]`、零参数 `.explicitcluster` 与 `.maxclusterrank n` 进入专用 CST/AST，并以 normalized function-contract value 自主保存。declaration semantics 拒绝同一 entry 同时使用 `.maxntid` 与 `.reqntid`、`.reqnctapercluster` 与 `.maxclusterrank`；module validation 检查已建模 PTX/target minimum。launch feasibility、occupancy 与 physical resource allocation 仍不检查。 |
@@ -108,7 +108,7 @@ feasibility、simulator execution 或 hardware behavior；`—` = 该阶段无�
 | `.func` | D | E | E | Y | Y | C | 既有 function node |
 | `.global` | D | E | E | Y | Y | C | 既有 variable declaration |
 | `.local` | D | E | E | Y | Y | C | 既有 variable declaration |
-| `.loc` | D | T | T | Y | — | C | decimal/octal/hex file ID 与 `.debug_str` function-name identity；不做 attachment |
+| `.loc` | D | T | T | Y | — | C | 拥有有序 full64 triple、prior-base inline reference 与独立 current/replacement metadata join；不做 attachment |
 | `.maxclusterrank` | D | T | T | — | Y | C / V | entry-only normalized resource、PTX 7.8 modeled availability；与 `.reqnctapercluster` 冲突 |
 | `.maxnctapersm` | G | R | — | — | — | — | 未建模 deprecated resource directive |
 | `.maxnreg` | D | T | T | — | Y | C / V | entry-only normalized resource，含 modeled availability；occupancy implication deferred |

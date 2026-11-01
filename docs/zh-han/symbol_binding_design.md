@@ -74,6 +74,14 @@ program declaration 可以使用相同 spelling。`.loc` 的 basic 与 `inlined_
 `.callprototype` 保留强制的函数名 `_`，并允许输入与返回形参使用虚拟名称 `_`；
 这些虚拟名称不成为绑定符号或 owned ABI 名称。`$` 没有对应例外。
 
+`SymbolTable::debugLocations()` 借用表拥有的、按 module 顺序排列的
+`DebugLocationDeclaration` 记录。每项保存 lexical `ScopeId`、base
+`DebugLocationSourceTriple`、可选 `DebugLocationInlineContext` 与物理 range。
+所有 leaf 复用拥有字符串的 `DebugFileSourceLeaf`，不借用 AST，也不另存可变的解码坐标。
+表的复制与赋值复制这些值；赋值、move 与销毁使借用 span 失效。
+新增 table layout 要求二进制 consumer 重新编译。binding 跨函数并按 nested block
+深度优先源码顺序收集事件；inline precedence 由共同 module validator 检查，非 binding 单独保证。
+
 ## Parameterized variable name
 
 `name<count>` 依 PTX 语法表示 `name0` 到 `name(count-1)`。symbol table 不展开这些名称，

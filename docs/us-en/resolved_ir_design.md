@@ -520,6 +520,25 @@ with lane-aware extents, natural vector alignment and AST-free padded entry limi
 The [parameter declaration contract](parameter_declarations.md) distinguishes packed
 scalar dtype from explicit vector lanes and the numeric packed-literal reference gap.
 
+The owned symbol table also retains ordered `.loc` events, without creating
+executable instructions or function-local duplicate payloads. A common validator
+checks both current owned records and independently rebound replacement records.
+An `inlined_at` triple must match an earlier **base** triple in module lexical
+order; the current base is inserted only after checking its reference. Nested
+blocks, function boundaries and target regions do not reset that stream. Physical
+ranges check ownership and within-record field order, never event sorting. Actual
+function-definition occurrence scopes, not a canonical function's first owned
+scope, associate records with bodies. Both datasets must be intrinsically valid;
+different valid debug datasets remain compatible with debug-neutral source identity.
+Numeric triples compare unsigned magnitudes across radices and suffixes, including
+zero line/column and full uint64 values. This is frontend capacity, not a DWARF
+width claim. File indices must independently bind to `.file`; function names must
+bind to current typed `.debug_str` identities. Basic `.loc` requires PTX 1.0 and
+inline attributes require PTX 7.2, with no architecture floor. Absent version may
+defer availability under `AvailableContext`, never numeric, identity or precedence
+failures. No instruction attachment, decoded line table or string-address execution
+is implied.
+
 ## Named memory-vector sources
 
 Ordinary `ld`/`st`, `ld.global.nc`, and `ldu` accept a named ordinary `.reg .v2`

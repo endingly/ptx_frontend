@@ -429,6 +429,20 @@ Parameter record 也保留 fundamental `.f16x2` 与合法 `.param` v2/v4 shape�
 [参数声明 contract](parameter_declarations.md) 区分 packed scalar dtype、显式 vector lane
 与 numeric packed-literal reference gap。
 
+owned symbol table 还保存有序 `.loc` 事件，不生成可执行 instruction，也不在 function
+内复制 payload。共同 validator 分别检查 current owned records 与重新绑定的 replacement
+records。`inlined_at` triple 必须匹配 module lexical 顺序中更早的 **base** triple；
+当前 base 在检查其引用之后才加入。nested block、function 边界与 target region 不重置序列。
+物理 range 只检查归属及单项字段顺序，不用于事件排序。记录依实际 function-definition
+occurrence scope 关联 body，而非 canonical function 最早的 owned scope。
+两个 dataset 都必须自身合法；不同的合法 debug dataset 仍符合 debug-neutral source identity。
+数字 triple 以 unsigned magnitude 比较，支持不同 radix/suffix、零 line/column 与完整
+uint64；这是 frontend capacity，不是 DWARF 位宽声明。file index 必须独立绑定 `.file`，
+function name 必须绑定当前 typed `.debug_str` identity。basic `.loc` 要求 PTX 1.0，
+inline attribute 要求 PTX 7.2，无架构下限。缺少 version 时 `AvailableContext` 可推迟
+availability 判断，但不能推迟 numeric、identity 或 precedence 错误。
+这不表示 instruction attachment、解码 line table 或 string-address execution。
+
 ## Named memory-vector source
 
 普通 `ld`/`st`、`ld.global.nc` 和 `ldu` 的 data operand 在既有 brace 外接受普通

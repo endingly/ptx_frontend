@@ -92,6 +92,16 @@ remain operand-specific. Under
 input and return names; those dummy names do not become bound symbols or owned
 ABI names. `$` has no corresponding exception.
 
+`SymbolTable::debugLocations()` borrows the table's owning, module-ordered
+`DebugLocationDeclaration` records. Each retains its lexical `ScopeId`, base
+`DebugLocationSourceTriple`, optional `DebugLocationInlineContext`, and physical
+ranges. All leaves reuse owning `DebugFileSourceLeaf` strings; there are no AST
+borrows or independently mutable decoded coordinates. Copying or assigning a
+table copies these values; assignment, move and destruction invalidate borrowed
+spans. The added table layout requires rebuilding binary consumers. Binding
+collects events in source order across functions and depth-first nested blocks;
+common module validation, rather than binding alone, enforces inline precedence.
+
 ## Parameterized variable names
 
 PTX `name<count>` denotes `name0` through `name(count-1)`. The symbol table

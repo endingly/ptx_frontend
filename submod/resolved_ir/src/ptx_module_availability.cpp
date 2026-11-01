@@ -10,6 +10,7 @@
 #include "ptx_call_parameter_transfers.hpp"
 #include "ptx_call_tables.hpp"
 #include "ptx_call_target_visibility.hpp"
+#include "ptx_debug_locations.hpp"
 #include "ptx_debug_sections.hpp"
 #include "ptx_module_source_context.hpp"
 #include "ptx_resolved_ir_private.hpp"
@@ -3921,6 +3922,10 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   const auto section_version = module.header.regions.empty()
                                    ? std::optional<checker::PtxVersion>{}
                                    : module.header.regions.front().version;
+  auto location_errors =
+      detail::check_debug_locations(module.symbols, module, section_version);
+  diagnostics.insert(diagnostics.end(), location_errors.begin(),
+                     location_errors.end());
   auto section_errors = detail::check_debug_sections(
       module.sections, section_version, module.range);
   auto section_references =
@@ -4172,6 +4177,14 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
   auto current_references =
       detail::check_debug_section_references(module.sections, module.symbols);
   const auto replacement_binding = binding::bindSymbols(ast);
+  auto location_errors =
+      detail::check_debug_locations(module.symbols, module, std::nullopt);
+  auto replacement_locations =
+      detail::check_debug_locations(replacement_binding.table, ast, version);
+  diagnostics.insert(diagnostics.end(), location_errors.begin(),
+                     location_errors.end());
+  diagnostics.insert(diagnostics.end(), replacement_locations.begin(),
+                     replacement_locations.end());
   auto replacement_references = detail::check_debug_section_references(
       replacement_sections, replacement_binding.table);
   diagnostics.insert(diagnostics.end(), section_errors.begin(),

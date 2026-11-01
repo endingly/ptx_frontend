@@ -256,7 +256,8 @@ TEST(TargetDebugPresence,
   EXPECT_EQ(absence_count(validateModule(*bare)), 1u);
   const std::string source =
       ".version 9.3\n.target sm_90, debug\n.file 1 \"a.cu\"\n.section "
-      ".debug_str {name: .b8 0}\n.entry kernel(){.loc 1 1 0, function_name "
+      ".debug_str {name: .b8 0}\n.entry kernel(){.loc 1 1 0 .loc 1 1 0, "
+      "function_name "
       "name, inlined_at 1 1 0 ret;}";
   auto named = debug_owned(source);
   ASSERT_TRUE(named);

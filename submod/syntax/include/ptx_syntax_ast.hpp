@@ -11,14 +11,9 @@
 
 #include <ptx_frontend/base/ptx_ast_types.hpp>
 #include <ptx_frontend/common/source_loc.hpp>
+#include <ptx_frontend/syntax/ptx_syntax_sections.hpp>
 
 namespace ptx_frontend::syntax_ast {
-
-/** Source spelling retained by a semantic syntax leaf. */
-struct AstSyntax {
-  std::string text;
-  SourceRange range;
-};
 
 struct AstOpcode {
   AstSyntax syntax;
@@ -278,13 +273,6 @@ struct AstFileDirective {
   AstSyntax filename;
   std::optional<AstSyntax> timestamp;
   std::optional<AstSyntax> file_size;
-  SourceRange range;
-};
-
-/** An outermost DWARF section whose payload remains raw syntax. */
-struct AstSectionDirective {
-  AstSyntax name;
-  std::vector<AstSyntax> payload;
   SourceRange range;
 };
 

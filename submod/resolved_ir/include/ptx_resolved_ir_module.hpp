@@ -11,6 +11,7 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_unified_id.hpp>
 #include <ptx_frontend/semantic/ptx_function_contract.hpp>
+#include <ptx_frontend/syntax/ptx_syntax_sections.hpp>
 
 namespace ptx_frontend::resolved_ir {
 
@@ -342,6 +343,9 @@ struct ResolvedCallTableContract {
   /** Compare complete owned table contracts. */
   bool operator==(const ResolvedCallTableContract&) const = default;
 };
+/** Reuse the small owning section value records; no source or AST object is borrowed. */
+using ResolvedDebugSection = syntax_ast::AstSectionDirective;
+
 /** Owns all resolved declarations, functions, and source correspondence data. */
 struct ResolvedModule {
   /** Owning symbol table; every retained SymbolId and ScopeId refers to it. */
@@ -352,13 +356,15 @@ struct ResolvedModule {
   std::vector<ResolvedFunctionAlias> function_aliases;
   /** Owned ordered source contexts used for AST-free source availability checks. */
   ResolvedModuleHeader header;
+  /** Ordered owning fragments, including repeated names and nonempty relocations. */
+  std::vector<ResolvedDebugSection> sections;
   /** Source extent of the complete module. */
   SourceRange range;
   /** Owned non-parameter storage declarations, in source traversal order. */
   std::vector<ResolvedStorageDeclaration> storage_declarations;
   /** Consumed call tables keyed by actual storage identity; unique per module. */
   std::vector<ResolvedCallTableContract> call_tables;
-  /** Canonical module syntax identity excluding target, version, and locations. */
+  /** Executable/declaration syntax identity, excluding debug sections and source-header metadata. */
   std::string source_identity;
 };
 

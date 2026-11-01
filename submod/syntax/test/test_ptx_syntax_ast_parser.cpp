@@ -645,7 +645,7 @@ TEST(PtxSyntaxParser, LowersTypedFileDirectives) {
   EXPECT_EQ(full_form.range.start.line, 2u);
 }
 
-TEST(PtxSyntaxParser, LowersRawSectionPayloadSyntax) {
+TEST(PtxSyntaxParser, LowersTypedSectionPayloadSyntax) {
   constexpr std::string_view source = R"ptx(.section .debug_info {
 Lbegin:
   .b8 -128, 0, 255
@@ -669,16 +669,31 @@ Lend:
   const auto& section =
       std::get<syntax_ast::AstSectionDirective>(result->items.front());
   EXPECT_EQ(section.name.text, ".debug_info");
-  ASSERT_EQ(section.payload.size(), 46u);
-  EXPECT_EQ(section.payload.front().text, "Lbegin");
-  EXPECT_EQ(section.payload.at(29).text, ".debug_str");
-  EXPECT_EQ(section.payload.at(30).text, "+");
-  EXPECT_EQ(section.payload.at(31).text, "0x4");
-  EXPECT_EQ(section.payload.at(36).text, ".b32");
-  EXPECT_EQ(section.payload.at(37).text, "Lend");
-  EXPECT_EQ(section.payload.at(38).text, "-");
+  ASSERT_EQ(section.payload.size(), 12u);
+  EXPECT_EQ(
+      std::get<syntax_ast::AstSectionLabelDefinition>(section.payload.front())
+          .name.text,
+      "Lbegin");
+  const auto& integer_data =
+      std::get<syntax_ast::AstSectionData>(section.payload[4]);
+  EXPECT_EQ(integer_data.width, syntax_ast::AstSectionWidth::B64);
+  const auto& integers =
+      std::get<std::vector<syntax_ast::AstSectionInteger>>(integer_data.value);
+  ASSERT_EQ(integers.size(), 2u);
+  EXPECT_EQ(integers[0].sign->text, "-");
+  EXPECT_EQ(integers[0].magnitude.text, "9223372036854775808");
+  EXPECT_EQ(integers[1].magnitude.text, "18446744073709551615U");
+  const auto& addend = std::get<syntax_ast::AstSectionAddend>(
+      std::get<syntax_ast::AstSectionData>(section.payload[7]).value);
+  EXPECT_EQ(addend.name.text, ".debug_str");
+  EXPECT_EQ(addend.operation.text, "+");
+  EXPECT_EQ(addend.value.magnitude.text, "0x4");
+  EXPECT_EQ(addend.name.range.start.line, 9u);
+  const auto& difference = std::get<syntax_ast::AstSectionDifference>(
+      std::get<syntax_ast::AstSectionData>(section.payload[9]).value);
+  EXPECT_EQ(difference.left.text, "Lend");
+  EXPECT_EQ(difference.right.text, "Lbegin");
   EXPECT_EQ(section.range.start.line, 1u);
-  EXPECT_EQ(section.payload.at(29).range.start.line, 9u);
 }
 
 TEST(PtxSyntaxParser, LowersPragmasAtAllSupportedScopes) {

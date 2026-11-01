@@ -406,7 +406,7 @@ Instruction ranges/opcodes and all owned records are semantic provenance. The
 frontend retains `.language` and function ABI/resource contracts; `.file`,
 `.loc`, `.section`, and `.pragma` remain syntax/debug or advisory metadata and
 are not executable resolved payloads. The owned symbol table retains `.file` declaration payloads for debug identity validation. There is no promise of stable generated
-C++ struct layout or binary ABI. Raw module directives still require an AST;
+C++ struct layout or binary ABI. Other raw module directives still require an AST;
 the owned model is a semantic handoff for the documented subset, not a complete
 source serialization contract.
 
@@ -1488,3 +1488,32 @@ Public ABI migration: `src1` and `src2` in `CvtPackSatU8S32B32`, `CvtPackSat16S3
 The three stochastic quad classes `CvtRsSatfiniteF8x4F32`, `CvtRsSatfiniteF4x4F32`, and `CvtRsSatfiniteF6x4F32` expose `src.value` as `ResolvedValueVector`, replacing `ResolvedRegisterVector`; consumers must rebuild and inspect each `RegOrImm` alternative. Brace sources retain the complete written range and lane order while numeric floating sources use the common F32 conversion. Integer-origin sources remain incompatible, and exact F32 constants retain the bare unsigned literal rule. This conversion computes source F32 words only; it does not execute stochastic conversion, saturation, or the packed result. Named V4 F32/B32 sources use `source.whole_base` as the sole declaration authority and canonical `NamedProjection` lanes, with the existing General class, arity, binding, and 128-bit declaration limits. Copies and clones own both provenance and lanes. A borrowed `OperandView.value_vector` must point to the actual payload and match its lane pointers, types, ranges, and descriptor permission; default-false named permission remains effective. The destination carrier policy and independent register-only `rbits` rule, including its widening policy, remain unchanged.
 
 Ordinary register declaration eligibility uses the actual physical declaration type and the central `ScalarTypeMetadata::register_declaration_usage` classification. Known General-register reference types must be Fundamental, including when reached through explicit components, named projections, or vector register leaves; absent standalone declaration facts retain their existing deferral. Logical BF16/TF32/packed instruction formats and canonical typed immediate words are independent of physical register declarations. Contextual operand type caches do not replace the actual declaration type. Owned validation separately checks every concrete ordinary `SymbolKind::Variable` in Register state space, including unused declarations; missing or unrecognized concrete types cannot establish eligibility. Predicate declarations and native scalar F16x2 remain Fundamental. Retained source identity records historical syntax association and does not exempt a current mutated binding table from declaration legality. Copies must validate within a module that owns the relevant symbol table.
+
+### Owning debug section values
+
+`ResolvedModule.sections` owns source-ordered section fragments. The public
+`ResolvedDebugSection` alias reuses `syntax_ast::AstSectionDirective` and its
+small value-only variants: every string/range is copied, without AST/CST/source
+borrows or numeric caches. Default module copy/assignment/move/swap therefore
+include nonempty integer and relocation payloads. This public CST/AST/Module
+migration changes source and binary layout; consumers must rebuild.
+
+A shared checker decodes already-tokenized integer magnitudes and applies original
+B8/B16/B32/B64 intervals `[-2^(w-1), 2^w-1]`. Full UINT64_MAX and negative 2^63
+survive; U suffixes do not relax ranges. The manual's `.b16 -65535` example
+conflicts with its explicit interval and is rejected in favor of that interval.
+B32/B64 symbolic data retains unresolved single addresses, signed byte addends
+(including checked `label-integer` shorthand), and differences of unique known
+labels/section bases in one logical section. Equal section names join fragments;
+linked addresses and relocation results remain unknown. Strings, arbitrary
+expressions and mixed symbol/integer lists are not inferred productions.
+
+Known PTX gates are section 2.0, label addend 3.2, B16 data 6.0, label definition
+7.2, label difference and negative values 7.5; minus zero is mathematically zero.
+Missing context follows existing validation policies. AST-free checks revalidate
+current owning records; source-aware checks independently validate both current
+and supplied section values with the supplied effective context and rebind its
+debug labels. Valid changed section data does not cause executable source-identity
+mismatch. Invalid current data cannot be hidden by valid replacement sections.
+This checks the bounded source grammar and static locality, not DWARF decoding,
+linked byte values, target-debug DWARF recognition or GPU execution.

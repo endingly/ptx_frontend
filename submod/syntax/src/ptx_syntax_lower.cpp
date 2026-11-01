@@ -13,6 +13,70 @@ syntax_ast::AstSyntax leafSyntax(const syntax_cst::CstFile& cst,
   return syntax_ast::AstSyntax{token.text, token.range};
 }
 
+/** Copy an already parsed section integer without decoding or narrowing it. */
+syntax_ast::AstSectionInteger lowerSectionInteger(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstSectionInteger& value) {
+  return {.sign = value.sign ? std::optional{leafSyntax(cst, *value.sign)}
+                             : std::nullopt,
+          .magnitude = leafSyntax(cst, value.magnitude),
+          .range = cst.sourceRange(value.token_range)};
+}
+/** Copy the single CST structural parse into owning typed section records. */
+syntax_ast::AstSectionDirective lowerSection(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstSectionDirective& section) {
+  syntax_ast::AstSectionDirective result{
+      .name = leafSyntax(cst, section.name),
+      .payload = {},
+      .range = cst.sourceRange(section.token_range)};
+  for (const auto& entry : section.payload) {
+    if (const auto* label =
+            std::get_if<syntax_cst::CstSectionLabelDefinition>(&entry)) {
+      result.payload.emplace_back(syntax_ast::AstSectionLabelDefinition{
+          leafSyntax(cst, label->name), cst.sourceRange(label->token_range)});
+      continue;
+    }
+    const auto& data = std::get<syntax_cst::CstSectionData>(entry);
+    const auto type = leafSyntax(cst, data.type);
+    const auto width = type.text == ".b8"    ? syntax_ast::AstSectionWidth::B8
+                       : type.text == ".b16" ? syntax_ast::AstSectionWidth::B16
+                       : type.text == ".b32" ? syntax_ast::AstSectionWidth::B32
+                                             : syntax_ast::AstSectionWidth::B64;
+    syntax_ast::AstSectionData copied{
+        .width = width,
+        .type = type,
+        .value = {},
+        .range = cst.sourceRange(data.token_range)};
+    if (const auto* integers =
+            std::get_if<std::vector<syntax_cst::CstSectionInteger>>(
+                &data.value)) {
+      auto& values =
+          std::get<std::vector<syntax_ast::AstSectionInteger>>(copied.value);
+      for (const auto& value : *integers)
+        values.push_back(lowerSectionInteger(cst, value));
+    } else if (const auto* symbol =
+                   std::get_if<syntax_cst::CstSectionSymbol>(&data.value)) {
+      copied.value =
+          syntax_ast::AstSectionSymbol{leafSyntax(cst, symbol->name)};
+    } else if (const auto* addend =
+                   std::get_if<syntax_cst::CstSectionAddend>(&data.value)) {
+      copied.value = syntax_ast::AstSectionAddend{
+          leafSyntax(cst, addend->name), leafSyntax(cst, addend->operation),
+          lowerSectionInteger(cst, addend->value)};
+    } else {
+      const auto& difference =
+          std::get<syntax_cst::CstSectionDifference>(data.value);
+      copied.value = syntax_ast::AstSectionDifference{
+          leafSyntax(cst, difference.left),
+          leafSyntax(cst, difference.operation),
+          leafSyntax(cst, difference.right)};
+    }
+    result.payload.emplace_back(std::move(copied));
+  }
+  return result;
+}
+
 syntax_ast::AstImmediateKind immediateKind(TokenKind kind) {
   switch (kind) {
     case TokenKind::Decimal:
@@ -984,15 +1048,7 @@ AstModuleLowerResult lowerSyntaxModule(const syntax_cst::CstFile& cst) {
 
     if (const auto* section =
             std::get_if<syntax_cst::CstSectionDirective>(&item)) {
-      std::vector<syntax_ast::AstSyntax> payload;
-      payload.reserve(section->payload.size());
-      for (const auto token : section->payload)
-        payload.push_back(leafSyntax(cst, token));
-      ast.items.emplace_back(syntax_ast::AstSectionDirective{
-          .name = leafSyntax(cst, section->name),
-          .payload = std::move(payload),
-          .range = cst.sourceRange(section->token_range),
-      });
+      ast.items.emplace_back(lowerSection(cst, *section));
       continue;
     }
 

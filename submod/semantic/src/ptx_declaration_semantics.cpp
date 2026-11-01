@@ -973,10 +973,10 @@ class Checker {
       } else if (const auto* section =
                      std::get_if<syntax_ast::AstSectionDirective>(&item);
                  section && section->name.text == ".debug_str") {
-        for (size_t index = 0; index + 1 < section->payload.size(); ++index)
-          if (section->payload[index + 1].text == ":")
-            checkIdentifier(
-                syntax_ast::AstIdentifierRef{section->payload[index]});
+        for (const auto& entry : section->payload)
+          if (const auto* label =
+                  std::get_if<syntax_ast::AstSectionLabelDefinition>(&entry))
+            checkIdentifier(syntax_ast::AstIdentifierRef{label->name});
       }
     }
     return std::move(diagnostics_);

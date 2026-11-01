@@ -635,7 +635,7 @@ numeric packed `.f16x2` literal representation。
 | M8-I02 | ✅ | nested lexical scope | shadowing/visibility/recursive pipeline |
 | M8-I03 | ✅ | `.file` | lossless payload |
 | M8-I04 | ✅ | `.loc` | basic/extended payload |
-| M8-I05 | ✅ | `.section` | matched brace/raw DWARF payload |
+| M8-I05 | ✅ | `.section` | matched brace/raw CST tokens + owning typed integer/relocation metadata；检查范围/locality/版本，非 DWARF decoder |
 | M8-I06 | ✅ | `.pragma` | module/header/body placement |
 | M8-I07 | ✅ | kernel-resource directives | maxnreg/maxntid/reqntid/minnctapersm |
 | M8-I08 | ✅ | directive coverage boundary | PTX 9.3 directive boundary |

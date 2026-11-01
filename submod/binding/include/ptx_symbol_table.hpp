@@ -48,7 +48,7 @@ enum class SymbolKind : uint8_t {
   BranchTargetSet,
   /** Debug-only module metadata; excluded from ordinary lexical lookup. */
   DebugFile,
-  /** `.debug_str` and its raw payload labels; metadata-only. */
+  /** `.debug_str` and its typed label definitions; metadata-only. */
   DebugStringLabel,
 };
 

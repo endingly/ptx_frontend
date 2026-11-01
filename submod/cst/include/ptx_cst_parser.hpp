@@ -209,7 +209,7 @@ class PtxCstParser {
   std::expected<syntax_cst::CstModuleDirective, CstParseDiagnostic>
   parseModuleDirective();
   std::expected<syntax_cst::CstSectionDirective, CstParseDiagnostic>
-  parseSectionDirective();
+  parseSectionDirective(CstParseDiagnostics& diagnostics);
   std::expected<syntax_cst::CstFunction, CstParseDiagnostic> parseFunction(
       std::vector<TokenId> qualifiers, CstParseDiagnostics& diagnostics);
 

@@ -62,8 +62,7 @@ exact index/filename tokens, optional timestamp/file-size tokens, and their sour
 ranges; rejected repeats remain recorded. Filename escapes are retained without
 decoding or path deduplication, and absent numeric metadata retains its default-zero
 meaning. This follows [PTX ISA 9.3 §11.5.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-file)
-and CUDA 13.3 `ptxas` duplicate-index diagnostics. A `.debug_str` section binds its name and each raw `name:` payload
-label as `DebugStringLabel` symbols. Ordinary `SymbolTable::lookup()` skips
+and CUDA 13.3 `ptxas` duplicate-index diagnostics. A `.debug_str` section binds its name and each typed `AstSectionLabelDefinition` as `DebugStringLabel` symbols. Ordinary `SymbolTable::lookup()` skips
 both debug kinds, so a program declaration may use the same spelling. `.loc`
 creates `DebugFile` references for its basic and `inlined_at` file fields, plus
 a `DebugFunctionName` reference for `function_name`; the latter can resolve

@@ -454,9 +454,9 @@ PtxCstParser::parseModuleDirective() {
                                         {keyword, last + 1}};
 }
 
-/** Parse a balanced opaque section payload with its established boundary policy. */
+/** Retain balanced raw tokens, then parse the bounded section productions once. */
 std::expected<syntax_cst::CstSectionDirective, CstParseDiagnostic>
-PtxCstParser::parseSectionDirective() {
+PtxCstParser::parseSectionDirective(CstParseDiagnostics& diagnostics) {
   const TokenId directive = consume();
   const TokenId name = consume();
   if (!isIdentifierToken(token(name).kind)) {
@@ -498,11 +498,112 @@ PtxCstParser::parseSectionDirective() {
   if (token(peek()).kind == TokenKind::Semicolon)
     terminator = consume();
   const TokenId last = terminator.value_or(right_brace);
+  std::vector<syntax_cst::CstSectionEntry> entries;
+  size_t cursor = 0;
+  /** A malformed production retains all raw tokens and one localized diagnostic. */
+  std::optional<CstParseDiagnostic> payload_error;
+  const auto fail = [&](TokenId at, std::string message) {
+    if (!payload_error)
+      payload_error = CstParseDiagnostic{token(at).range, std::move(message)};
+  };
+  const auto integer = [&]() -> std::optional<syntax_cst::CstSectionInteger> {
+    const size_t begin = cursor;
+    std::optional<TokenId> sign;
+    if (cursor < payload.size() &&
+        (token(payload[cursor]).kind == TokenKind::Plus ||
+         token(payload[cursor]).kind == TokenKind::Minus))
+      sign = payload[cursor++];
+    if (cursor >= payload.size() ||
+        !isIntegerLiteral(token(payload[cursor]).kind)) {
+      fail(cursor < payload.size() ? payload[cursor] : right_brace,
+           "expected section integer magnitude");
+      return std::nullopt;
+    }
+    const TokenId magnitude = payload[cursor++];
+    return syntax_cst::CstSectionInteger{
+        sign, magnitude, {payload[begin], magnitude + 1}};
+  };
+  while (cursor < payload.size() && !payload_error) {
+    const TokenId first = payload[cursor];
+    if (token(first).kind == TokenKind::Semicolon) {
+      ++cursor;
+      continue;
+    }
+    if (isIdentifierToken(token(first).kind) && cursor + 1 < payload.size() &&
+        token(payload[cursor + 1]).kind == TokenKind::Colon) {
+      const TokenId colon = payload[cursor + 1];
+      entries.emplace_back(syntax_cst::CstSectionLabelDefinition{
+          first, colon, {first, colon + 1}});
+      cursor += 2;
+      continue;
+    }
+    const auto& width = token(first).text;
+    if (width != ".b8" && width != ".b16" && width != ".b32" &&
+        width != ".b64") {
+      fail(first,
+           "expected section .b8/.b16/.b32/.b64 data or label definition");
+      break;
+    }
+    ++cursor;
+    syntax_cst::CstSectionData data;
+    data.type = first;
+    if (cursor < payload.size() &&
+        isIdentifierToken(token(payload[cursor]).kind)) {
+      if (width != ".b32" && width != ".b64") {
+        fail(payload[cursor], "section symbolic data requires .b32 or .b64");
+        break;
+      }
+      const TokenId name = payload[cursor++];
+      if (cursor < payload.size() &&
+          (token(payload[cursor]).kind == TokenKind::Plus ||
+           token(payload[cursor]).kind == TokenKind::Minus)) {
+        const TokenId operation = payload[cursor++];
+        if (token(operation).kind == TokenKind::Minus &&
+            cursor < payload.size() &&
+            isIdentifierToken(token(payload[cursor]).kind)) {
+          data.value = syntax_cst::CstSectionDifference{name, operation,
+                                                        payload[cursor++]};
+        } else {
+          const auto value = integer();
+          if (!value)
+            break;
+          data.value = syntax_cst::CstSectionAddend{name, operation, *value};
+        }
+      } else {
+        data.value = syntax_cst::CstSectionSymbol{name};
+      }
+    } else {
+      std::vector<syntax_cst::CstSectionInteger> values;
+      const auto value = integer();
+      if (!value)
+        break;
+      values.push_back(*value);
+      while (cursor < payload.size() &&
+             token(payload[cursor]).kind == TokenKind::Comma) {
+        ++cursor;
+        const auto next = integer();
+        if (!next)
+          break;
+        values.push_back(*next);
+      }
+      if (payload_error)
+        break;
+      data.value = std::move(values);
+    }
+    if (cursor < payload.size() &&
+        token(payload[cursor]).kind == TokenKind::Semicolon)
+      ++cursor;
+    data.token_range = {first, payload[cursor - 1] + 1};
+    entries.emplace_back(std::move(data));
+  }
+  if (payload_error)
+    diagnostics.push_back(std::move(*payload_error));
   return syntax_cst::CstSectionDirective{
       .directive = directive,
       .name = name,
       .left_brace = *left_brace,
-      .payload = std::move(payload),
+      .payload_tokens = std::move(payload),
+      .payload = std::move(entries),
       .right_brace = right_brace,
       .terminator = terminator,
       .token_range = {directive, last + 1},
@@ -737,7 +838,7 @@ CstParseResult PtxCstParser::parseModule() {
     }
 
     if (qualifiers.empty() && source_form == ModuleSourceForm::Section) {
-      auto section = parseSectionDirective();
+      auto section = parseSectionDirective(diagnostics);
       if (!section) {
         recover_item(item_first, std::move(section.error()));
         continue;

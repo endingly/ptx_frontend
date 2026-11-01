@@ -873,12 +873,11 @@ struct SymbolTableBuilder {
       return;
     addMetadataSymbol(SymbolKind::DebugStringLabel, directive.name.text,
                       directive.name.range, true);
-    for (size_t index = 0; index + 1 < directive.payload.size(); ++index) {
-      if (directive.payload[index + 1].text == ":") {
-        addMetadataSymbol(SymbolKind::DebugStringLabel,
-                          directive.payload[index].text,
-                          directive.payload[index].range, false);
-      }
+    for (const auto& entry : directive.payload) {
+      if (const auto* label =
+              std::get_if<syntax_ast::AstSectionLabelDefinition>(&entry))
+        addMetadataSymbol(SymbolKind::DebugStringLabel, label->name.text,
+                          label->name.range, false);
     }
   }
 

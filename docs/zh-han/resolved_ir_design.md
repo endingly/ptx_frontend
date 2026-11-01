@@ -341,7 +341,7 @@ diagnostic，而 AST-free validation 会拒绝缺少该 typed payload 的 `.unif
 instruction range/opcode 与全部 owned record 都是 semantic provenance。frontend 保留 `.language`
 以及 function ABI/resource contract；`.file`、`.loc`、`.section`、`.pragma` 属于 syntax/debug 或
 advisory metadata，不作为可执行 resolved payload；owned symbol table 另保留 `.file` 声明 payload 以验证 debug identity。generated C++ struct layout 或 binary ABI 不保证稳定。
-原始 module directive 仍需要 AST；owned model 是已声明 subset 的 semantic handoff，不是完整源码
+其他原始 module directive 仍需要 AST；owned model 是已声明 subset 的 semantic handoff，不是完整源码
 序列化契约。
 
 `ResolveDiagnostic` 拥有 message 和 source range 的值。模块解析保留原阶段的
@@ -1203,3 +1203,25 @@ Canonical 当前 F16/BF16 immediate 是低 16 位 word，没有 integer-source p
 三个 stochastic quad class `CvtRsSatfiniteF8x4F32`、`CvtRsSatfiniteF4x4F32`、`CvtRsSatfiniteF6x4F32` 的 `src.value` 改为 `ResolvedValueVector`，替代 `ResolvedRegisterVector`；consumer 必须重新编译并检查各 `RegOrImm` alternative。Brace source 保留完整 written range 和 lane 顺序，numeric floating source 复用公共 F32 conversion。Integer-origin source 仍不兼容，exact F32 constant 保留裸 unsigned literal 规则。此转换只生成 source F32 word，不执行 stochastic conversion、saturation 或 packed result。Named V4 F32/B32 source 以 `source.whole_base` 为唯一声明 authority，使用 canonical `NamedProjection` lane，并遵守既有 General class、arity、binding 和 128-bit 声明限制。Copy／clone 拥有 provenance 与 lane。借用的 `OperandView.value_vector` 必须指向实际 payload，且 lane pointer、type、range 和 descriptor permission 一致；默认 false 的 named permission 仍有效。Destination carrier policy 与独立 register-only `rbits` 规则（包括 widening policy）保持不变。
 
 普通 register declaration eligibility 根据实际 physical declaration type 与中央 `ScalarTypeMetadata::register_declaration_usage` 分类判断。已知 General-register reference type 必须为 Fundamental，包括经 explicit component、named projection 或 vector register leaf 访问的情形；standalone 缺失声明事实仍保留既有 defer 行为。Logical BF16／TF32／packed instruction format 与 canonical typed immediate word 独立于 physical register declaration。Contextual operand type cache 不替代实际声明 type。Owned validation 另外检查 Register state space 中所有 concrete 普通 `SymbolKind::Variable` 声明，包括未使用声明；缺失或未知 concrete type 均不能证明 eligibility。Predicate 声明与 native scalar F16x2 仍为 Fundamental。保留的 source identity 记录历史 syntax association，不使当前已变更 binding table 免于声明合法性检查。Copy 必须置于拥有相关 symbol table 的 module 中验证。
+
+### 拥有式 debug section 值
+
+`ResolvedModule.sections` 持有源码顺序的 section fragment。公共 `ResolvedDebugSection`
+alias 复用 `syntax_ast::AstSectionDirective` 及其小型 value-only variant；所有 string/range
+都复制，不借用 AST/CST/source，也不保存 numeric cache。默认 module copy/assignment/move/swap
+包含非空整数与 relocation payload。此次 CST/AST/Module 公共迁移改变源码和二进制布局，消费者须重编译。
+
+共同 checker 解码已经 token 化的 magnitude，按 B8/B16/B32/B64 原始区间
+`[-2^(w-1), 2^w-1]` 验证，完整保留 UINT64_MAX 与负 2^63；U 后缀不放宽范围。
+手册 `.b16 -65535` 示例与显式区间冲突，按区间拒绝。B32/B64 符号数据分别持有未知链接地址的
+single symbol、signed byte addend（包括 checked `label-integer` 简写）以及同一逻辑 section 内
+唯一已知 label/section base 的差。同名 section 合并 locality 而保留 fragment 顺序；链接地址与
+relocation 结果仍未知。不推导 string、任意表达式或 symbol/integer 混合列表语法。
+
+已知 PTX 门槛为 section 2.0、label addend 3.2、B16 data 6.0、label definition 7.2、
+label difference 和负数 7.5；负零按数学零处理。缺少上下文沿用既有 validation policy。
+AST-free 检查重验当前 owning record；source-aware 检查按 supplied effective context 独立验证
+当前与 supplied section，并重绑定其 debug label。合法 section 数据变化不导致 executable
+source-identity mismatch，合法 replacement 也不能掩盖非法 current payload。
+这只证明有限源码语法及静态 locality，不证明 DWARF 解码、链接字节值、target-debug DWARF recognition
+或 GPU 执行。

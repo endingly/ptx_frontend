@@ -886,12 +886,15 @@ Lend:
   EXPECT_EQ(result->token(section.left_brace).kind, TokenKind::LBrace);
   EXPECT_EQ(result->token(section.right_brace).kind, TokenKind::RBrace);
   ASSERT_TRUE(section.terminator.has_value());
-  ASSERT_EQ(section.payload.size(), 46u);
-  EXPECT_EQ(result->token(section.payload.front()).text, "Lbegin");
-  EXPECT_EQ(result->token(section.payload.at(1)).kind, TokenKind::Colon);
-  EXPECT_EQ(result->token(section.payload.at(29)).text, ".debug_str");
-  EXPECT_EQ(result->token(section.payload.at(30)).kind, TokenKind::Plus);
-  EXPECT_EQ(result->token(section.payload.at(40)).text, ".b64");
+  ASSERT_EQ(section.payload_tokens.size(), 46u);
+  ASSERT_EQ(section.payload.size(), 12u);
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstSectionLabelDefinition>(
+      section.payload.front()));
+  EXPECT_EQ(result->token(section.payload_tokens.front()).text, "Lbegin");
+  EXPECT_EQ(result->token(section.payload_tokens.at(1)).kind, TokenKind::Colon);
+  EXPECT_EQ(result->token(section.payload_tokens.at(29)).text, ".debug_str");
+  EXPECT_EQ(result->token(section.payload_tokens.at(30)).kind, TokenKind::Plus);
+  EXPECT_EQ(result->token(section.payload_tokens.at(40)).text, ".b64");
   EXPECT_EQ(result->sourceRange(section.token_range).start.line, 1u);
 }
 

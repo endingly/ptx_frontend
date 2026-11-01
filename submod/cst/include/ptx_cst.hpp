@@ -450,12 +450,57 @@ struct CstModuleDirective {
   CstTokenRange token_range;
 };
 
-/** An outermost DWARF section with a lossless, uninterpreted payload. */
+/** A signed integer leaf borrowing only tokens owned by its CST file. */
+struct CstSectionInteger {
+  /** Optional written unary sign, independent of the magnitude token. */
+  std::optional<TokenId> sign;
+  /** Original nonnegative integer spelling, including radix and U suffix. */
+  TokenId magnitude{};
+  /** Complete leaf extent including its optional sign. */
+  CstTokenRange token_range;
+};
+/** A label definition in one section fragment. */
+struct CstSectionLabelDefinition {
+  TokenId name{};
+  TokenId colon{};
+  CstTokenRange token_range;
+};
+/** An unresolved single symbolic address. */
+struct CstSectionSymbol {
+  TokenId name{};
+};
+/** A symbolic address plus a checked signed byte addend. */
+struct CstSectionAddend {
+  TokenId name{};
+  /** Written plus or minus; a minus reverses the signed leaf's value. */
+  TokenId operation{};
+  CstSectionInteger value;
+};
+/** A difference whose operands must belong to one logical section. */
+struct CstSectionDifference {
+  TokenId left{};
+  TokenId operation{};
+  TokenId right{};
+};
+/** One selected data production; raw punctuation remains in the CST file. */
+struct CstSectionData {
+  TokenId type{};
+  std::variant<std::vector<CstSectionInteger>, CstSectionSymbol,
+               CstSectionAddend, CstSectionDifference>
+      value;
+  CstTokenRange token_range;
+};
+/** A structurally parsed section entry, in written order. */
+using CstSectionEntry = std::variant<CstSectionLabelDefinition, CstSectionData>;
+/** An outermost DWARF section retaining both raw source and its one structural parse. */
 struct CstSectionDirective {
   TokenId directive{};
   TokenId name{};
   TokenId left_brace{};
-  std::vector<TokenId> payload;
+  /** Exact original token IDs, including malformed payload and punctuation. */
+  std::vector<TokenId> payload_tokens;
+  /** Typed entries projected once from those same retained tokens. */
+  std::vector<CstSectionEntry> payload;
   TokenId right_brace{};
   std::optional<TokenId> terminator;
   CstTokenRange token_range;

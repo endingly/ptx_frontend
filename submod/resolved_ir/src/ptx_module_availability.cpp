@@ -10,6 +10,7 @@
 #include "ptx_call_parameter_transfers.hpp"
 #include "ptx_call_tables.hpp"
 #include "ptx_call_target_visibility.hpp"
+#include "ptx_debug_sections.hpp"
 #include "ptx_module_source_context.hpp"
 #include "ptx_resolved_ir_private.hpp"
 #include "ptx_source_identity.hpp"
@@ -3881,6 +3882,18 @@ void check_function_contract_availability(
 checker::CheckResult validateModule(const ResolvedModule& module,
                                     ModuleValidationPolicy policy) {
   checker::CheckDiagnostics diagnostics;
+  const auto section_version = module.header.regions.empty()
+                                   ? std::optional<checker::PtxVersion>{}
+                                   : module.header.regions.front().version;
+  auto section_errors = detail::check_debug_sections(
+      module.sections, section_version, module.range);
+  auto section_references =
+      detail::check_debug_section_references(module.sections, module.symbols);
+  diagnostics.insert(diagnostics.end(), section_errors.begin(),
+                     section_errors.end());
+  diagnostics.insert(diagnostics.end(), section_references.begin(),
+                     section_references.end());
+
   const auto invalid = [&](SourceRange range, std::string message) {
     diagnostics.push_back(
         {.kind = checker::CheckDiagnosticKind::ModuleSourceMismatch,
@@ -4111,6 +4124,25 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
     return associations;
   const auto version = detail::module_version(ast);
   checker::CheckDiagnostics diagnostics;
+  auto section_errors =
+      detail::check_debug_sections(module.sections, version, module.range);
+  const auto replacement_sections = detail::debug_sections(ast);
+  auto replacement_errors =
+      detail::check_debug_sections(replacement_sections, version, ast.range);
+  auto current_references =
+      detail::check_debug_section_references(module.sections, module.symbols);
+  const auto replacement_binding = binding::bindSymbols(ast);
+  auto replacement_references = detail::check_debug_section_references(
+      replacement_sections, replacement_binding.table);
+  diagnostics.insert(diagnostics.end(), section_errors.begin(),
+                     section_errors.end());
+  diagnostics.insert(diagnostics.end(), replacement_errors.begin(),
+                     replacement_errors.end());
+  diagnostics.insert(diagnostics.end(), current_references.begin(),
+                     current_references.end());
+  diagnostics.insert(diagnostics.end(), replacement_references.begin(),
+                     replacement_references.end());
+
   if (policy == ModuleValidationPolicy::RequireCompleteContext)
     check_header_order(detail::module_header_order(ast), ast.range,
                        diagnostics);

@@ -135,13 +135,19 @@ into the enclosing function's source-ordered flat body; it does not introduce a
 with its basic `file line column` triple or its paired PTX 7.2
 `function_name label {+ integer}` / `inlined_at file line column` payload;
 CST preserves its punctuation and AST retains fields and ranges. Resolving
-`.file` indices and `.debug_str` section/raw-label identities is performed in a
+`.file` indices and `.debug_str` section/typed-label identities is performed in a
 separate debug-metadata binding namespace, and `.loc` validates those
 references. Attaching source locations to instructions or labels remains
-deferred. At outermost scope, `.section name { ... }` preserves its matched
-braces and raw DWARF payload token spelling in CST and AST; section names are
-syntax, not ordinary bound identifiers. DWARF payload typing, private labels,
-and `.loc` offset validation remain deferred. `.pragma` preserves a nonempty
+deferred. At outermost scope, `.section name { ... }` retains matched braces,
+trivia and exact payload tokens in `CstSectionDirective.payload_tokens`. Its
+`payload` is the single token-indexed structural parse. The AST `payload`
+now contains owning `AstSectionEntry` values (label definitions or typed data),
+replacing the old flat `vector<AstSyntax>`. Integer leaves own an optional sign,
+original magnitude spelling and ranges; symbolic data distinguishes a single
+symbol, checked signed addend and same-section label difference. No expression
+AST or second raw semantic payload is retained. Section names are metadata,
+not ordinary declarations. `.loc` attachment and offset validation remain
+separate. `.pragma` preserves a nonempty
 comma-separated string list at module, entry-header, and function/nested-block
 statement scope; it does not enter binding or Resolved IR. Entry-header
 pragmas may be interleaved with the four supported kernel-resource directives;
@@ -274,3 +280,5 @@ bracket/size fields and AST `is_array/array_size`; an empty vector means scalar.
 Token round-trip is preserved. Dimension and AST expression trees remain move-only;
 the existing `AstConstantOperand` copy operation deep-clones its owned expression. See the exact
 [public member migration](parameter_declarations.md).
+
+`ptx_syntax_sections.hpp` exposes only the owning syntax leaf and section value records. Including the public module header keeps full instruction/module/expression AST types incomplete; `ptx_syntax_ast.hpp` remains the complete-AST entrypoint.

@@ -9,6 +9,7 @@
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
 #include "ptx_call_tables.hpp"
+#include "ptx_debug_sections.hpp"
 #include "ptx_module_source_context.hpp"
 #include "ptx_source_identity.hpp"
 #include "ptx_storage_declarations.hpp"
@@ -1034,6 +1035,20 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
   if (!diagnostics.empty())
     return std::unexpected(std::move(diagnostics));
 
+  auto sections = detail::debug_sections(ast);
+  auto section_errors = detail::check_debug_sections(
+      sections, detail::module_version(ast), ast.range);
+  auto reference_errors =
+      detail::check_debug_section_references(sections, binding_result.table);
+  section_errors.insert(section_errors.end(), reference_errors.begin(),
+                        reference_errors.end());
+  for (const auto& diagnostic : section_errors)
+    diagnostics.push_back({.range = diagnostic.range,
+                           .message = diagnostic.message,
+                           .checker_kind = diagnostic.kind});
+  if (!diagnostics.empty())
+    return std::unexpected(std::move(diagnostics));
+
   auto storage = resolve_storage_declarations(ast, binding_result.table);
   if (!storage) {
     for (const auto& diagnostic : storage.error()) {
@@ -1275,6 +1290,7 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
       .functions = std::move(functions),
       .function_aliases = std::move(function_aliases),
       .header = std::move(header),
+      .sections = std::move(sections),
       .range = ast.range,
       .storage_declarations = std::move(*storage),
       .call_tables = std::move(call_tables),

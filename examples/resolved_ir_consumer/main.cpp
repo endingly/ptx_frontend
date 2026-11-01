@@ -1326,8 +1326,101 @@ bool checkInstalledRequiredTcgenMasks() {
   return true;
 }
 
+/** Verify typed section APIs own all numeric and symbolic leaves after source death. */
+bool checkInstalledDebugSections() {
+  namespace ir = ptx_frontend::resolved_ir;
+  namespace ast = ptx_frontend::syntax_ast;
+  std::optional<ir::ResolvedModule> owned;
+  {
+    const std::string source = R"ptx(.version 9.3
+.target sm_90
+.address_size 64
+.file 1 "source.cu"
+.global .b8 name;
+.section .debug_info { // raw trivia remains in CST only
+begin:
+ .b64 18446744073709551615U,-9223372036854775808
+ .b32 end-begin
+ .b64 .debug_info+9223372036854775807
+ .b32 .debug_str
+}
+.section .debug_info {end: .b8 -128,255}
+.section .debug_str {name: .b8 110,97,109,101,0}
+.entry kernel(){.loc 1 1 0, function_name name, inlined_at 1 1 0 ret;}
+)ptx";
+    ptx_frontend::PtxCstParser cst_parser(source);
+    const auto cst = cst_parser.parseModule();
+    if (!cst || !cst.diagnostics.empty() || cst->sourceText() != source)
+      return false;
+    const auto& raw = std::get<ptx_frontend::syntax_cst::CstSectionDirective>(
+        cst->module()->items[5]);
+    if (raw.payload_tokens.empty() || raw.payload.size() != 5)
+      return false;
+    ptx_frontend::PtxSyntaxParser parser(source);
+    const auto syntax = parser.parseModule();
+    if (!syntax || !syntax.diagnostics.empty())
+      return false;
+    const auto& section = std::get<ast::AstSectionDirective>(syntax->items[5]);
+    const auto& integers = std::get<std::vector<ast::AstSectionInteger>>(
+        std::get<ast::AstSectionData>(section.payload[1]).value);
+    if (integers.size() != 2 ||
+        integers[0].magnitude.text != "18446744073709551615U" ||
+        !integers[1].sign || integers[1].sign->text != "-" ||
+        integers[1].magnitude.text != "9223372036854775808")
+      return false;
+    const auto& difference = std::get<ast::AstSectionDifference>(
+        std::get<ast::AstSectionData>(section.payload[2]).value);
+    if (difference.left.text != "end" || difference.right.text != "begin")
+      return false;
+    auto resolved = ir::resolveAndValidateModule(*syntax);
+    if (!resolved)
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  static_assert(
+      std::same_as<ir::ResolvedDebugSection, ast::AstSectionDirective>);
+  if (owned->sections.size() != 3 ||
+      owned->sections[0].name.text != owned->sections[1].name.text ||
+      !ir::validateModule(*owned))
+    return false;
+  const auto& data =
+      std::get<ast::AstSectionData>(owned->sections.front().payload[1]);
+  if (data.width != ast::AstSectionWidth::B64 || data.type.text != ".b64")
+    return false;
+  const auto& integers =
+      std::get<std::vector<ast::AstSectionInteger>>(data.value);
+  if (integers[0].magnitude.text != "18446744073709551615U" ||
+      integers[0].range.start.line != 8)
+    return false;
+  const auto& addend = std::get<ast::AstSectionAddend>(
+      std::get<ast::AstSectionData>(owned->sections.front().payload[3]).value);
+  if (addend.name.text != ".debug_info" || addend.operation.text != "+" ||
+      addend.value.magnitude.text != "9223372036854775807")
+    return false;
+  ir::ResolvedModule copied(*owned), assigned;
+  assigned = copied;
+  ir::ResolvedFunction function(copied.functions.front());
+  assigned.functions.front() = function;
+  assigned.functions.front().body.front() = function.body.front()->clone();
+  if (!ir::validateModule(copied) || !ir::validateModule(assigned))
+    return false;
+  auto& changed =
+      std::get<std::vector<ast::AstSectionInteger>>(
+          std::get<ast::AstSectionData>(assigned.sections.front().payload[1])
+              .value)
+          .front();
+  changed.magnitude.text = "18446744073709551616";
+  if (ir::validateModule(assigned) || !ir::validateModule(*owned))
+    return false;
+  ir::ResolvedModule moved(std::move(copied));
+  assigned = std::move(moved);
+  return bool(ir::validateModule(assigned));
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledDebugSections())
+    return 36;
   if (!checkInstalledRequiredTcgenMasks())
     return 35;
   if (!checkInstalledRedAsyncDefault())

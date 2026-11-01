@@ -37,19 +37,19 @@ TEST(PtxCstParser, RecoveryPreservesAliasAfterUnknownDirective) {
   EXPECT_EQ(alias.token_range.last, function.token_range.first);
 }
 
-/** A module source start need not terminate an opaque section payload. */
-TEST(PtxCstParser, AliasSpellingRemainsOpaqueInsideSection) {
+/** Unsupported section data stays inside its recovered raw section boundary. */
+TEST(PtxCstParser, AliasSpellingRemainsInsideRecoveredSection) {
   const std::string source =
       ".section .debug_info { .alias a,b; }\n.entry k(){ret;}";
   PtxCstParser parser(source);
   const auto result = parser.parseModule();
   ASSERT_TRUE(result.value.has_value());
-  EXPECT_TRUE(result.diagnostics.empty());
+  EXPECT_EQ(result.diagnostics.size(), 1u);
   ASSERT_EQ(result->module()->items.size(), 2u);
   const auto& section = std::get<syntax_cst::CstSectionDirective>(
       result->module()->items.front());
-  ASSERT_FALSE(section.payload.empty());
-  EXPECT_EQ(result->token(section.payload.front()).text, ".alias");
+  ASSERT_FALSE(section.payload_tokens.empty());
+  EXPECT_EQ(result->token(section.payload_tokens.front()).text, ".alias");
   EXPECT_EQ(result->sourceText(), source);
 }
 

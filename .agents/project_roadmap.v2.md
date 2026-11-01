@@ -1383,3 +1383,5 @@ frontend consumer。
 
 
 Legacy entry body inputs retain owning role/cache and input LD/MOV semantics, distinct from syntactic header ABI and modern call slots. Fresh ambiguous entry body parameter typing requires PTX version; both validators recheck intrinsic current facts before context skips. The 32764-byte logical aggregate ceiling is enforced. `D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` remains qualified for exact physical legacy launch packing; no driver/runtime allocation is modeled.
+
+Historical reciprocal coverage includes a distinct `RcpImplicitF64` for PTX `[1.0, 1.4)`, with RN interpretation and the existing native SM13 or exact mapped SM10/11/12 requirements. Source headers retain their independent profile/version restrictions; this does not claim GPU numeric execution.

@@ -1472,6 +1472,18 @@ instructions:
           - {name: ftz, kind: flag, presence: absent}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
 
+      - name: rcp_implicit_f64
+        availability:
+          any_of:
+            - {ptx: "1.0", ptx_before: "1.4", sm: 13}
+            - {ptx: "1.0", ptx_before: "1.4", targets: [sm_10, sm_11, sm_12], map_f64_to_f32: true}
+        floating_point_default: round_nearest_even
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+
   - opcode: sqrt
     section: "9.7.3.15"
     doc: "Explicit approximate and rounded single- and double-precision square root."

@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/cos.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/div.gen.hpp>
@@ -30,6 +32,10 @@ concept HasFloatingControls =
 static_assert(!HasFloatingControls<DivImplicitF32>);
 static_assert(!HasFloatingControls<DivImplicitF64>);
 static_assert(!HasFloatingControls<RcpImplicitF32>);
+static_assert(!HasFloatingControls<RcpImplicitF64>);
+static_assert(RcpImplicitF64::floating_point_default ==
+              FloatingPointDefault::RoundNearestEven);
+static_assert(RcpImplicitF64::kind != RcpRnF64::kind);
 static_assert(!HasFloatingControls<SqrtImplicitF32>);
 static_assert(!HasFloatingControls<SqrtImplicitF64>);
 static_assert(!HasFloatingControls<RsqrtImplicitF32>);
@@ -72,7 +78,7 @@ struct OmittedFloatCase {
   InstructionKind kind;
   /** Native double-precision form requires SM13. */
   bool fp64 = false;
-  /** Only exact division and square root inherit the source mapping option. */
+  /** Exact division, reciprocal and square root inherit the source mapping option. */
   bool mapped = false;
 };
 constexpr std::array kOmittedFloatCases{
@@ -86,6 +92,7 @@ constexpr std::array kOmittedFloatCases{
     OmittedFloatCase{"ex2.f32 %f0, %f1;", Ex2ImplicitF32::kind},
     OmittedFloatCase{"div.f64 %d0, %d1, %d2;", DivImplicitF64::kind, true,
                      true},
+    OmittedFloatCase{"rcp.f64 %d0, %d1;", RcpImplicitF64::kind, true, true},
     OmittedFloatCase{"sqrt.f64 %d0, %d1;", SqrtImplicitF64::kind, true, true},
     OmittedFloatCase{"rsqrt.f64 %d0, %d1;", RsqrtImplicitF64::kind, true},
     OmittedFloatCase{"mad.f64 %d0, %d1, %d2, %d3;", MadImplicitF64::kind, true},
@@ -253,13 +260,13 @@ TEST(HistoricalFloatDefaults, ModuleHeaderAndMappingMatrix) {
   }
 }
 
-/** Missing mode cannot mix with written FTZ; reciprocal FP64 omission stays excluded. */
-TEST(HistoricalFloatDefaults, RejectsMixedControlsAndExcludedReciprocal) {
+/** Missing mode cannot mix with written FTZ or conflicting explicit controls. */
+TEST(HistoricalFloatDefaults, RejectsMixedControls) {
   for (const auto source :
        {"div.ftz.f32 %f0, %f1, %f2;", "rcp.ftz.f32 %f0, %f1;",
         "sqrt.ftz.f32 %f0, %f1;", "rsqrt.ftz.f32 %f0, %f1;",
         "sin.ftz.f32 %f0, %f1;", "cos.ftz.f32 %f0, %f1;",
-        "lg2.ftz.f32 %f0, %f1;", "ex2.ftz.f32 %f0, %f1;", "rcp.f64 %d0, %d1;",
+        "lg2.ftz.f32 %f0, %f1;", "ex2.ftz.f32 %f0, %f1;",
         "mad.ftz.f64 %d0, %d1, %d2, %d3;"}) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
@@ -287,6 +294,221 @@ TEST(HistoricalFloatDefaults, PlainAndDnfAvailabilityBounds) {
   }
   plain.ptx_before.reset();
   EXPECT_TRUE(checker::is_available(plain, {.ptx_version = {9, 3}}));
+}
+
+/** Finite real source profile matrix preserves header rejection as a separate cause. */
+TEST(LegacyRcpF64, RealLegacyProfilesAndExplicitWindowControls) {
+  for (int minor : {0, 1, 2, 3})
+    for (int sm : {10, 11, 12, 13})
+      for (bool map : {false, true}) {
+        SCOPED_TRACE(::testing::Message()
+                     << minor << " sm" << sm << " map" << map);
+        const auto ast = test_helpers::parseModule(omittedFloatModule(
+            "rcp.f64 %d0,%d1;", "1." + std::to_string(minor),
+            "sm_" + std::to_string(sm) + (map ? ", map_f64_to_f32" : "")));
+        ASSERT_TRUE(ast);
+        const bool header_bad = (minor < 2 && sm >= 12) || (sm == 13 && map);
+        const bool accepted = !header_bad && (sm == 13 || map);
+        auto module = resolveModuleOnly(*ast);
+        if (header_bad) {
+          EXPECT_FALSE(resolveAndValidateModule(*ast));
+          continue;
+        }
+        ASSERT_TRUE(module) << module.error().front().message;
+        EXPECT_EQ(module->functions.front().body.front()->instruction_kind(),
+                  RcpImplicitF64::kind);
+        EXPECT_EQ(bool(resolveAndValidateModule(*ast)), accepted);
+        for (auto policy : {ModuleValidationPolicy::AvailableContext,
+                            ModuleValidationPolicy::RequireCompleteContext}) {
+          for (auto result : {validateModule(*module, policy),
+                              validateModule(*ast, *module, policy)}) {
+            EXPECT_EQ(bool(result), accepted);
+            if (!accepted) {
+              ASSERT_FALSE(result);
+              EXPECT_EQ(result.error().front().kind,
+                        checker::CheckDiagnosticKind::UnsupportedAvailability);
+            }
+          }
+        }
+      }
+  for (const auto& [op, version, target, accepted] :
+       {std::tuple{"rcp.f64 %d0,%d1;", "1.4", "sm_13", false},
+        {"rcp.f64 %d0,%d1;", "9.3", "sm_90", false},
+        {"rcp.rn.f64 %d0,%d1;", "1.4", "sm_13", true},
+        {"rcp.rn.f64 %d0,%d1;", "1.3", "sm_13", false},
+        {"rcp.rn.f64 %d0,%d1;", "9.3", "sm_90", true},
+        {"rcp.rn.f64 %d0,%d1;", "1.4", "sm_10, map_f64_to_f32", true}}) {
+    auto ast =
+        test_helpers::parseModule(omittedFloatModule(op, version, target));
+    ASSERT_TRUE(ast);
+    EXPECT_EQ(bool(resolveAndValidateModule(*ast)), accepted);
+  }
+}
+
+/** Current context is mutable state, while a source form and owned operands retain their identity. */
+TEST(LegacyRcpF64, SameBarePayloadSuppliedHeaderAndCurrentContext) {
+  auto ast = test_helpers::parseModule(omittedFloatModule("rcp.f64 %d0,%d1;"));
+  ASSERT_TRUE(ast);
+  auto module = resolveAndValidateModule(*ast);
+  ASSERT_TRUE(module) << module.error().front().message;
+  auto replacement =
+      test_helpers::parseModule(omittedFloatModule("rcp.f64 %d0,%d1;", "1.4"));
+  ASSERT_TRUE(replacement);
+  for (auto policy : {ModuleValidationPolicy::AvailableContext,
+                      ModuleValidationPolicy::RequireCompleteContext}) {
+    auto bad = validateModule(*replacement, *module, policy);
+    ASSERT_FALSE(bad);
+    EXPECT_EQ(bad.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedAvailability);
+    EXPECT_EQ(bad.error().front().range,
+              module->functions.front().instruction_ranges.front());
+    EXPECT_TRUE(validateModule(*ast, *module, policy));
+  }
+  auto copy = *module;
+  ResolvedModule assigned;
+  assigned = copy;
+  auto moved = std::move(assigned);
+  for (auto& function : moved.functions)
+    for (auto& instruction : function.body)
+      instruction = instruction->clone();
+  EXPECT_EQ(moved.functions.front().instruction_ranges,
+            module->functions.front().instruction_ranges);
+  EXPECT_TRUE(validateModule(moved));
+  for (auto& r : moved.header.regions)
+    r.version = checker::PtxVersion{1, 4};
+  for (auto& f : moved.functions)
+    f.source_version = checker::PtxVersion{1, 4};
+  auto bad = validateModule(moved);
+  ASSERT_FALSE(bad);
+  EXPECT_EQ(bad.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
+  for (auto& r : moved.header.regions)
+    r.version = checker::PtxVersion{1, 3};
+  for (auto& f : moved.functions)
+    f.source_version = checker::PtxVersion{1, 3};
+  EXPECT_TRUE(validateModule(moved));
+}
+
+/** Whole-instruction availability still defers under incomplete context, never certifies partial legality. */
+TEST(LegacyRcpF64, MissingContextDefersAndStrictRequiresContext) {
+  for (bool missing_version : {false, true}) {
+    auto source = omittedFloatModule("rcp.f64 %d0,%d1;");
+    auto ast = test_helpers::parseModule(source);
+    ASSERT_TRUE(ast);
+    auto module = resolveAndValidateModule(*ast);
+    ASSERT_TRUE(module);
+    auto partial_source =
+        missing_version
+            ? std::string(
+                  ".target sm_13\n.entry k(){.reg .f64 %d<4>;rcp.f64 %d0,%d1;}")
+            : std::string(
+                  ".version 1.4\n.entry k(){.reg .f64 %d<4>;rcp.f64 %d0,%d1;}");
+    auto partial_ast = test_helpers::parseModule(partial_source);
+    ASSERT_TRUE(partial_ast);
+    for (auto& r : module->header.regions) {
+      if (missing_version) {
+        r.version.reset();
+        r.version_provenance = SourceConfigurationProvenance::Missing;
+      } else {
+        r.version = checker::PtxVersion{1, 4};
+        r.target_options.clear();
+        r.target_provenance = SourceConfigurationProvenance::Missing;
+      }
+    }
+    for (auto& f : module->functions)
+      if (missing_version)
+        f.source_version.reset();
+      else {
+        f.source_version = checker::PtxVersion{1, 4};
+        f.source_target.reset();
+      }
+    EXPECT_TRUE(
+        validateModule(*module, ModuleValidationPolicy::AvailableContext));
+    // Supplied payload and ranges must be identical; only the header is changed.
+    auto provided = test_helpers::parseModule(
+        missing_version
+            ? std::string(".target sm_13\n.entry k() { .reg .f32 %f<4>; .reg "
+                          ".f64 %d<4>; rcp.f64 %d0,%d1; }\n")
+            : std::string(".version 1.4\n.entry k() { .reg .f32 %f<4>; .reg "
+                          ".f64 %d<4>; rcp.f64 %d0,%d1; }\n"));
+    ASSERT_TRUE(provided);
+    EXPECT_TRUE(validateModule(*provided, *module,
+                               ModuleValidationPolicy::AvailableContext));
+    for (auto result :
+         {validateModule(*module,
+                         ModuleValidationPolicy::RequireCompleteContext),
+          validateModule(*provided, *module,
+                         ModuleValidationPolicy::RequireCompleteContext)}) {
+      ASSERT_FALSE(result);
+      EXPECT_TRUE(std::ranges::any_of(result.error(), [](const auto& d) {
+        return d.kind == checker::CheckDiagnosticKind::MissingValidationContext;
+      }));
+    }
+  }
+  auto unknown = test_helpers::parseModule(
+      omittedFloatModule("rcp.f64 %d0,%d1;", "1.3", "sm_999"));
+  ASSERT_TRUE(unknown);
+  auto unknown_module = resolveModuleOnly(*unknown);
+  ASSERT_TRUE(unknown_module) << unknown_module.error().front().message;
+  for (auto policy : {ModuleValidationPolicy::AvailableContext,
+                      ModuleValidationPolicy::RequireCompleteContext}) {
+    for (auto result : {validateModule(*unknown_module, policy),
+                        validateModule(*unknown, *unknown_module, policy)}) {
+      ASSERT_FALSE(result);
+      EXPECT_TRUE(
+          std::ranges::any_of(result.error(), [](const auto& diagnostic) {
+            return diagnostic.kind ==
+                       checker::CheckDiagnosticKind::UnknownTarget &&
+                   diagnostic.message.find("sm_999") != std::string::npos;
+          }));
+    }
+  }
+  const auto strict_unknown = resolveAndValidateModule(*unknown);
+  ASSERT_FALSE(strict_unknown);
+  EXPECT_TRUE(
+      std::ranges::any_of(strict_unknown.error(), [](const auto& diagnostic) {
+        return diagnostic.checker_kind ==
+               checker::CheckDiagnosticKind::UnknownTarget;
+      }));
+}
+
+/** Removing a real source mapping option changes availability without inventing profile capability. */
+TEST(LegacyRcpF64, CurrentMappingOptionAndOperandPolicy) {
+  auto source =
+      omittedFloatModule("rcp.f64 %d0,%d1;", "1.0", "sm_10, map_f64_to_f32");
+  auto ast = test_helpers::parseModule(source);
+  ASSERT_TRUE(ast);
+  auto m = resolveAndValidateModule(*ast);
+  ASSERT_TRUE(m);
+  for (auto& r : m->header.regions) {
+    r.map_f64_to_f32 = false;
+    std::erase(r.target_options, std::string("map_f64_to_f32"));
+  }
+  auto plain = test_helpers::parseModule(
+      omittedFloatModule("rcp.f64 %d0,%d1;", "1.0", "sm_10"));
+  ASSERT_TRUE(plain);
+  for (auto result : {validateModule(*m), validateModule(*plain, *m)}) {
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedAvailability);
+  }
+  for (auto op :
+       {"rcp.ftz.f64 %d0,%d1;", "rcp.approx.f64 %d0,%d1;",
+        "rcp.approx.rn.f64 %d0,%d1;", "rcp.f64 %f0,%f1;", "rcp.f64 %d0,1;"}) {
+    auto a = test_helpers::parseModule(omittedFloatModule(op));
+    ASSERT_TRUE(a);
+    EXPECT_FALSE(resolveAndValidateModule(*a));
+  }
+  for (auto op : {"rcp.f64 %d0,%d1;", "rcp.f64 %d0,1.0;"}) {
+    auto a = test_helpers::parseModule(omittedFloatModule(op));
+    ASSERT_TRUE(a);
+    EXPECT_TRUE(resolveAndValidateModule(*a));
+  }
+  auto bit = test_helpers::parseModule(
+      ".version 1.3\n.target sm_13\n.entry k(){.reg .b64 %b<2>;rcp.f64 "
+      "%b0,%b1;}");
+  ASSERT_TRUE(bit);
+  EXPECT_TRUE(resolveAndValidateModule(*bit));
 }
 
 }  // namespace

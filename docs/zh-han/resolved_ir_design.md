@@ -1178,19 +1178,17 @@ intrinsic identity 与当前 metadata 保持不变，有效类型与 availabilit
 
 ## 历史浮点控制省略形式
 
-`1.0 <= PTX < 1.4` 支持十二个保留 source omission 的 exact form：
+`1.0 <= PTX < 1.4` 支持十三个保留 source omission 的 exact form：
 `div.f32`、`rcp.f32`、`sqrt.f32`、`rsqrt.f32`、`sin.f32`、`cos.f32`、`lg2.f32`
 与 `ex2.f32` 的解释为 `FloatingPointDefault::ApproximateFlushToZero`；
-`div.f64`、`sqrt.f64` 与 `mad.f64` 为 `RoundNearestEven`；`rsqrt.f64` 为无 FTZ 的
+`div.f64`、`rcp.f64`、`sqrt.f64` 与 `mad.f64` 为 `RoundNearestEven`；`rsqrt.f64` 为无 FTZ 的
 `Approximate`。对应 final class 暴露 `inline static constexpr floating_point_default`，
 没有 source mode/rounding/FTZ member；DIV 也省略 `.full`。resolution 不插入 explicit
 modifier，也不改写 opcode。
 
-FP32 form 保持既有 all-target rule。FP64 form 要求 SM >= 13；只有 `div.f64` 与
+FP32 form 保持既有 all-target rule。FP64 form 要求 SM >= 13；`div.f64`、`rcp.f64` 与
 `sqrt.f64` 额外接受启用 `map_f64_to_f32` 的精确 generic `sm_10`、`sm_11` 或 `sm_12`。
-该 option 不会让 `rsqrt.f64` 或 `mad.f64` 在这些 target 上可用。`rcp.f64` 仍排除：manual 描述旧版 omitted-mode default，
-而 CUDA 13.3.33 拒绝复现的 form。此已记录的 manual/current-assembler discrepancy
-不扩大支持范围。既有 implicit `mad.f32`
+该 option 不会让 `rsqrt.f64` 或 `mad.f64` 在这些 target 上可用。`RcpImplicitF64` 与 `RcpRnF64` 分离，静态 RN 默认解释不伪造写入的控制。原生 SM13 source header 要求 PTX1.2+，映射 SM10/11 支持 PTX1.0，SM12 要求 PTX1.2。历史 CUDA 13.3.33 assembler 差异仅作为证据，不覆盖固定版本 manual 的规范。既有 implicit `mad.f32`
 保持自身 contract。
 
 availability metadata 在 plain requirement 和各 DNF clause 中可指定 exclusive 上界

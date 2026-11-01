@@ -1472,20 +1472,18 @@ and current metadata remain unchanged; contextual availability applies per check
 
 ## Historical omitted floating controls
 
-For `1.0 <= PTX < 1.4`, twelve exact forms preserve omitted source controls:
+For `1.0 <= PTX < 1.4`, thirteen exact forms preserve omitted source controls:
 `div.f32`, `rcp.f32`, `sqrt.f32`, `rsqrt.f32`, `sin.f32`, `cos.f32`, `lg2.f32`,
 and `ex2.f32` have `FloatingPointDefault::ApproximateFlushToZero`; `div.f64`,
-`sqrt.f64`, and `mad.f64` have `RoundNearestEven`; `rsqrt.f64` has `Approximate`
+`rcp.f64`, `sqrt.f64`, and `mad.f64` have `RoundNearestEven`; `rsqrt.f64` has `Approximate`
 without FTZ. Their final classes expose `inline static constexpr
 floating_point_default` and no source mode/rounding/FTZ members. DIV also omits
 `.full`. Resolution never inserts explicit modifiers or rewrites the opcode.
 
 FP32 forms keep the existing all-target rule. FP64 forms need SM >= 13; only
-`div.f64` and `sqrt.f64` additionally accept exact generic `sm_10`, `sm_11`, or
+`div.f64`, `rcp.f64`, and `sqrt.f64` additionally accept exact generic `sm_10`, `sm_11`, or
 `sm_12` with `map_f64_to_f32`. That option does not admit `rsqrt.f64` or `mad.f64`
-on these targets. `rcp.f64` remains excluded: the manual describes an old omitted-mode default,
-while CUDA 13.3.33 rejects the reproduced form. This documented manual/current-assembler
-discrepancy does not widen the supported inventory. Existing implicit `mad.f32` has its own contract.
+on these targets. `RcpImplicitF64` is distinct from `RcpRnF64`; its RN default is a static interpretation, never a fabricated written control. Native SM13 requires a PTX1.2+ source header, while mapped SM10/11 permit PTX1.0 and SM12 requires PTX1.2. The historical CUDA 13.3.33 assembler discrepancy is evidence rather than a normative override of the pinned manual. Existing implicit `mad.f32` has its own contract.
 
 Availability metadata uses optional `ptx_before: "1.4"` as an exclusive bound,
 in plain requirements and each DNF clause. Missing bounds remain unbounded;

@@ -21,23 +21,20 @@ checking. None has simulator execution semantics.
 | `fma_rn_f32`, `fma_directed_f32` | 2.0 / `sm_20` | `.rn`, `.rz`, `.rm`, or `.rp` is required; `.ftz` and `.sat` are independently optional | `.f32` destination and sources; every source is floating register-or-immediate and a same-width bit register is also accepted |
 | `fma_rn_f64`, `fma_directed_f64` | 1.4 / `sm_13` | one of all four rounding modes is required; no flags | `.f64` destination and sources; every source is floating register-or-immediate and a same-width bit register is also accepted |
 | `fma_f32x2` | 8.6 / `sm_100` | one of all four rounding modes is required; `.ftz` optional | all operands are exact `.b64` registers |
-| `fma_rn_f16`, `fma_rn_f16x2` | 4.2 / `sm_53` | `.rn` required; `.ftz` and `.sat` independently optional | register-only: `.f16`/`.b16` for scalar, `.f16x2`/`.b32` for packed |
-| `fma_half_relu` | 7.0 / `sm_80` | `.rn` and `.relu` required; `.ftz` optional | register-only `.f16`/`.b16`, or `.f16x2`/`.b32` packed values |
-| `fma_half_oob`, `fma_half_oob_relu` | 8.1 / `sm_90` | `.rn` and `.oob` required; the former may add `.sat`, the latter requires `.relu`; neither permits `.ftz`, and `.sat` with `.relu` is rejected | register-only `.f16`/`.b16`, or `.f16x2`/`.b32` packed values |
-| `fma_bf16`, `fma_bf16x2` | 7.0 / `sm_80` | `.rn` required; `.relu` optional; `.ftz` and `.sat` are not allowed | exact `.b16` scalar or `.b32` packed registers only |
-| `fma_bf16_oob`, `fma_bf16x2_oob` | 8.1 / `sm_90` | `.rn` and `.oob` required; `.relu` optional; `.ftz` and `.sat` are not allowed | exact `.b16` scalar or `.b32` packed registers only |
+| `fma_rn_f16`, `fma_rn_f16x2` | 4.2 / `sm_53` | optional `.rn` (default RN); `.ftz` and `.sat` independently optional | register-only: `.f16`/`.b16` for scalar, `.f16x2`/`.b32` for packed |
+| `fma_half_relu` | 7.0 / `sm_80` | optional `.rn` (default RN); `.relu` required; `.ftz` optional | register-only `.f16`/`.b16`, or `.f16x2`/`.b32` packed values |
+| `fma_half_oob`, `fma_half_oob_relu` | 8.1 / `sm_90` | optional `.rn` (default RN); `.oob` required; the latter requires `.relu`; neither permits `.ftz` or `.sat` | register-only `.f16`/`.b16`, or `.f16x2`/`.b32` packed values |
+| `fma_bf16`, `fma_bf16x2` | 7.0 / `sm_80` | optional `.rn` (default RN); `.relu` optional; `.ftz` and `.sat` are not allowed | exact `.b16` scalar or `.b32` packed registers only |
+| `fma_bf16_oob`, `fma_bf16x2_oob` | 8.1 / `sm_90` | optional `.rn` (default RN); `.oob` required; `.relu` optional; `.ftz` and `.sat` are not allowed | exact `.b16` scalar or `.b32` packed registers only |
 | `fma_mixed_f32_f16`, `fma_mixed_f32_bf16` | 8.6 / `sm_100` | one of all four rounding modes required; `.sat` optional | destination and accumulator `c` are `.f32` or `.b32`; F16 multiplicands `a`/`b` accept `.f16`/`.b16` registers or numeric half constants; the current bf16 form retains exact `.b16` registers; `c` may be a floating immediate |
 
 ## Deliberate compatibility boundaries
 
-The half-precision prose says that `.rn` is the default, while the FMA model
-requires it: NVIDIA `ptxas` 13.3.33 rejects an omitted `.rn`. The explicit
-rounding modifier is therefore part of the accepted contract.
-
-PTX syntax prints `fma.rnd.oob.{relu}.type`, without `.sat`. `ptxas` 13.3.33
-also accepts `.sat` for half (`.f16`/`.f16x2`) OOB forms. The `fma_half_oob`
-row intentionally records that assembler-compatible extension; it does not
-generalize it to bf16 or permit it together with `.relu`.
+The half/bfloat section defines RN as the default, including OOB forms. The
+frontend accepts omitted or explicit `.rn`; other rounding modes remain invalid.
+OOB syntax admits optional `.relu`, and excludes `.sat` and `.ftz`.
+Historical `ptxas` 13.3.33 rejection of omitted `.rn` and acceptance of half
+OOB `.sat` are supplemental tool divergences, rather than frontend grammar rules.
 
 The mixed-precision manual example contains a repeated/trailing `.sat`. The
 model accepts only the canonical modifier sequence represented by its variants:
@@ -58,17 +55,33 @@ The public C++ IDs `FmaRnF32`, `FmaRnF64`, and `FmaRnF16` remain available.
 The three source fields of `RnF32` and `RnF64` now hold `WithLocs<RegOrImm>`;
 consumers must distinguish register references from typed immediates.
 
+The nine half/bfloat classes (`FmaRnF16`, `FmaRnF16x2`, `FmaHalfRelu`,
+`FmaHalfOob`, `FmaHalfOobRelu`, `FmaBf16`, `FmaBf16x2`, `FmaBf16Oob`,
+`FmaBf16x2Oob`) now expose instance `WithLocs<RoundingMode> rounding`, replacing
+static rounding constants. Read `value.rounding.value` and `.locs`: omitted RN
+has value `Rn` and empty locations; explicit RN retains its token location.
+Coherent current RN presence edits remain valid; supplied AST association checks
+the retained syntax identity independently. `FmaHalfOob::saturate` is removed;
+there is no SAT field or implicit SAT permission. These generated C++ layout
+changes require rebuilding consumers. The 26 register-only source roles and
+all carrier/type/availability contracts remain unchanged; modifier validation
+does not execute FMA arithmetic, FTZ, saturation, ReLU or OOB semantics.
+
 ## Verification
 
 [C++ resolution tests](../../../submod/resolved_ir/test/test_select_variant_fma.cpp)
-exercise all 70 canonical modifier combinations (including the half OOB `.sat`
-extension), invalid combinations, and floating-literal conversion boundaries.
+exercise all 92 canonical modifier combinations: 48 half/bfloat products and
+44 ordinary/mixed products. Invalid combinations and floating-literal conversion
+boundaries remain covered.
 [Availability tests](../../../submod/resolved_ir/test/test_select_variant_fma.cpp)
 check each of the 16 variants at its minimum PTX/SM and independently below each
 minimum. [Module tests](../../../submod/resolved_ir/test/test_resolved_module_instruction_types.cpp)
 check declared operand types, exact bit containers, and each mixed operand
-position. The former `test/package_consumer` FMA harness is no longer in this
-tree; this reference does not claim a current standalone all-FMA install check.
+position. [Owned-control tests](../../../submod/resolved_ir/test/test_half_fma_modifiers.cpp)
+check all 48 half products, default presence, invalid modes, source association,
+availability, and independent copies/clones after AST death. The installed
+[consumer](../../../examples/resolved_ir_consumer/main.cpp) reads all nine
+instance rounding fields and validates copies/clones without source storage.
 
 The shared Python tests check PTX-section taxonomy in
 `python/tests/code_gen/test_ptx_spec_taxonomy.py` and generated Resolved-IR

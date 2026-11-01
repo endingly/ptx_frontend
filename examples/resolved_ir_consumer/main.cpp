@@ -971,8 +971,88 @@ set.eq.and.f16.f64 h,da,db,p;
   return !ir::validateModule(assigned);
 }
 
+/** Own all nine installed optional RN controls after source/AST death and cloning. */
+bool checkInstalledHalfFmaModifiers() {
+  namespace ir = ptx_frontend::resolved_ir;
+  auto owned = [] {
+    const std::string source = R"ptx(
+.version 9.3
+.target sm_100
+.entry kernel() {
+.reg .b16 h,a,b,c; .reg .b32 d,x,y,z;
+mov.b16 a,1; mov.b16 b,2; mov.b16 c,0;
+mov.b32 x,1; mov.b32 y,2; mov.b32 z,0;
+fma.f16 h,a,b,c;
+fma.f16x2 d,x,y,z;
+fma.relu.f16 h,a,b,c;
+fma.oob.f16 h,a,b,c;
+fma.oob.relu.f16 h,a,b,c;
+fma.bf16 h,a,b,c;
+fma.bf16x2 d,x,y,z;
+fma.oob.bf16 h,a,b,c;
+fma.oob.bf16x2 d,x,y,z;
+fma.rn.f16 h,a,b,c;
+fma.rn.f16x2 d,x,y,z;
+fma.rn.relu.f16 h,a,b,c;
+fma.rn.oob.f16 h,a,b,c;
+fma.rn.oob.relu.f16 h,a,b,c;
+fma.rn.bf16 h,a,b,c;
+fma.rn.bf16x2 d,x,y,z;
+fma.rn.oob.bf16 h,a,b,c;
+fma.rn.oob.bf16x2 d,x,y,z;
+}
+)ptx";
+    ptx_frontend::PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return std::expected<ir::ResolvedModule, ir::ModuleResolveDiagnostics>{
+          std::unexpected(ir::ModuleResolveDiagnostics{})};
+    return ir::resolveAndValidateModule(*ast);
+  }();
+  if (!owned || owned->functions.front().body.size() != 24)
+    return false;
+  auto& body = owned->functions.front().body;
+  std::array<ptx_frontend::WithLocs<ir::RoundingMode>*, 18> controls{
+      &dynamic_cast<ir::FmaRnF16&>(*body[6]).rounding,
+      &dynamic_cast<ir::FmaRnF16x2&>(*body[7]).rounding,
+      &dynamic_cast<ir::FmaHalfRelu&>(*body[8]).rounding,
+      &dynamic_cast<ir::FmaHalfOob&>(*body[9]).rounding,
+      &dynamic_cast<ir::FmaHalfOobRelu&>(*body[10]).rounding,
+      &dynamic_cast<ir::FmaBf16&>(*body[11]).rounding,
+      &dynamic_cast<ir::FmaBf16x2&>(*body[12]).rounding,
+      &dynamic_cast<ir::FmaBf16Oob&>(*body[13]).rounding,
+      &dynamic_cast<ir::FmaBf16x2Oob&>(*body[14]).rounding,
+      &dynamic_cast<ir::FmaRnF16&>(*body[15]).rounding,
+      &dynamic_cast<ir::FmaRnF16x2&>(*body[16]).rounding,
+      &dynamic_cast<ir::FmaHalfRelu&>(*body[17]).rounding,
+      &dynamic_cast<ir::FmaHalfOob&>(*body[18]).rounding,
+      &dynamic_cast<ir::FmaHalfOobRelu&>(*body[19]).rounding,
+      &dynamic_cast<ir::FmaBf16&>(*body[20]).rounding,
+      &dynamic_cast<ir::FmaBf16x2&>(*body[21]).rounding,
+      &dynamic_cast<ir::FmaBf16Oob&>(*body[22]).rounding,
+      &dynamic_cast<ir::FmaBf16x2Oob&>(*body[23]).rounding,
+  };
+  for (size_t index = 0; index < controls.size(); ++index)
+    if (controls[index]->value != ir::RoundingMode::Rn ||
+        controls[index]->locs.empty() != (index < 9))
+      return false;
+  ir::ResolvedModule copied(*owned), assigned;
+  assigned = copied;
+  ir::ResolvedFunction function(copied.functions.front());
+  assigned.functions.front() = function;
+  assigned.functions.front().body.back() = function.body.back()->clone();
+  if (!ir::validateModule(copied) || !ir::validateModule(assigned))
+    return false;
+  auto& invalid =
+      dynamic_cast<ir::FmaBf16x2Oob&>(*assigned.functions.front().body.back());
+  invalid.rounding.value = ir::RoundingMode::Rz;
+  return !ir::validateModule(assigned);
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledHalfFmaModifiers())
+    return 33;
   if (!checkInstalledHalfSetFtz())
     return 32;
   if (!checkInstalledStochasticQuadSources())

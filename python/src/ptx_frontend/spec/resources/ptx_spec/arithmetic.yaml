@@ -1114,13 +1114,13 @@ instructions:
   - opcode: fma
     section: "9.7.4.4"
     doc: "Half- and bfloat-precision fused multiply-add, including packed, ReLU, and out-of-bounds forms."
-    syntax: "fma.rn{.ftz}{.sat|.relu}.{f16|f16x2} | fma.rn{.relu}.{bf16|bf16x2} | fma.rn.oob{.relu}.type dst, src1, src2, src3"
+    syntax: "fma{.rn}{.ftz}{.sat|.relu}.{f16|f16x2} | fma{.rn}{.relu}.{bf16|bf16x2} | fma{.rn}.oob{.relu}.type dst, src1, src2, src3"
     operands: $ternary_float_register
     variants:
       - name: fma_rn_f16
         availability: {ptx: "4.2", sm: 53}
         modifiers:
-          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [rn]}
           - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
@@ -1130,7 +1130,7 @@ instructions:
       - name: fma_rn_f16x2
         availability: {ptx: "4.2", sm: 53}
         modifiers:
-          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [rn]}
           - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
@@ -1140,28 +1140,27 @@ instructions:
       - name: fma_half_relu
         availability: {ptx: "7.0", sm: 80}
         modifiers:
-          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [rn]}
           - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: relu, kind: flag, presence: fixed, value: true, token: .relu}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [f16, f16x2]}
         examples:
           - {ptx: "fma.rn.ftz.relu.f16 %h0, %h1, %h2, %h3;", valid: true}
 
-      # The ISA syntax omits .sat here; ptxas 13.3 accepts it for half types.
       - name: fma_half_oob
         availability: {ptx: "8.1", sm: 90}
         modifiers:
-          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [rn]}
           - {name: oob, kind: flag, presence: fixed, value: true, token: .oob}
-          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
+          - {name: sat, kind: flag, presence: absent}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [f16, f16x2]}
         examples:
-          - {ptx: "fma.rn.oob.sat.f16 %h0, %h1, %h2, %h3;", valid: true}
+          - {ptx: "fma.rn.oob.f16 %h0, %h1, %h2, %h3;", valid: true}
 
       - name: fma_half_oob_relu
         availability: {ptx: "8.1", sm: 90}
         modifiers:
-          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [rn]}
           - {name: oob, kind: flag, presence: fixed, value: true, token: .oob}
           - {name: relu, kind: flag, presence: fixed, value: true, token: .relu}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [f16, f16x2]}
@@ -1172,7 +1171,7 @@ instructions:
         operands: $ternary_b16_register_exact
         availability: {ptx: "7.0", sm: 80}
         modifiers:
-          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [rn]}
           - {name: relu, kind: flag, presence: optional, default: false, token: .relu}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
         examples:
@@ -1182,7 +1181,7 @@ instructions:
         operands: $ternary_b32_register_exact
         availability: {ptx: "7.0", sm: 80}
         modifiers:
-          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [rn]}
           - {name: relu, kind: flag, presence: optional, default: false, token: .relu}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
         examples:
@@ -1192,7 +1191,7 @@ instructions:
         operands: $ternary_b16_register_exact
         availability: {ptx: "8.1", sm: 90}
         modifiers:
-          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [rn]}
           - {name: oob, kind: flag, presence: fixed, value: true, token: .oob}
           - {name: relu, kind: flag, presence: optional, default: false, token: .relu}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
@@ -1203,7 +1202,7 @@ instructions:
         operands: $ternary_b32_register_exact
         availability: {ptx: "8.1", sm: 90}
         modifiers:
-          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [rn]}
           - {name: oob, kind: flag, presence: fixed, value: true, token: .oob}
           - {name: relu, kind: flag, presence: optional, default: false, token: .relu}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}

@@ -479,7 +479,7 @@ TEST(ScalarHalfImmediates, PreservesAllExplicitHalfArithmeticSourceRoles) {
        {"mul.f16", 2},
        {"fma.rn.f16", 3},
        {"fma.rn.relu.f16", 3},
-       {"fma.rn.oob.sat.f16", 3},
+       {"fma.rn.oob.f16", 3},
        {"fma.rn.oob.relu.f16", 3},
        {"max.f16", 2},
        {"min.f16", 2},

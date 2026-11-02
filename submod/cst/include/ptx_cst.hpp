@@ -81,8 +81,15 @@ struct CstAddressOffset {
   CstTokenRange token_range;
 };
 
-using CstAddressBase =
-    std::variant<CstIdentifier, CstImmediate, CstConstantOperand>;
+/** Explicit scalar selection from a named ordinary register vector. */
+struct CstVectorMember {
+  CstIdentifier base;
+  TokenId selector{};
+  CstTokenRange token_range;
+};
+
+using CstAddressBase = std::variant<CstIdentifier, CstImmediate,
+                                    CstConstantOperand, CstVectorMember>;
 
 /** One named-array subscript, distinct from a byte-address offset. */
 struct CstNamedArrayIndex {
@@ -105,12 +112,6 @@ struct CstAddress {
   CstTokenRange token_range;
   /** Present only for the single-bracket named-array source form. */
   std::optional<CstNamedArrayIndex> named_index;
-};
-
-struct CstVectorMember {
-  CstIdentifier base;
-  TokenId selector{};
-  CstTokenRange token_range;
 };
 
 /** Arithmetic minus applied to one identifier or selected register spelling. */

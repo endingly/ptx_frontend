@@ -4,8 +4,10 @@
 #include <string_view>
 #include <variant>
 
+#include <ptx_frontend/cst/ptx_cst_parser.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/cp.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/ld.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/tex.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/fabric.gen.hpp>
@@ -386,7 +388,7 @@ TEST(VectorComponents, TensorCoordinatesAndNestedAddressFence) {
   }
 }
 
-/** Fabric's identifier-only handle grammar survives selected-ref transplants. */
+/** Fabric's whole-register handle role survives selected-ref transplants. */
 TEST(VectorComponents, FabricHandleRejectsBothComponentOrigins) {
   const auto ast = test_helpers::parseModule(
       ".version 9.3\n.target sm_100\n.address_size 64\n"
@@ -442,10 +444,9 @@ TEST(VectorComponents, FabricHandleRejectsBothComponentOrigins) {
     }
 }
 
-/** Excluded nested grammars and forged named-index payloads remain closed. */
-TEST(VectorComponents, PreservesAddressCallAndArrayIndexFences) {
-  for (const auto operation :
-       {"mov.u64 %rd, A[V.x];", "ld.u32 %r0, [V.x];", "call take, (V.x);"}) {
+/** Calls and stale transplanted named-index ranges remain independently checked. */
+TEST(VectorComponents, PreservesCallAndStaleIndexRangeFences) {
+  for (const auto operation : {"call take, (V.x);"}) {
     const auto parsed = test_helpers::parseModule(component_module(operation));
     EXPECT_TRUE(!parsed || !parsed.diagnostics.empty());
   }
@@ -464,6 +465,112 @@ TEST(VectorComponents, PreservesAddressCallAndArrayIndexFences) {
   EXPECT_FALSE(valid_named_array_address(address, NamedArrayAddressPolicy::Mov,
                                          mov.src_mov_source->locs.front()));
   EXPECT_FALSE(validateModule(changed));
+}
+
+/** Selected scalar address roles bind real vector owners and preserve aliases. */
+TEST(VectorComponents, ResolvesAddressBasesAndNamedArrayIndices) {
+  for (const auto operation :
+       {"ld.u32 %r0, [V.x];", "ld.u32 %r0, [Q.a+4];", "st.u32 [V.r-4], %r0;",
+        "mov.u64 %rd, A[%T1.g];", "ld.global.u32 %r0, A[V.y];",
+        "st.global.u32 A[Q.z], %r0;", "cvta.global.u64 %rd, A[V.r];",
+        ".reg .v2 .u64 W; isspacep.global %p, W.x;"}) {
+    SCOPED_TRACE(operation);
+    const auto parsed = test_helpers::parseModule(component_module(operation));
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    const auto resolved = resolveModule(*parsed);
+    ASSERT_TRUE(resolved) << resolved.error().front().message;
+    EXPECT_TRUE(validateModule(*resolved));
+    EXPECT_TRUE(validateModule(*parsed, *resolved));
+  }
+}
+
+/** Existing member nodes own physical ranges inside address and subscript wrappers. */
+TEST(VectorComponents,
+     AddressSyntaxPreservesSelectedChildrenAndWrittenOffsets) {
+  const std::string source = "mov.u64 %rd, A[%T1.g-1];";
+  PtxCstParser concrete_parser(source);
+  const auto concrete = concrete_parser.parseInstruction();
+  ASSERT_TRUE(concrete);
+  ASSERT_TRUE(concrete.diagnostics.empty());
+  EXPECT_EQ(concrete->sourceText(), source);
+  const auto& cst_address = std::get<syntax_cst::CstAddress>(
+      concrete->instruction()->operands[1].operand);
+  ASSERT_TRUE(cst_address.named_index);
+  const auto& cst_member =
+      std::get<syntax_cst::CstVectorMember>(cst_address.named_index->index);
+  EXPECT_EQ(concrete->token(cst_member.selector).text, ".g");
+  EXPECT_EQ(concrete->sourceRange(cst_member.token_range),
+            component_range(source, "%T1.g"));
+  PtxSyntaxParser parser(source);
+  const auto parsed = parser.parseInstruction();
+  ASSERT_TRUE(parsed);
+  ASSERT_TRUE(parsed.diagnostics.empty());
+  const auto& address = std::get<syntax_ast::AstAddress>(parsed->operands[1]);
+  ASSERT_TRUE(address.named_index);
+  const auto& index = *address.named_index;
+  const auto& member = std::get<syntax_ast::AstVectorMember>(index.index);
+  EXPECT_EQ(member.base.syntax.text, "%T1");
+  EXPECT_EQ(member.base.syntax.range, component_range(source, "%T1"));
+  EXPECT_EQ(member.selector.range, component_range(source, ".g"));
+  EXPECT_EQ(member.range, component_range(source, "%T1.g"));
+  ASSERT_TRUE(index.displacement);
+  EXPECT_EQ(index.displacement->operation,
+            syntax_ast::AstAddressOffset::Operator::Subtract);
+  EXPECT_EQ(index.operator_range, component_range(source, "-"));
+  auto copied = *parsed;
+  std::get<syntax_ast::AstVectorMember>(
+      std::get<syntax_ast::AstAddress>(copied.operands[1]).named_index->index)
+      .selector.text = ".y";
+  EXPECT_EQ(member.selector.text, ".g");
+}
+
+/** Current selected carriers survive real source death, copies, assignments and clones. */
+TEST(VectorComponents, AddressComponentsRetainCurrentOwnedAuthority) {
+  constexpr std::string_view operation =
+      "ld.u32 %r0, [%T1.g+4]; mov.u64 %rd, A[%T1.r-1];";
+  auto owned = [operation] {
+    const auto parsed = test_helpers::parseModule(component_module(operation));
+    EXPECT_TRUE(parsed);
+    EXPECT_TRUE(parsed.diagnostics.empty());
+    return resolveModule(*parsed);
+  }();
+  ASSERT_TRUE(owned) << owned.error().front().message;
+  ASSERT_TRUE(validateModule(*owned));
+  auto copied = *owned;
+  auto moved = std::move(copied);
+  ResolvedModule assigned;
+  assigned = *owned;
+  ResolvedModule move_assigned;
+  move_assigned = std::move(assigned);
+  for (auto* current : {&moved, &move_assigned}) {
+    for (auto& instruction : current->functions.back().body)
+      instruction = instruction->clone();
+    EXPECT_TRUE(validateModule(*current));
+    auto& load =
+        dynamic_cast<LdGenericScalar&>(*current->functions.back().body[0]);
+    auto& base = std::get<ResolvedRegisterRef>(load.address.value.base);
+    ASSERT_TRUE(base.component);
+    EXPECT_EQ(base.parameterized_index, 1u);
+    EXPECT_EQ(base.component->lane, 1u);
+    EXPECT_EQ(base.component->declaration_width, 2u);
+    EXPECT_FALSE(base.vector_width);
+    auto& mov = dynamic_cast<MovScalar&>(*current->functions.back().body[1]);
+    const auto& address = std::get<ResolvedAddress>(mov.src_mov_source->value);
+    ASSERT_TRUE(address.named_index);
+    EXPECT_EQ(address.named_index->scalar_stride, 4u);
+    EXPECT_EQ(address.named_index->byte_displacement, -4);
+    const auto provided =
+        test_helpers::parseModule(component_module(operation));
+    ASSERT_MODULE_PARSE_SUCCEEDS(provided);
+    base.component->lane = 0;
+    base.component->selector->spelling = ".r";
+    base.spelling = "%T1.r";
+    EXPECT_TRUE(validateModule(*current));
+    EXPECT_TRUE(validateModule(*provided, *current));
+    base.component->lane = 3;
+    EXPECT_FALSE(validateModule(*current));
+    EXPECT_FALSE(validateModule(*provided, *current));
+  }
 }
 
 }  // namespace

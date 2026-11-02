@@ -1454,14 +1454,36 @@ CheckResult check_operands(
           {.kind = CheckDiagnosticKind::UnsupportedOperandShape,
            .range = diagnostic_range(operand.locations, context),
            .message = "A scalar register operand cannot use a whole vector."});
-    check_component(operand.register_ref,
-                    diagnostic_range(operand.locations, context));
     if (operand.actual_shape == OperandShape::Address && operand.register_ref &&
-        operand.register_ref->component)
-      diagnostics.push_back(
-          {CheckDiagnosticKind::OperandTypeMismatch,
-           diagnostic_range(operand.locations, context),
-           "Address bases do not admit register components."});
+        operand.register_ref->component) {
+      const auto outer = diagnostic_range(operand.locations, context);
+      const auto leaf = operand.register_ref->component->range;
+      check_component(operand.register_ref, leaf);
+      const auto* metadata = operand.register_ref->declared_type
+                                 ? base::find_scalar_type_metadata(
+                                       *operand.register_ref->declared_type)
+                                 : nullptr;
+      if (!metadata ||
+          metadata->register_declaration_usage !=
+              base::ScalarDeclarationUsage::Fundamental ||
+          (metadata->kind != base::ScalarKind::Signed &&
+           metadata->kind != base::ScalarKind::Unsigned &&
+           metadata->kind != base::ScalarKind::Bit) ||
+          metadata->size_bytes > 8 ||
+          metadata->size_bytes *
+                  operand.register_ref->component->declaration_width >
+              16)
+        diagnostics.push_back(
+            {CheckDiagnosticKind::OperandTypeMismatch, leaf,
+             "Selected address register requires a physical integer/bit vector "
+             "owner and a scalar element no wider than 64 bits."});
+      if (!fabric_range_inside(leaf, outer))
+        diagnostics.push_back(
+            {CheckDiagnosticKind::OperandTypeMismatch, outer,
+             "Address register component is outside its address operand."});
+    } else
+      check_component(operand.register_ref,
+                      diagnostic_range(operand.locations, context));
     for (const auto* reg : operand.paired_register_refs)
       check_component(reg, diagnostic_range(operand.locations, context));
     for (size_t index = 0;

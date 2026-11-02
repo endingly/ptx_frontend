@@ -1237,7 +1237,8 @@ std::expected<WithLocs<ResolvedSymbolRef>, ResolveDiagnostic> resolve_symbol(
 template <typename... Leaves>
   requires((std::same_as<Leaves, syntax_ast::AstImmediate> ||
             std::same_as<Leaves, syntax_ast::AstConstantOperand> ||
-            std::same_as<Leaves, syntax_ast::AstIdentifierRef>) &&
+            std::same_as<Leaves, syntax_ast::AstIdentifierRef> ||
+            std::same_as<Leaves, syntax_ast::AstVectorMember>) &&
            ...)
 static std::expected<declaration_semantics::IntegerConstantValue,
                      ResolveDiagnostic>
@@ -1247,9 +1248,10 @@ named_index_integer(const std::variant<Leaves...>& source) {
           -> std::expected<declaration_semantics::IntegerConstantValue,
                            ResolveDiagnostic> {
         using Leaf = std::decay_t<decltype(leaf)>;
-        if constexpr (std::same_as<Leaf, syntax_ast::AstIdentifierRef>) {
+        if constexpr (std::same_as<Leaf, syntax_ast::AstIdentifierRef> ||
+                      std::same_as<Leaf, syntax_ast::AstVectorMember>) {
           return std::unexpected(ResolveDiagnostic{
-              .range = leaf.syntax.range,
+              .range = syntax_ast::sourceRange(syntax_ast::AstOperand{leaf}),
               .message = "Expected an integer constant expression."});
         } else {
           const auto range = [&]() {
@@ -1363,6 +1365,15 @@ resolve_named_array_index(const syntax_ast::AstAddress& address,
       return reject("A named-array index requires a scalar register.");
     result.index = WithLocs<ResolvedRegisterRef>{std::move(*reg),
                                                  identifier->syntax.range};
+  } else if (const auto* member =
+                 std::get_if<syntax_ast::AstVectorMember>(&source.index)) {
+    auto reg = resolve_register(syntax_ast::AstOperand{*member}, context);
+    if (!reg)
+      return std::unexpected(reg.error());
+    if (auto check = check_address_register_type(reg->value, member->range);
+        !check)
+      return std::unexpected(check.error());
+    result.index = std::move(*reg);
   } else {
     auto integer = named_index_integer(source.index);
     if (!integer)
@@ -1477,6 +1488,15 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
           FormalParameterAddressPolicy::PreserveParameterSpace);
       base = std::move(*symbol);
     }
+  } else if (const auto* member =
+                 std::get_if<syntax_ast::AstVectorMember>(&address->base)) {
+    auto reg = resolve_register(syntax_ast::AstOperand{*member}, context);
+    if (!reg)
+      return std::unexpected(reg.error());
+    if (auto check = check_address_register_type(reg->value, member->range);
+        !check)
+      return std::unexpected(check.error());
+    base = std::move(reg->value);
   } else {
     const auto numeric_base = std::visit(
         [](const auto& leaf) -> syntax_ast::AstVectorElement { return leaf; },

@@ -1203,11 +1203,21 @@ struct SymbolTableBuilder {
                     std::get_if<syntax_ast::AstIdentifierRef>(&value.base)) {
               addReference(scope, ReferenceKind::InstructionOperand,
                            *identifier);
+            } else if (const auto* member =
+                           std::get_if<syntax_ast::AstVectorMember>(
+                               &value.base)) {
+              addReference(scope, ReferenceKind::InstructionOperand,
+                           member->base);
             }
             if (value.named_index) {
               if (const auto* index = std::get_if<syntax_ast::AstIdentifierRef>(
                       &value.named_index->index))
                 addReference(scope, ReferenceKind::InstructionOperand, *index);
+              else if (const auto* member =
+                           std::get_if<syntax_ast::AstVectorMember>(
+                               &value.named_index->index))
+                addReference(scope, ReferenceKind::InstructionOperand,
+                             member->base);
             }
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstTensorOperand>) {
@@ -1216,6 +1226,11 @@ struct SymbolTableBuilder {
                         &value.tensor_map.base)) {
               addReference(scope, ReferenceKind::InstructionOperand,
                            *identifier);
+            } else if (const auto* member =
+                           std::get_if<syntax_ast::AstVectorMember>(
+                               &value.tensor_map.base)) {
+              addReference(scope, ReferenceKind::InstructionOperand,
+                           member->base);
             }
             for (const auto& element : value.coordinates.elements) {
               if (const auto* identifier =
@@ -1236,6 +1251,10 @@ struct SymbolTableBuilder {
                       std::get_if<syntax_ast::AstIdentifierRef>(&element))
                 addReference(scope, ReferenceKind::InstructionOperand,
                              *identifier);
+              else if (const auto* member =
+                           std::get_if<syntax_ast::AstVectorMember>(&element))
+                addReference(scope, ReferenceKind::InstructionOperand,
+                             member->base);
             }
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstCompoundBracket>) {
@@ -1244,6 +1263,10 @@ struct SymbolTableBuilder {
                       std::get_if<syntax_ast::AstIdentifierRef>(&head))
                 addReference(scope, ReferenceKind::InstructionOperand,
                              *identifier);
+              else if (const auto* member =
+                           std::get_if<syntax_ast::AstVectorMember>(&head))
+                addReference(scope, ReferenceKind::InstructionOperand,
+                             member->base);
             for (const auto& element : value.coordinates.elements)
               if (const auto* identifier =
                       std::get_if<syntax_ast::AstIdentifierRef>(&element))

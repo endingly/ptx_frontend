@@ -79,10 +79,19 @@ struct AstAddressOffset {
   SourceRange range;
 };
 
+/** Explicit scalar selection from a named ordinary register vector. */
+struct AstVectorMember {
+  AstIdentifierRef base;
+  AstSyntax selector;
+  SourceRange range;
+};
+
 /** A named-array index with independently retained source operation and ranges. */
 struct AstNamedArrayIndex {
-  /** Numeric expressions own their trees; identifiers name scalar registers. */
-  std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand> index;
+  /** Numeric expressions own their trees; register indices may select vector elements. */
+  std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand,
+               AstVectorMember>
+      index;
   /** Optional register displacement in element units, never bytes. */
   std::optional<AstAddressOffset> displacement;
   SourceRange left_bracket_range;
@@ -93,7 +102,9 @@ struct AstNamedArrayIndex {
 
 /** An unresolved bracketed or unbracketed PTX address expression. */
 struct AstAddress {
-  std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand> base;
+  std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand,
+               AstVectorMember>
+      base;
   std::optional<AstAddressOffset> offset;
   bool bracketed{};
   /** PTX `.unified` address suffix independent of declaration attributes. */
@@ -106,12 +117,6 @@ struct AstAddress {
   SourceRange right_bracket_range;
   /** Named-array syntax does not imply an outer dereference bracket. */
   std::optional<AstNamedArrayIndex> named_index;
-};
-
-struct AstVectorMember {
-  AstIdentifierRef base;
-  AstSyntax selector;
-  SourceRange range;
 };
 
 /** Arithmetic minus applied to one register spelling, before semantic binding. */

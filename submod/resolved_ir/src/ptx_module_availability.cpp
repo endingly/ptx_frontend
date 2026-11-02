@@ -739,7 +739,7 @@ struct ModuleReferenceUse {
   bool requires_register_state{};
   /** True when the binding must name a scalar .reg .pred declaration. */
   bool requires_predicate_register{};
-  /** Address-base grammar excludes ordinary selected register components. */
+  /** Role-specific consumers may exclude ordinary selected register components. */
   bool excludes_register_component{};
   /** True only for a lane in a structurally validated complete named vector. */
   bool named_vector_projection{};
@@ -1030,6 +1030,9 @@ void collect_operand_references(
     const std::array<SourceRange, 1> map_range{value.tensor_map.range};
     collect_operand_references(value.tensor_map.address, map_range, fallback,
                                uses, address_resolution_policy);
+    if (std::holds_alternative<ResolvedRegisterRef>(
+            value.tensor_map.address.base))
+      uses.back().excludes_register_component = true;
     for (size_t index = 0; index < value.coordinates.elements.size(); ++index) {
       const auto* register_ref =
           std::get_if<ResolvedRegisterRef>(&value.coordinates.elements[index]);
@@ -1101,8 +1104,12 @@ void collect_operand_references(
                                    address_resolution_policy);
     if (const auto* register_ref =
             std::get_if<ResolvedRegisterRef>(&value.base)) {
-      collect_register(*register_ref);
-      uses.back().excludes_register_component = true;
+      const auto leaf = register_ref->component
+                            ? register_ref->component->range
+                            : reference_range(locations, fallback);
+      collect_operand_references(*register_ref,
+                                 std::array<SourceRange, 1>{leaf}, fallback,
+                                 uses, address_resolution_policy);
     } else if (const auto* symbol = std::get_if<ResolvedSymbolRef>(&value.base))
       collect_operand_references(*symbol, locations, fallback, uses,
                                  address_resolution_policy, &value);
@@ -1187,6 +1194,38 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void address(const ResolvedAddress& value,
                std::span<const SourceRange> locations,
                checker::AddressSymbolResolutionPolicy policy) override {
+    const auto outer = reference_range(locations, fallback_);
+    const auto inside = [](SourceRange leaf, SourceRange owner) {
+      const auto key = [](SourcePos position) {
+        return std::pair{position.line, position.column};
+      };
+      return valid_instruction_range(leaf) && valid_instruction_range(owner) &&
+             key(owner.start) <= key(leaf.start) &&
+             key(leaf.end) <= key(owner.end);
+    };
+    const auto selected = [&](const ResolvedRegisterRef& ref,
+                              SourceRange leaf) {
+      if (ref.component && ref.declared_type &&
+          base::scalar_size_of(*ref.declared_type) *
+                  ref.component->declaration_width >
+              16)
+        append_model_mismatch(diagnostics_, leaf,
+                              "Selected address register owner exceeds the "
+                              "physical vector width.");
+      if (ref.component &&
+          (ref.component->range != leaf || locations.size() != 1 ||
+           !inside(leaf, outer) || !inside(outer, fallback_)))
+        append_model_mismatch(diagnostics_, leaf,
+                              "Selected address register range disagrees with "
+                              "its owned operand.");
+    };
+    if (const auto* ref = std::get_if<ResolvedRegisterRef>(&value.base))
+      if (ref->component)
+        selected(*ref, ref->component->range);
+    if (value.named_index)
+      if (const auto* index = std::get_if<WithLocs<ResolvedRegisterRef>>(
+              &value.named_index->index))
+        selected(index->value, value.named_index->index_range);
     const auto begin = uses_.size();
     collect_operand_references(value, locations, fallback_, uses_, policy);
     for (auto index = begin; index < uses_.size(); ++index)
@@ -1255,6 +1294,10 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void mov_source(const ResolvedMovSource& value,
                   std::span<const SourceRange> locations,
                   checker::AddressSymbolResolutionPolicy policy) override {
+    if (const auto* selected = std::get_if<ResolvedAddress>(&value)) {
+      address(*selected, locations, policy);
+      return;
+    }
     const auto begin = uses_.size();
     collect_operand_references(value, locations, fallback_, uses_, policy);
     for (auto index = begin; index < uses_.size(); ++index)

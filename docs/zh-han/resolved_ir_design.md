@@ -602,10 +602,27 @@ selector spelling/range。有效 shape 是 scalar，因此 `vector_width` 为空
 base/member/lane，故 `V.x` 与 `V.r` 同址，而 `V.x` 与 `V.y` 不同。
 Scalar 与 brace 校验要求合法 `ExplicitSelector` 来源，并同实际 operand 位置关联。
 `NamedProjection` 元数据不由这些 source form 接受，也不伪造书写 selector。
-Owned validation 重新关联 base identity、声明 shape/type 与源码范围。Call、address
-base 与 named-array index 不接受新增 component 语法或移植的 component reference。
-Fabric handle 保留独立的 identifier-only 语法，拒绝两种 component origin。
-Hardware component 仍是独立注册表 domain，只保留既有 selector。
+Owned validation 重新关联 base identity、声明 shape/type 与源码范围。普通 address
+base 与 named-array register index 通过同一个 carrier 接受显式 `.xyzw/.rgba`
+scalar selection。例如 `[V.x+4]` 保留 byte displacement，而 `A[V.x-1]` 保留数组
+scalar-element stride 与书写的减法。数组 object 仍是 data identifier。选中的 owner
+必须是实际的 General `.reg .v2/.v4` 声明，且满足现有总宽度至多 128 bit 的限制；
+其 scalar element 必须符合既有至多 64 bit 的 integer/bit address role。group member
+identity 与 lane identity 保持独立。dynamic alignment、memory offset 的 scaled checked
+范围与 MOV 较宽的 offset domain 均不变；不推断 runtime address、index bound、layout
+或 allocation。
+
+这是将普通 scalar-element inheritance 应用于既有 address/index role，不表示手册明确
+展示了这些 source spelling。公共 CST/AST variant 追加既有 member alternative，
+public producer 与 consumer 因此必须一起 rebuild。不同 selector alias 的书写仍有不同
+source identity。满足当前规则的 owned alias/lane 修改不认证 producer history；合法的
+supplied AST 不能掩盖非法 current metadata。即使 target check 延后，component leaf
+range 也必须位于 address 与 instruction 内，选中 physical owner 的 128-bit 上限也仍须满足。
+缺少 target context 时，`AvailableContext` 仍按既有规则延后完整 instruction role 检查，
+不构成 complete validation。call 仍排除 component 语法。共享 address
+child parsing 不会改变 Fabric、opaque-resource 与 tensor-map role 的独立语义排除。
+`NamedProjection` 不能冒充显式 scalar selector。Hardware component 仍是独立注册表
+domain，只保留既有 selector。
 无 binding context 的
 standalone resolver 保留旧边界：只接受 numbered register，并令 symbol/type 字段为空。
 Owned-module validation 会按结构遍历生成的 operand reference，包括寄存器备选值和嵌套

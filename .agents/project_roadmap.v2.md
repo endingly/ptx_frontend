@@ -551,6 +551,12 @@ ASCII whitespace 覆盖 SP/HT/LF/VT/FF/CR；VT 仅推进一个物理 byte column
 | M2-C01 | ✅ | `resolveModule()` | binding/declaration/instruction diagnostic 汇总 |
 | M2-C02 | ✅ | module diagnostic regression | duplicate/unresolved/wrong-kind 可区分 |
 
+普通 `.xyzw/.rgba` scalar component 可作为 address base 与具名数组 register index，
+复用实际 `.reg .v2/.v4` owner/member/lane identity 与既有 integer/bit、range、stride
+和 alignment 规则；不新增 resolved field，不计算 runtime address 或分配内存。
+component call input/return/fptr 仍未交付；Fabric、opaque 与 tensor-map 的独立边界不变。
+具体边界见 [resolved IR](../docs/us-en/resolved_ir_design.md) 与[中文设计](../docs/zh-han/resolved_ir_design.md)。
+
 存储声明的当前公共边界另见 [storage metadata](../docs/us-en/storage_declarations.md)
 与[中文契约](../docs/zh-han/storage_declarations.md)：module resolution 保留非 `.param` state-space
 global/constant/shared/local declaration 的 identity、shape、size/alignment 与 typed

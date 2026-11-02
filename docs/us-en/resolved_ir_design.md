@@ -751,11 +751,33 @@ scalar element type. `same_register_storage` compares base/member/lane, making
 checking require valid `ExplicitSelector` provenance tied to actual operand
 locations. `NamedProjection` metadata is not admitted by these source
 forms and carries no fabricated written selector. Owned validation rejoins the
-base identity, declaration shape/type and source ranges. Calls, address bases
-and named-array indices do not admit new component syntax or transplanted
-component references; Fabric handles retain their separate identifier-only
-grammar and reject either component origin. Hardware components remain a distinct registry-backed
-domain with only its existing selectors.
+base identity, declaration shape/type and source ranges. Ordinary address bases
+and named-array register indices accept explicit `.xyzw/.rgba` scalar selections
+through this same carrier. For example, `[V.x+4]` retains a byte displacement,
+while `A[V.x-1]` retains the array's scalar-element stride and written subtraction.
+The array object remains a data identifier. The selected owner must be a real
+General `.reg .v2/.v4` declaration, within its existing 128-bit total-width cap;
+its scalar element must satisfy the existing integer/bit address role no wider
+than 64 bits. Group member identity and lane identity remain independent.
+Dynamic alignment, checked scaled memory offsets, and MOV's wider offset domain
+are unchanged; no runtime address, index bounds, layout or allocation is inferred.
+
+This applies ordinary scalar-element inheritance to existing address/index
+roles, rather than claiming that the manual explicitly illustrates these source
+spellings. The public CST/AST variants append the existing member alternative,
+so public producers and consumers must rebuild together. Exact written selector
+aliases retain different source identities. Coherent current owned alias/lane
+edits remain valid without authenticating producer history; malformed current
+metadata cannot be hidden by a valid supplied AST. Component leaf ranges must
+remain inside their address and instruction, and the selected physical owner
+keeps its 128-bit cap, even when target checks defer. `AvailableContext` retains
+the existing deferral of full instruction role checks when target context is
+missing; it is not complete validation.
+Calls still exclude component syntax. Fabric, opaque-resource and tensor-map
+roles retain their separate semantic exclusions despite shared address-child
+parsing. `NamedProjection` does not impersonate an explicit scalar selector.
+Hardware components remain a distinct registry-backed domain with only its
+existing selectors.
 The context-free standalone resolver preserves its previous
 boundary: it accepts numbered registers and leaves symbol/type fields empty.
 Owned-module validation traverses generated operand references structurally,

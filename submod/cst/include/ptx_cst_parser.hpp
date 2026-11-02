@@ -147,6 +147,9 @@ class PtxCstParser {
   /** Parse the predicted operand form from its unconsumed prefix. */
   std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
   parseIdentifierOperand();
+  /** Parse one identifier with at most one existing vector selector suffix. */
+  std::expected<syntax_cst::CstAddressBase, CstParseDiagnostic>
+  parseIdentifierOrMember(std::string_view description);
 
   /** Parse after consuming `[`, including its closing `]` and optional suffix. */
   std::expected<syntax_cst::CstOperand, CstParseDiagnostic>

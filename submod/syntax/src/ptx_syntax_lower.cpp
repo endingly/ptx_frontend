@@ -343,18 +343,7 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
                                           syntax_cst::CstConstantOperand>) {
           return lowerImmediate(cst, value);
         } else if constexpr (std::same_as<Value, syntax_cst::CstAddress>) {
-          auto base = std::visit(
-              [&cst](const auto& item)
-                  -> std::variant<syntax_ast::AstIdentifierRef,
-                                  syntax_ast::AstImmediate,
-                                  syntax_ast::AstConstantOperand> {
-                using Item = std::remove_cvref_t<decltype(item)>;
-                if constexpr (std::same_as<Item, syntax_cst::CstIdentifier>)
-                  return lowerIdentifier(cst, item);
-                else
-                  return lowerImmediate(cst, item);
-              },
-              value.base);
+          auto base = lowerVectorElement(cst, value.base);
           std::optional<syntax_ast::AstAddressOffset> offset;
           if (value.offset) {
             const TokenKind operator_kind =
@@ -380,15 +369,7 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
                                   : SourceRange{}};
           if (value.named_index) {
             const auto& named = *value.named_index;
-            auto index = std::visit(
-                [&cst](const auto& item) -> decltype(address.base) {
-                  using Item = std::remove_cvref_t<decltype(item)>;
-                  if constexpr (std::same_as<Item, syntax_cst::CstIdentifier>)
-                    return lowerIdentifier(cst, item);
-                  else
-                    return lowerImmediate(cst, item);
-                },
-                named.index);
+            auto index = lowerVectorElement(cst, named.index);
             std::optional<syntax_ast::AstAddressOffset> term;
             if (named.displacement)
               term = syntax_ast::AstAddressOffset{
@@ -468,15 +449,7 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
           std::vector<syntax_ast::AstVectorElement> elements;
           elements.reserve(value.elements.size());
           for (const auto& element : value.elements)
-            elements.push_back(std::visit(
-                [&cst](const auto& item) -> syntax_ast::AstVectorElement {
-                  using Item = std::remove_cvref_t<decltype(item)>;
-                  if constexpr (std::same_as<Item, syntax_cst::CstIdentifier>)
-                    return lowerIdentifier(cst, item);
-                  else
-                    return lowerImmediate(cst, item);
-                },
-                element));
+            elements.push_back(lowerVectorElement(cst, element));
           std::vector<SourceRange> commas;
           commas.reserve(value.commas.size());
           for (const auto comma : value.commas)
@@ -491,15 +464,7 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
           std::vector<syntax_ast::AstVectorElement> heads;
           heads.reserve(value.heads.size());
           for (const auto& head : value.heads)
-            heads.push_back(std::visit(
-                [&cst](const auto& item) -> syntax_ast::AstVectorElement {
-                  using Item = std::remove_cvref_t<decltype(item)>;
-                  if constexpr (std::same_as<Item, syntax_cst::CstIdentifier>)
-                    return lowerIdentifier(cst, item);
-                  else
-                    return lowerImmediate(cst, item);
-                },
-                head));
+            heads.push_back(lowerVectorElement(cst, head));
           std::vector<SourceRange> commas;
           commas.reserve(value.commas.size());
           for (const auto comma : value.commas)

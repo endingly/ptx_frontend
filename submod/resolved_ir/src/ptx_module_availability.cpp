@@ -1542,11 +1542,25 @@ class ReferenceCollector final : public detail::IReferenceObserver {
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
-  /** Collect the bound register carrying a shared matrix descriptor. */
+  /** Check the full physical component owner before collecting its binding.
+   * The later actual-symbol join remains authoritative for cached type/width.
+   */
   void shared_matrix_descriptor(
       const ResolvedSharedMatrixDescriptor& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
+    const auto& reg = value.register_ref;
+    if (reg.component && reg.declared_type) {
+      const auto* metadata =
+          base::find_scalar_type_metadata(*reg.declared_type);
+      // Division keeps the 16-byte owner ceiling safe for all stored widths.
+      if (metadata && metadata->size_bytes > 0 &&
+          reg.component->declaration_width > 16 / metadata->size_bytes)
+        append_model_mismatch(
+            diagnostics_, reference_range(locations, fallback_),
+            "Selected shared matrix descriptor register owner exceeds the "
+            "physical vector width.");
+    }
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedVectorRegisterRef. */

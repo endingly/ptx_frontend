@@ -1635,3 +1635,15 @@ v1/v8/v128 语法，也不使 `.v4.f64` 声明合法。
 二或四 lane 数量，以及标量 SharedMatrixDescriptor 竞争项。事实缺失、Aggregate
 策略、通用标量角色或其他共有语法均不能提供该证明。目标与默认值不能消除
 重叠；此验证证明保持公共 selector 在指令范围上报告的精确歧义诊断。
+
+### Shared matrix descriptor carrier 中的 scalar component
+
+既有 `SharedMatrixDescriptor` source kind 接纳 identifier 或显式 ordinary vector member。合法 `.reg .v2 .b64 A` declaration 占128位；`A.x`／`A.y`（或 `.r`／`.g`）选择一个 scalar64-bit descriptor-register carrier。这是 component extraction，不是 whole-vector descriptor 或 register-A fragment。同一 kind 规则覆盖既有 dense/sparse shared A/B 与 register-A B descriptor role，不按 opcode 或 A 位置特判。不改变 YAML type/domain 或公共 payload/API。
+
+Binding 仍要求真实 General declaration、其既有允许的 physical integer/Bit64 type、实际 SymbolId/family index、范围内 explicit selector、base/leaf/outer range 与有效 scalar width。已知 F64／其余 Float、错误 width/class 或 InstructionOnly declaration 不被转换为 Bit word。`.v4.b64` 超过 ordinary128位 declaration 上限。`A<2>` 声明带后缀的变量而不声明 bareA；scalarA1 与 vector-familyA1.x 是不同的显式情形，不隐式选择首元素或 index。Source component 需要既有 declaration context，不猜 standalone width/SymbolId。
+
+Shared scalar descriptor（`IdentifierRef|VectorMember`）与 whole named matrix fragment（`IdentifierRef|VectorPack`）的 syntax 交集仍仅为 IdentifierRef。公共 syntax-only ambiguity、独立建立的 for-all layout-pair certificate 与 private actual-declaration selection 仍独立。错误 whole vector 或32-bit component 不得 fall through 后被 scalar64 descriptor 分支救活。其余 scalar/member mapping、fragment member 权限、partial-context 优先级与 target policy 均不变。
+
+Current owned validation 重新关联实际 component fact 与 declaration；合法的一致 retarget 是数据修改，而矛盾事实在有健康 supplied syntax 时仍失败。Saved source identity 则独立拒绝真正不同的合法 operand AST。既有 descriptor view／collector 与同步 observer 在 source 销毁、copy／assignment／move／function copy／Instruction clone 后继续传递实际 RegRef/range，且每个 owner 重新取得 borrow。该 source-admission 契约不证明 runtime descriptor bit、shared addressing、同步或 matrix 运算。记录 delivery 完成前仍需实际 current-parent Debug／生成 syntax／public-link 证据及独立 actual-diff 验收。
+
+当前 module validation 也会在 availability-context skip 前，按既有128位 declaration 上限检查 selected register 的完整 owner。coherent256位 current owner 在两个 module validation API 中均于 component range 报出容量专用诊断；缺少 target context 不能隐藏此已知失败。既有实际 SymbolTable join 仍拒绝矛盾或缺失的 cached facts。本检查不新增 standalone instruction-check 保证。

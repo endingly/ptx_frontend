@@ -239,7 +239,10 @@ def _build_operand_binding(binding: ResolvedOperandBinding, name: str, backend: 
         vector.append(member("allowed_vector_arities", vector_arities_name if vector_arities_name is not None else f"{name}_vector_arities"))
     if binding.vector_arity_modifier_field_id is not None:
         vector.append(member("vector_arity_modifier_field_id", f'"{binding.vector_arity_modifier_field_id}"'))
-    if binding.allowed_vector_arities or binding.vector_arity_modifier_field_id is not None:
+    # Named modern fragments use only their existing min/max count authority.
+    # Their Element policy is active even without a second vector-arity field.
+    if (binding.allowed_vector_arities or binding.vector_arity_modifier_field_id is not None
+            or binding.allow_named_vector):
         vector.extend((member("vector_type_policy", f"checker::VectorTypePolicy::{binding.vector_type_policy.value}"),
                        member("allow_vector_sink", str(binding.allow_vector_sink).lower())))
     if binding.allow_named_vector:

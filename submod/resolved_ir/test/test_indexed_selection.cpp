@@ -172,3 +172,93 @@ TEST(IndexedSelection, CustomDescriptorCompatibility) {
 }
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir
+
+namespace ptx_frontend::resolved_ir {
+namespace {
+/** Preserve exact public ambiguity and private no-context behavior for the new identifier slice. */
+TEST(IndexedSelection, NamedWgmmaPublicAmbiguityAndUnknownContext) {
+  PtxSyntaxParser parser{std::string(
+      "wgmma.mma_async.sync.aligned.m64n8k8.f32.tf32.tf32 D,A,%bdesc,1,1,-1;")};
+  const auto ast = parser.parseInstruction();
+  ASSERT_TRUE(ast);
+  const auto& syntax = wgmma_syntax_descriptor();
+  const auto& resolved = wgmma_resolved_descriptor();
+  const auto public_result = select_variant_name(*ast, syntax);
+  ASSERT_FALSE(public_result);
+  EXPECT_EQ(public_result.error().range, ast->range);
+  EXPECT_EQ(public_result.error().message,
+            "Ambiguous modifier, operand-count, and syntax-shape combination "
+            "for instruction 'wgmma'.");
+  test_helpers::OwnedCandidatePlan plan(syntax);
+  std::vector<uint64_t> scratch((syntax.variants.size() + 63) / 64);
+  const auto unknown = detail::select_indexed_variant(
+      *ast, syntax, plan.view(), scratch, &resolved, nullptr);
+  ASSERT_FALSE(unknown);
+  EXPECT_EQ(unknown.error().range, public_result.error().range);
+  EXPECT_EQ(unknown.error().message, public_result.error().message);
+  compare_selection(
+      "wgmma.mma_async.sync.aligned.m64n8k8.f32.tf32.tf32 {%d0,%d1,%d2,%d3},"
+      "{%a0,%a1,%a2,%a3},%bdesc,1,1,-1;",
+      syntax);
+  compare_selection(
+      "wgmma.mma_async.sync.aligned.m64n8k8.f32.tf32.tf32 {%d0,%d1,%d2,%d3},"
+      "%adesc,%bdesc,1,1,-1;",
+      syntax);
+}
+}  // namespace
+}  // namespace ptx_frontend::resolved_ir
+
+namespace ptx_frontend::resolved_ir {
+namespace {
+/** Actual declaration facts choose an ordinal independently of target availability. */
+TEST(IndexedSelection, NamedElementActualDeclarationsAndWrongVectorRetention) {
+  const std::string operation =
+      "wgmma.mma_async.sync.aligned.m64n8k8.f32.tf32.tf32 "
+      "{%d0,%d1,%d2,%d3},A,%bdesc,1,1,-1;";
+  const auto& syntax = wgmma_syntax_descriptor();
+  const auto& resolved = wgmma_resolved_descriptor();
+  test_helpers::OwnedCandidatePlan plan(syntax);
+  for (const auto declaration : {".reg .v4 .b32 A;", ".reg .b64 A;",
+                                 ".reg .v2 .b32 A;", ".reg .v4 .b16 A;", ""}) {
+    SCOPED_TRACE(declaration);
+    const std::string source =
+        ".entry kernel(){.reg .f32 %d<4>; .reg .b64 %bdesc; " +
+        std::string(declaration) + "}";
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    ASSERT_TRUE(ast && ast.diagnostics.empty());
+    const auto bound = binding::bindSymbols(*ast);
+    ASSERT_TRUE(bound.diagnostics.empty());
+    const auto symbol = bound.table.lookup(bound.table.moduleScope(), "kernel");
+    ASSERT_TRUE(symbol);
+    const auto scope = bound.table.symbol(symbol->symbol).owned_scope;
+    ASSERT_TRUE(scope);
+    const ResolveContext context{
+        .symbols = bound.table, .scope = *scope, .function_is_entry = true};
+    PtxSyntaxParser instruction_parser(operation);
+    const auto instruction = instruction_parser.parseInstruction();
+    ASSERT_TRUE(instruction);
+    std::vector<uint64_t> scratch((syntax.variants.size() + 63) / 64);
+    const auto selected = detail::select_indexed_variant(
+        *instruction, syntax, plan.view(), scratch, &resolved, &context);
+    if (std::string_view(declaration).empty()) {
+      ASSERT_FALSE(selected);
+      EXPECT_EQ(selected.error().range, instruction->range);
+      EXPECT_EQ(selected.error().message,
+                "Ambiguous modifier, operand-count, and syntax-shape "
+                "combination for instruction 'wgmma'.");
+      continue;
+    }
+    ASSERT_TRUE(selected) << selected.error().message;
+    const bool scalar = std::string_view(declaration) == ".reg .b64 A;";
+    EXPECT_EQ(syntax.variants[*selected].variant_name,
+              scalar ? "MmaAsyncDenseM64n8k8F32Tf32Tf32SharedPlain"
+                     : "MmaAsyncDenseM64n8k8F32Tf32Tf32RegisterPlain");
+    // Resolution runs once after selection. Wrong vectors stay on the vector path.
+    const auto actual = resolveInstruction(*instruction, context);
+    EXPECT_EQ(bool(actual),
+              scalar || std::string_view(declaration) == ".reg .v4 .b32 A;");
+  }
+}
+}  // namespace
+}  // namespace ptx_frontend::resolved_ir

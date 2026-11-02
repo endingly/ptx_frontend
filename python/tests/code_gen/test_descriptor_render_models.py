@@ -95,6 +95,23 @@ class DescriptorRenderModelTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "read scalar half"):
                     _build_operand_binding(candidate, "manual", self.backend)
 
+    def test_named_element_policy_renders_with_only_existing_min_max_count(self) -> None:
+        """Named modern counts must not lose Element policy in the C++ projection."""
+        specification = next(s for s in self.specifications if s.opcode == "mma")
+        instruction = from_instruction_spec(specification)
+        binding = next(b for v in instruction.variants for layout in v.operand_layouts
+                       for b in layout.bindings if b.allow_named_vector and b.minimum_elements == 2)
+        self.assertEqual(binding.allowed_vector_arities, ())
+        self.assertIsNone(binding.vector_arity_modifier_field_id)
+        rendered = _build_operand_binding(binding, "modern", self.backend)
+        members = {member.name: member.expression for member in rendered.vector_members}
+        self.assertEqual(members["vector_type_policy"], "checker::VectorTypePolicy::Element")
+        self.assertEqual(members["allow_named_vector"], "true")
+        self.assertNotIn("allowed_vector_arities", members)
+        omitted = _build_operand_binding(replace(binding, allow_named_vector=False),
+                                         "brace_only", self.backend)
+        self.assertNotIn("allow_named_vector", {member.name for member in omitted.vector_members})
+
     def test_storage_builders_do_not_render_nested_fragments(self) -> None:
         """All storage builders work while the shared renderer is unavailable."""
 

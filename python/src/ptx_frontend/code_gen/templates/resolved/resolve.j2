@@ -37,13 +37,13 @@ constexpr std::array<uint64_t, {{ model.words | length }}> candidate_words = {{ 
 constexpr ::ptx_frontend::resolved_ir::detail::ModifierCandidatePlan candidate_plan{candidate_rows, candidate_words};
 /** Select and retain direct static descriptor references for construction. */
 std::expected<SelectedForm, ResolveDiagnostic> select_form(
-    const syntax_ast::AstInstruction& ast) {
+    const syntax_ast::AstInstruction& ast, const ResolveContext* context) {
   const auto& syntax = {{ model.prefix }}_syntax_descriptor();
+  const auto& resolved = {{ model.prefix }}_resolved_descriptor();
   std::array<uint64_t, {{ model.word_count }}> candidates;
-  const auto selected = ::ptx_frontend::resolved_ir::detail::select_indexed_variant(ast, syntax, candidate_plan, candidates);
+  const auto selected = ::ptx_frontend::resolved_ir::detail::select_indexed_variant(ast, syntax, candidate_plan, candidates, &resolved, context);
   if (!selected) return std::unexpected(selected.error());
   assert(syntax.variants.size() == selected_kinds.size());
-  const auto& resolved = {{ model.prefix }}_resolved_descriptor();
   assert(resolved.variants.size() == selected_kinds.size());
   return SelectedForm{static_cast<SelectedFormOrdinal>(*selected),
       selected_kinds[*selected], syntax.variants[*selected], resolved.variants[*selected]};
@@ -53,7 +53,7 @@ std::expected<SelectedForm, ResolveDiagnostic> select_form(
 /** Resolve {{ model.opcode }} to one exact final form. */
 std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolve{{ model.cpp_name }}(
     const syntax_ast::AstInstruction& ast, const ResolveContext* context) {
-  const auto selected = select_form(ast);
+  const auto selected = select_form(ast, context);
   if (!selected) return std::unexpected(selected.error());
   const auto kind = selected->kind;
   const auto named_array_policy = [&]() {

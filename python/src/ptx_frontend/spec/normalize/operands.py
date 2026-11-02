@@ -106,7 +106,7 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
 
     type_tag = _normalize_type_tag(raw)
     pack = _normalize_brace_pack_options(raw)
-    vector = _normalize_vector_options(raw)
+    vector = _normalize_vector_options(raw, pack)
 
     type_expression = _normalize_operand_type_expression(raw.get("type"))
     register_width = _normalize_register_width(
@@ -408,8 +408,18 @@ def _normalize_brace_pack_options(raw: dict[str, Any]) -> _BracePackOptions:
     )
 
 
-def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
+def _normalize_vector_options(raw: dict[str, Any], pack: _BracePackOptions) -> _VectorOptions:
     """Normalize vector arity, type policy, and sink options in that order."""
+
+    if raw["kind"] is OperandKind.MATRIX_FRAGMENT and "vector" in raw:
+        vector = raw["vector"]
+        if (not isinstance(vector, dict) or set(vector) != {"allow_named", "type_policy"}
+                or vector["allow_named"] is not True or vector["type_policy"] != "element"
+                or pack.minimum_elements != pack.maximum_elements
+                or pack.minimum_elements not in (2, 4)):
+            raise ValueError("named matrix fragments require Element policy and exact cardinality2or4, without vector.arity")
+        return _VectorOptions((), None, OperandVectorTypePolicy.ELEMENT, False, True,
+                              0, (), False, None)
 
     if (isinstance(raw.get("vector"), dict)
             and "allow_named" in raw["vector"]

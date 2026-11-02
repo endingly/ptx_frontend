@@ -11,6 +11,10 @@ from ptx_frontend.base.utils import file_stem_to_pascal_case
 from .load_yaml import load_yaml
 from .model import (
     InstructionSpec,
+    OperandKind,
+    OperandLayoutSpec,
+    OperandSpec,
+    OperandVectorTypePolicy,
     ModifierPresence,
     ModifierSpec,
     VariantSpec,
@@ -21,7 +25,7 @@ from jsonschema import Draft202012Validator
 from jsonschema_rs import Draft202012Validator as NativeDraft202012Validator
 from importlib.resources.abc import Traversable
 from .resources import packaged_spec_dir, packaged_spec_schema
-from .synatax_shapes import OPERAND_SYNTAX_SHAPES, operand_syntax_shapes
+from .synatax_shapes import OPERAND_SYNTAX_SHAPES, OperandSyntaxShape, operand_syntax_shapes
 
 PTX_INSTRUCTION_SCHEMA = packaged_spec_schema()
 
@@ -267,6 +271,63 @@ def _validate_merged_instruction(instruction: InstructionSpec) -> None:
     _validate_variant_modifier_exclusivity(instruction)
 
 
+def _named_element_declaration_count(operand: OperandSpec, variant: VariantSpec) -> int | None:
+    """Certify only explicit whole-vector Element counts from existing normalized facts."""
+
+    if (operand.vector_allow_named is not True
+            or operand.vector_type_policy is not OperandVectorTypePolicy.ELEMENT
+            or operand.vector_arity_expression is not None):
+        return None
+    if operand.kind is OperandKind.MATRIX_FRAGMENT:
+        count = operand.minimum_elements
+        if (count not in (2, 4) or operand.maximum_elements != count
+                or operand.vector_arities or operand.element_kinds != (OperandKind.REGISTER,)
+                or variant.matrix is None):
+            return None
+    elif operand.kind is OperandKind.REGISTER_VECTOR:
+        if (len(operand.vector_arities) != 1 or operand.vector_arities[0] not in (2, 4)
+                or operand.minimum_elements is not None or operand.maximum_elements is not None):
+            return None
+        count = operand.vector_arities[0]
+    else:
+        return None
+    if variant.matrix is not None:
+        fragments = [fragment for fragment in variant.matrix.fragments
+                     if fragment.operand == operand.name]
+        if len(fragments) != 1 or fragments[0].register_count != count:
+            return None
+    return count
+
+
+def _scalar_shared_descriptor(operand: OperandSpec) -> bool:
+    """Certify the existing scalar carrier kind, never scalarity from a type width."""
+
+    return (operand.kind is OperandKind.SHARED_MATRIX_DESCRIPTOR
+            and operand.vector_type_policy is OperandVectorTypePolicy.AGGREGATE
+            and not operand.vector_allow_named and not operand.vector_arities
+            and operand.vector_arity_expression is None and not operand.vector_allow_sink
+            and operand.minimum_elements is None and operand.maximum_elements is None
+            and not operand.element_kinds)
+
+
+def _declaration_separated_layouts(
+    left: VariantSpec, left_layout: OperandLayoutSpec,
+    right: VariantSpec, right_layout: OperandLayoutSpec,
+) -> bool:
+    """Prove an IdentifierRef-only slice has disjoint whole-vector/scalar declarations."""
+
+    for left_operand, right_operand in zip(left_layout.operands, right_layout.operands):
+        if (operand_syntax_shapes(left_operand) & operand_syntax_shapes(right_operand)
+                != OperandSyntaxShape.IDENTIFIER_REF):
+            continue
+        if ((_named_element_declaration_count(left_operand, left) is not None
+             and _scalar_shared_descriptor(right_operand))
+                or (_named_element_declaration_count(right_operand, right) is not None
+                    and _scalar_shared_descriptor(left_operand))):
+            return True
+    return False
+
+
 def _validate_variant_modifier_exclusivity(instruction: InstructionSpec) -> None:
     languages = [
         _variant_modifier_language(instruction.opcode, variant)
@@ -285,6 +346,7 @@ def _validate_variant_modifier_exclusivity(instruction: InstructionSpec) -> None
                             left_layout.operands, right_layout.operands
                         )
                     )
+                    or _declaration_separated_layouts(left, left_layout, right, right_layout)
                     for left_layout in left.operand_layouts
                     for right_layout in right.operand_layouts
                 ):

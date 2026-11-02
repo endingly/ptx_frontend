@@ -1751,6 +1751,26 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
     required_arity = allowed_arities.front();
   }
   if (!vector && allow_named && !required_arity &&
+      vector_type_policy == checker::VectorTypePolicy::Element &&
+      allowed_arities.size() > 1) {
+    const auto* identifier =
+        std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+    const auto lookup =
+        identifier && context
+            ? context->symbols.lookup(context->scope, identifier->syntax.text)
+            : std::nullopt;
+    const auto width =
+        lookup ? context->symbols.symbol(lookup->symbol).vector_width
+               : std::nullopt;
+    if (!width || (*width != 2 && *width != 4) ||
+        std::ranges::find(allowed_arities, *width) == allowed_arities.end())
+      return std::unexpected(ResolveDiagnostic{
+          .range = range,
+          .message = "A named Element vector requires an allowed actual v2/v4 "
+                     "declaration width."});
+    required_arity = *width;
+  }
+  if (!vector && allow_named && !required_arity &&
       vector_type_policy == checker::VectorTypePolicy::Aggregate) {
     const auto* identifier =
         std::get_if<syntax_ast::AstIdentifierRef>(&operand);
@@ -3776,6 +3796,28 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     }
     case ResolvedValueKind::RegisterVector: {
       if (binding.minimum_elements != 0) {
+        if (!std::holds_alternative<syntax_ast::AstVectorPack>(operand) &&
+            binding.allow_named_vector &&
+            binding.vector_type_policy == checker::VectorTypePolicy::Element &&
+            binding.minimum_elements == binding.maximum_elements &&
+            (binding.minimum_elements == 2 || binding.minimum_elements == 4)) {
+          const auto type = type_for_operand(binding, fields,
+                                             syntax_ast::sourceRange(operand));
+          if (!type)
+            return std::unexpected(type.error());
+          const auto arity = binding.minimum_elements;
+          auto value = resolve_reg_vector(
+              operand, *type, {}, arity, binding.vector_type_policy,
+              binding.register_width_policy, binding.allow_vector_sink,
+              binding.vector_sink_payload_bits, binding.allowed_register_types,
+              binding.require_uniform_register_family,
+              binding.access == checker::OperandAccess::Write ||
+                  binding.access == checker::OperandAccess::ReadWrite,
+              context, true);
+          if (!value)
+            return std::unexpected(value.error());
+          return ResolvedFieldValue{std::move(*value)};
+        }
         auto value = resolve_modern_register_vector(operand, binding, context);
         if (!value)
           return std::unexpected(value.error());

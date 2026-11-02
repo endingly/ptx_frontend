@@ -1081,9 +1081,13 @@ $defs:
               maxItems: 1
               items:
                 const: reg
-          not:
-            required:
-              - vector
+            vector:
+              type: object
+              additionalProperties: false
+              required: [allow_named, type_policy]
+              properties:
+                allow_named: {const: true}
+                type_policy: {const: element}
 
       - if:
           properties:

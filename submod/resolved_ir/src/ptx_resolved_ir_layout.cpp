@@ -1,6 +1,7 @@
 #include "ptx_resolved_ir_layout.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <type_traits>
 #include <vector>
 
@@ -361,7 +362,84 @@ bool named_aggregate_binding(const ResolvedOperandLayoutDescriptor& layout,
          binding.vector_type_policy == checker::VectorTypePolicy::Aggregate;
 }
 
-/** Filter only competing aggregate/scalar identifier slots by real declaration shape. */
+/** Identify an explicitly named Element binding using its existing count facts. */
+bool named_element_binding(const ResolvedOperandLayoutDescriptor& layout,
+                           size_t slot) {
+  if (slot >= layout.bindings.size())
+    return false;
+  const auto& binding = layout.bindings[slot];
+  return binding_value_kind(layout, binding) ==
+             ResolvedValueKind::RegisterVector &&
+         binding.allow_named_vector &&
+         binding.vector_type_policy == checker::VectorTypePolicy::Element &&
+         ((binding.minimum_elements == binding.maximum_elements &&
+           (binding.minimum_elements == 2 || binding.minimum_elements == 4)) ||
+          (binding.minimum_elements == 0 &&
+           binding.allowed_vector_arities.size() == 1 &&
+           (binding.allowed_vector_arities.front() == 2 ||
+            binding.allowed_vector_arities.front() == 4)));
+}
+
+/** Recognize an existing scalar competitor without opcode or target policy. */
+bool scalar_binding(const ResolvedOperandLayoutDescriptor& layout,
+                    size_t slot) {
+  if (slot >= layout.bindings.size())
+    return false;
+  const auto kind = binding_value_kind(layout, layout.bindings[slot]);
+  return kind == ResolvedValueKind::SharedMatrixDescriptor;
+}
+
+/** Preserve the pre-existing Aggregate scalar competitors independently of Element. */
+bool aggregate_scalar_binding(const ResolvedOperandLayoutDescriptor& layout,
+                              size_t slot) {
+  if (slot >= layout.bindings.size())
+    return false;
+  const auto kind = binding_value_kind(layout, layout.bindings[slot]);
+  return kind == ResolvedValueKind::Register ||
+         kind == ResolvedValueKind::RegOrImm ||
+         kind == ResolvedValueKind::MovSource;
+}
+
+/** Apply declaration shape at either private selection boundary; ownership stays borrowed. */
+bool declaration_slot_eligible(const ResolvedOperandLayoutDescriptor& layout,
+                               size_t slot,
+                               const syntax_ast::AstOperand& operand,
+                               const ResolveContext* context,
+                               bool element_competes, bool aggregate_competes) {
+  const bool aggregate = named_aggregate_binding(layout, slot);
+  const bool element = named_element_binding(layout, slot);
+  const auto* identifier = std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+  if (!identifier)
+    return !(aggregate || (element_competes && element)) ||
+           std::holds_alternative<syntax_ast::AstVectorPack>(operand);
+  if (!element_competes && !aggregate_competes)
+    return true;
+  const auto lookup =
+      context ? context->symbols.lookup(context->scope, identifier->syntax.text)
+              : std::nullopt;
+  // Unknown facts preserve Element ambiguity. Aggregate retains its existing lookup rule.
+  if (element_competes && !lookup)
+    return true;
+  bool whole_vector = false;
+  if (lookup) {
+    const auto& symbol = context->symbols.symbol(lookup->symbol);
+    whole_vector =
+        symbol.state_space == base::DeclarationStateSpace::Register &&
+        (element_competes
+             ? symbol.vector_width.has_value()
+             : symbol.vector_width == 2 || symbol.vector_width == 4);
+    if (element_competes &&
+        symbol.state_space != base::DeclarationStateSpace::Register)
+      return true;
+  }
+  if (aggregate || (element_competes && element))
+    return whole_vector;
+  return !whole_vector ||
+         !(element_competes ? scalar_binding(layout, slot)
+                            : aggregate_scalar_binding(layout, slot));
+}
+
+/** Apply the shared declaration rule to competing layouts, preserving Aggregate selection. */
 bool declaration_layout_eligible(
     const SyntaxVariantDescriptor& syntax_variant,
     const ResolvedVariantDescriptor& resolved_variant, size_t candidate,
@@ -374,44 +452,67 @@ bool declaration_layout_eligible(
   if (layout.bindings.size() != ast.operands.size())
     return true;
   for (size_t slot = 0; slot < ast.operands.size(); ++slot) {
-    const auto* identifier =
-        std::get_if<syntax_ast::AstIdentifierRef>(&ast.operands[slot]);
-    if (!identifier) {
-      if (named_aggregate_binding(layout, slot) &&
-          !std::holds_alternative<syntax_ast::AstVectorPack>(
-              ast.operands[slot]))
-        return false;
-      continue;
+    bool named = false, scalar = false, aggregate = false;
+    for (const auto& other : resolved_variant.operand_layouts) {
+      named |= named_element_binding(other, slot);
+      scalar |= scalar_binding(other, slot);
+      aggregate |= named_aggregate_binding(other, slot);
     }
-    const bool has_named_alternative = std::ranges::any_of(
-        resolved_variant.operand_layouts, [slot](const auto& other) {
-          return named_aggregate_binding(other, slot);
-        });
-    if (!has_named_alternative)
-      continue;
-    bool whole_vector = false;
-    if (context) {
-      const auto lookup =
-          context->symbols.lookup(context->scope, identifier->syntax.text);
-      if (lookup) {
-        const auto& symbol = context->symbols.symbol(lookup->symbol);
-        whole_vector =
-            symbol.state_space == base::DeclarationStateSpace::Register &&
-            (symbol.vector_width == 2 || symbol.vector_width == 4);
-      }
-    }
-    if (named_aggregate_binding(layout, slot)) {
-      if (!whole_vector)
-        return false;
-    } else {
-      const auto kind = binding_value_kind(layout, layout.bindings[slot]);
-      if (whole_vector && (kind == ResolvedValueKind::Register ||
-                           kind == ResolvedValueKind::RegOrImm ||
-                           kind == ResolvedValueKind::MovSource))
-        return false;
-    }
+    if (!declaration_slot_eligible(layout, slot, ast.operands[slot], context,
+                                   named && scalar, aggregate))
+      return false;
   }
   return true;
+}
+
+/** Filter paired variant candidates using the same declaration rule as layout selection. */
+bool declaration_variant_eligible(const SyntaxInstructionDescriptor& syntax,
+                                  const ResolvedInstructionDescriptor& resolved,
+                                  size_t candidate,
+                                  std::span<const uint64_t> candidates,
+                                  const syntax_ast::AstInstruction& ast,
+                                  const ResolveContext* context) {
+  if (!context)
+    return true;
+  assert(syntax.variants.size() == resolved.variants.size());
+  for (size_t ordinal = 0;
+       ordinal < resolved.variants[candidate].operand_layouts.size();
+       ++ordinal) {
+    const auto& layout = resolved.variants[candidate].operand_layouts[ordinal];
+    if (syntax.variants[candidate].operand_layouts[ordinal].kind !=
+            check_end::OperandLayoutKind::Flat ||
+        layout.bindings.size() != ast.operands.size() ||
+        !std::ranges::equal(
+            syntax.variants[candidate].operand_layouts[ordinal].slots,
+            ast.operands, [](const auto& slot, const auto& operand) {
+              // Selection uses top-level syntax only; exact pack counts
+              // retain the selected layout's normal diagnostics.
+              return allows_shape(slot.allowed_shapes,
+                                  check_end::get_operand_syntax_shape(operand));
+            }))
+      continue;
+    bool eligible = true;
+    for (size_t slot = 0; slot < ast.operands.size(); ++slot) {
+      bool named = false, scalar = false;
+      for (size_t index = 0; index < resolved.variants.size(); ++index) {
+        if ((candidates[index / 64] & (uint64_t{1} << (index % 64))) == 0)
+          continue;
+        for (const auto& other : resolved.variants[index].operand_layouts) {
+          if (other.bindings.size() != ast.operands.size())
+            continue;
+          named |= named_element_binding(other, slot);
+          scalar |= scalar_binding(other, slot);
+        }
+      }
+      if (named && scalar &&
+          !declaration_slot_eligible(layout, slot, ast.operands[slot], context,
+                                     true, false))
+        eligible = false;
+    }
+    if (eligible)
+      return true;
+  }
+  return false;
 }
 
 /**

@@ -37,6 +37,28 @@ their existing contracts. See the pinned PTX 9.3
 [local](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#local-state-space),
 and [variable declaration](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variable-declarations) rules.
 
+## Absolute variable placement
+
+Absolute fixed variable placement is not parsed or allocated. PTX ISA 9.3
+§5.4.1 mentions the capability without a determinate executable production in
+the referenced declaration clauses. This remains the named
+[`ADOPTED_REFERENCE_GAP`](converage/syntax_coverage.md#fixed-variable-addresses-adopted-reference-gap),
+not implemented fixed-address support.
+
+| Ordinary declaration | Retained fact |
+| --- | --- |
+| `.global .u32 x;` | Zero initialization, 4-byte extent, natural alignment 4 |
+| `.global .u32 x=0x100;` | Initializer contents 256, 4-byte extent |
+| `.global .u32 x[256];` | 256 elements, 1024-byte extent |
+| `.global .align 256 .u32 x;` | Alignment divisor 256, 4-byte extent |
+| `.global .align 16 .u32 x[2]={0x100,0};` | Alignment 16, two elements, 8-byte extent, contents 256 and 0 |
+
+None selects absolute address 256. The owned records describe declarations,
+contents and layout inputs, with no absolute-placement field or allocator.
+Implicit zero initialization does not fabricate a list of explicit initializer
+values. These ordinary records can be validated and copied after source/AST
+destruction; no fixed-placement source or owned case is implied.
+
 ## Identity and layout inputs
 
 Each source declarator contributes one record in source traversal order.

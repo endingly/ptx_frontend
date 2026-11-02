@@ -73,6 +73,89 @@ bool hasDeclarationKind(const std::vector<ResolveDiagnostic>& diagnostics,
   });
 }
 
+/** Ordinary layout inputs and contents survive without source or allocation. */
+TEST(ResolvedStorageDeclarations,
+     OrdinaryContentsShapeAndAlignmentOutliveSource) {
+  /** Independent normalized facts for existing ordinary declaration syntax. */
+  struct Case {
+    /** Complete global declaration under a real source header. */
+    std::string_view source;
+    /** Declared size in bytes, not a memory address. */
+    uint64_t bytes;
+    /** Effective alignment divisor, not an absolute placement. */
+    uint64_t alignment;
+    /** Explicit alignment if present; zero denotes omitted syntax. */
+    uint64_t explicit_alignment;
+    /** Array element count if present; zero denotes a scalar. */
+    uint64_t elements;
+    /** Number of written initializer values; implicit zeros are not fabricated. */
+    size_t values;
+  };
+  constexpr Case cases[] = {
+      {".global .u32 x;", 4, 4, 0, 0, 0},
+      {".global .u32 x=0x100;", 4, 4, 0, 0, 1},
+      {".global .u32 x[256];", 1024, 4, 0, 256, 0},
+      {".global .align 256 .u32 x;", 4, 256, 256, 0, 0},
+      {".global .align 16 .u32 x[2]={0x100,0};", 8, 16, 16, 2, 2},
+  };
+  for (const auto& fixture : cases) {
+    SCOPED_TRACE(fixture.source);
+    std::optional<ResolvedModule> owned;
+    {
+      const std::string source =
+          ".version 9.3\n.target sm_90\n.address_size 64\n" +
+          std::string(fixture.source);
+      PtxSyntaxParser parser(source);
+      auto ast = parser.parseModule();
+      ASSERT_TRUE(ast);
+      ASSERT_TRUE(ast.diagnostics.empty());
+      auto resolved = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(resolved) << resolved.error().front().message;
+      EXPECT_TRUE(validateModule(*ast, *resolved));
+      owned = std::move(*resolved);
+    }
+    // No source text or syntax AST survives into these public owned checks.
+    ResolvedModule copied(*owned), assigned;
+    assigned = copied;
+    for (const auto* module : {&*owned, &copied, &assigned}) {
+      ASSERT_EQ(module->storage_declarations.size(), 1u);
+      const auto& storage = module->storage_declarations.front();
+      EXPECT_EQ(module->symbols.symbol(storage.symbol_id).name, "x");
+      EXPECT_EQ(storage.space, StorageSpace::Global);
+      EXPECT_EQ(storage.element_type,
+                StorageElementType{base::ScalarType::U32});
+      EXPECT_EQ(storage.byte_extent, fixture.bytes);
+      EXPECT_EQ(storage.alignment, fixture.alignment);
+      if (fixture.explicit_alignment)
+        EXPECT_EQ(storage.explicit_alignment, fixture.explicit_alignment);
+      else
+        EXPECT_FALSE(storage.explicit_alignment);
+      if (fixture.elements) {
+        ASSERT_EQ(storage.array_extents.size(), 1u);
+        EXPECT_EQ(storage.array_extents.front(), fixture.elements);
+      } else {
+        EXPECT_TRUE(storage.array_extents.empty());
+      }
+      EXPECT_EQ(storage.initialization,
+                fixture.values ? StorageInitializationKind::Explicit
+                               : StorageInitializationKind::Zero);
+      ASSERT_EQ(storage.initializer.size(), fixture.values);
+      for (size_t index = 0; index < fixture.values; ++index) {
+        EXPECT_EQ(storage.initializer[index].byte_offset, index * 4u);
+        const auto* value =
+            std::get_if<StorageConstant>(&storage.initializer[index].value);
+        ASSERT_NE(value, nullptr);
+        EXPECT_EQ(value->bits, index == 0 ? 256u : 0u);
+        EXPECT_EQ(value->high_bits, 0u);
+      }
+      EXPECT_TRUE(validateModule(*module));
+    }
+    if (fixture.values)
+      EXPECT_NE(copied.storage_declarations.front().initializer.data(),
+                owned->storage_declarations.front().initializer.data());
+  }
+}
+
 /** Binary expression values feed dimensions, narrowing, signedness, and relocations. */
 TEST(ResolvedStorageDeclarations, BinaryExpressionsAndDimensions) {
   const auto resolved = resolveSource(R"ptx(

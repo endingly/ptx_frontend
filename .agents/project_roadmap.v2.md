@@ -408,7 +408,10 @@ ScaleFactorDescriptor
 
 Coverage 文档使用 `partial`、supported subset、deferred 和 out-of-scope 等自然语言边界来
 说明实际实现的 variant slice。它们是读者理解当前行为的说明，不是覆盖 PTX 9.3 的人工
-inventory，也不构成 no-unaccounted-item CI gate。任何 `complete` 表述只能针对明示的
+inventory，也不构成 no-unaccounted-item CI gate。固定变量绝对地址继续保留
+`FIXED-ADDRESS-PRODUCTION` / `ADOPTED_REFERENCE_GAP`，不记为 `CODE_PASS` 或已实现
+allocation。工程完整性须限定到固定的可执行 source production 与公开解释，并明确
+此参考缺口；普通内容 256、数组 256 个 element、alignment 256 不表示地址 256。任何 `complete` 表述只能针对明示的
 family scope，绝不表示整部 PTX ISA。
 
 ## 5.3 1.0 family disposition
@@ -663,7 +666,7 @@ numeric packed `.f16x2` literal representation。
 | M8-I11 | ✅ | synchronization point | bounded module recovery |
 | M8-I12 | ✅ | CST round-trip | byte-faithful sourceText |
 | M8-I13 | ✅ | lexer/CST fuzz harness | arbitrary bytes/malformed nesting |
-| M8-I14 | ⏸ | optional fixed-address evidence | 等待规范或可复现 `ptxas` |
+| M8-I14 | ⏸ | optional fixed-address evidence | `ADOPTED_REFERENCE_GAP`；等待具体官方 production/勘误及新架构裁决；assembler 仅作补充证据 |
 | M8-C01 | ✅ | recovered CST → AST | recovery node CST-only |
 | M8-C02 | ✅ | directive binding/semantic | file/debug identity |
 | M8-C03 | ✅ | real PTX module corpus | no silent drop |

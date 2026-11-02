@@ -146,11 +146,28 @@ The [project roadmap](../../../.agents/project_roadmap.v2.md) is the sole author
 for implementation status, dependencies, and priority. This matrix records
 capability boundaries only and intentionally does not repeat that ordering.
 
-The PTX ISA variable-declaration overview mentions an optional fixed address,
-but the current specification provides no separate grammar, constraints, or
-examples. The frontend will not invent syntax from that sentence; a node will
-be added only when normative grammar or verifiable `ptxas` behavior is
-available.
+### Fixed variable addresses: adopted reference gap
+
+**`FIXED-ADDRESS-PRODUCTION`: `ADOPTED_REFERENCE_GAP`, not `CODE_PASS`.**
+The pinned [PTX ISA 9.3 §5.4.1 overview](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variable-declarations)
+mentions an optional fixed variable address, but the referenced declaration,
+array, initializer and alignment clauses provide no determinate executable
+production, terminals, constraints or worked fixed-placement example. The
+frontend does not parse or allocate absolute fixed variable placement.
+
+Candidate tails `@ 0x100`, `.fixed(0x100)`, `.address(0x100)` and `:0x100`
+after a variable name produce diagnostics under the project's strict known
+declaration grammar. They are invented illustrations, not official PTX negative
+oracles. A recovered CST or AST with diagnostics is not clean acceptance.
+Ordinary initializer contents, array shape and alignment remain independent
+facts; see the [storage boundary and examples](../storage_declarations.md#absolute-variable-placement).
+
+Engineering completeness is qualified by the pinned executable source
+productions and published interpretations, including this named reference gap;
+it does not mean implementation of every capability mentioned in prose. A
+future concrete official production or erratum requires a new architecture
+decision and actual implementation review. Reproducible assembler observations
+may supplement that evidence, but cannot alone establish normative grammar.
 
 For `.target debug`, zero modern section records AND zero legacy records are a definite error. Nonzero records only satisfy the absence check: actual DWARF recognition remains **D-DEBUG-DWARF-PRESENCE-RECOGNITION**, not certified by names, emptiness, labels or typed bytes.
 

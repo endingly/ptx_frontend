@@ -28,6 +28,26 @@ Frontend 不建模由调用者选择的禁用 ABI 编译开关。较早 PTX 版�
 [local](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#local-state-space) 与
 [变量声明](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variable-declarations) 规则。
 
+## 绝对变量放置
+
+frontend 不解析或分配变量的绝对固定地址。PTX ISA 9.3 §5.4.1 提到了此能力，
+但引用的声明条款没有给出确定可执行的 production。这仍是命名的
+[`ADOPTED_REFERENCE_GAP`](converage/syntax_coverage.md#固定变量地址已采用的参考边界)，
+不是已实现的 fixed-address 支持。
+
+| 普通声明 | 保留的事实 |
+| --- | --- |
+| `.global .u32 x;` | 零初始化、4 字节 extent、自然 alignment 4 |
+| `.global .u32 x=0x100;` | initializer 内容为 256，extent 为 4 字节 |
+| `.global .u32 x[256];` | 256 个 element，extent 为 1024 字节 |
+| `.global .align 256 .u32 x;` | alignment 除数为 256，extent 为 4 字节 |
+| `.global .align 16 .u32 x[2]={0x100,0};` | alignment 16、两个 element、8 字节 extent，内容为 256 和 0 |
+
+这些声明均不选择绝对地址 256。owned record 描述声明、内容与 layout 输入，
+没有绝对放置字段或 allocator。隐式零初始化不臆造 explicit initializer value 列表。
+这些普通 record 在源文本/AST 销毁后仍可验证和复制；这不暗示存在 fixed-placement
+源语法或 owned case。
+
 ## 身份与布局输入
 
 每个源码 declarator 按源码遍历顺序产生一条记录。`symbol_id` 指向既有 module symbol；

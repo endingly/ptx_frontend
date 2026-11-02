@@ -2,6 +2,7 @@
 #include <algorithm>
 
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
 #include <string>
 #include <string_view>
@@ -29,6 +30,99 @@ using syntax_cst::CstRegisterPredicatePair;
 using syntax_cst::CstTokenRange;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
+
+/** Invented declaration tails are project parse errors despite recovery. */
+TEST(PtxCstParser, RejectsUndefinedDeclarationTailsWithoutLosingSource) {
+  /** Candidate spelling and its first unexpected token's physical byte range. */
+  struct Case {
+    /** Not an official fixed-address production or vendor-negative oracle. */
+    std::string_view source;
+    /** Expected project diagnostic span, with an exclusive end column. */
+    int32_t start_column, end_column;
+  };
+  constexpr Case cases[] = {
+      {".global .u32 x @ 0x100;", 16, 17},
+      {".global .u32 x .fixed(0x100);", 16, 22},
+      {".global .u32 x .address(0x100);", 16, 24},
+      {".global .u32 x:0x100;", 15, 16},
+  };
+  for (const auto& fixture : cases) {
+    SCOPED_TRACE(fixture.source);
+    const std::string source = std::string(fixture.source) +
+                               "\n/*keep*/ .global .u32 following = 7;\n";
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_FALSE(result.diagnostics.empty());
+    EXPECT_EQ(result.diagnostics.front().message, "expected ';'");
+    EXPECT_EQ(
+        result.diagnostics.front().range,
+        (SourceRange{{1, fixture.start_column}, {1, fixture.end_column}}));
+    // A recovered CST is lossless, but diagnostics prevent clean acceptance.
+    ASSERT_TRUE(result);
+    EXPECT_EQ(result->sourceText(), source);
+    ASSERT_NE(result->module(), nullptr);
+    size_t following_count = 0;
+    for (const auto& item : result->module()->items) {
+      const auto* declaration =
+          std::get_if<syntax_cst::CstVariableDeclaration>(&item);
+      if (!declaration)
+        continue;
+      for (const auto& declarator : declaration->declarators) {
+        const auto& name = result->token(declarator.name);
+        if (name.text != "following")
+          continue;
+        ++following_count;
+        EXPECT_EQ(name.range, (SourceRange{{2, 23}, {2, 32}}));
+        EXPECT_EQ(result->sourceRange(declaration->token_range),
+                  (SourceRange{{2, 10}, {2, 37}}));
+      }
+    }
+    EXPECT_EQ(following_count, 1u);
+  }
+}
+
+/** Ordinary contents, array dimensions and alignment remain distinct syntax. */
+TEST(PtxCstParser, RetainsOrdinaryDeclarationContentsShapeAndAlignment) {
+  /** Existing ordinary declaration syntax, without an absolute placement field. */
+  struct Case {
+    /** Complete declaration source, reconstructed byte for byte. */
+    std::string_view source;
+    /** Number of explicit array dimensions. */
+    size_t dimensions;
+    /** Whether an equals initializer is written. */
+    bool initialized;
+    /** Written alignment token; empty means omitted. */
+    std::string_view alignment;
+  };
+  constexpr Case cases[] = {
+      {".global .u32 x;", 0, false, ""},
+      {".global .u32 x=0x100;", 0, true, ""},
+      {".global .u32 x[256];", 1, false, ""},
+      {".global .align 256 .u32 x;", 0, false, "256"},
+      {".global .align 16 .u32 x[2]={0x100,0};", 1, true, "16"},
+  };
+  for (const auto& fixture : cases) {
+    SCOPED_TRACE(fixture.source);
+    PtxCstParser parser(fixture.source);
+    const auto result = parser.parseModule();
+    ASSERT_TRUE(result);
+    ASSERT_TRUE(result.diagnostics.empty());
+    EXPECT_EQ(result->sourceText(), fixture.source);
+    ASSERT_EQ(result->module()->items.size(), 1u);
+    const auto* declaration = std::get_if<syntax_cst::CstVariableDeclaration>(
+        &result->module()->items.front());
+    ASSERT_NE(declaration, nullptr);
+    ASSERT_EQ(declaration->declarators.size(), 1u);
+    const auto& declarator = declaration->declarators.front();
+    EXPECT_EQ(result->token(declarator.name).text, "x");
+    EXPECT_EQ(declarator.array_dimensions.size(), fixture.dimensions);
+    EXPECT_EQ(declarator.equals.has_value(), fixture.initialized);
+    EXPECT_EQ(declarator.initializer.has_value(), fixture.initialized);
+    EXPECT_EQ(declaration->alignment.has_value(), !fixture.alignment.empty());
+    if (declaration->alignment)
+      EXPECT_EQ(result->token(*declaration->alignment).text, fixture.alignment);
+  }
+}
 
 /** Form-feed token separators and EOF trivia survive exact CST reconstruction. */
 TEST(PtxCstParser, RoundTripsFormFeedWhitespace) {

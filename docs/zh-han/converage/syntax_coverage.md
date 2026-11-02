@@ -136,9 +136,22 @@ feasibility、simulator execution 或 hardware behavior；`—` = 该阶段无�
 [项目 roadmap](../../../.agents/project_roadmap.v2.md) 是实现状态、依赖和优先级的唯一权威来源。
 本矩阵只记录能力边界，刻意不重复该排序。
 
-PTX ISA 的 variable declaration 概述提到 optional fixed address，但当前规范没有给出独立
-语法、约束或示例。frontend 不会据此发明语法；只有获得规范性 grammar 或可验证的
-`ptxas` 行为后才会增加对应节点。
+### 固定变量地址：已采用的参考边界
+
+**`FIXED-ADDRESS-PRODUCTION` 的处置为 `ADOPTED_REFERENCE_GAP`，不是 `CODE_PASS`。**
+固定的 [PTX ISA 9.3 §5.4.1 概述](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variable-declarations)
+提到 optional fixed variable address，但所引用的 declaration、array、initializer
+及 alignment 条款没有提供确定可执行的 production、terminal、约束或固定放置示例。
+frontend 不解析或分配变量的绝对固定地址。
+
+变量名后的候选 tail `@ 0x100`、`.fixed(0x100)`、`.address(0x100)`、`:0x100`
+在项目现有的严格声明 grammar 下产生诊断。这些是人为构造的说明，不是官方 PTX
+negative oracle。带诊断的恢复 CST 或 AST 不表示干净接受。普通 initializer 内容、
+数组 shape 与 alignment 是独立事实；见[存储边界与示例](../storage_declarations.md#绝对变量放置)。
+
+工程上的完整性只针对固定的可执行源 production 与公开解释，并保留此命名参考缺口，
+不表示已实现 prose 中提到的每项能力。未来具体的官方 production 或勘误需要新的
+架构裁决及实际实现评审。可复现 assembler 观察可补充证据，但不能单独确立规范性 grammar。
 
 对 `.target debug`，modern section record 和 legacy record 同时为零是确定错误。非零 record 仅通过缺失检查；实际 DWARF recognition 仍为 **D-DEBUG-DWARF-PRESENCE-RECOGNITION**，不由 name、空/非空、label 或 typed byte 认证。
 

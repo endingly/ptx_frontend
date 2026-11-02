@@ -1684,3 +1684,30 @@ word 编辑仍可合法。保留的错误类型、高位、integer origin 或 ne
 与 constructor policy 仍相互独立。不执行指令 rounding、saturation、comparison、
 predicate combination 或运行语义；target、destination、其他 source 及全部 packed
 SET form 的契约保持不变。
+
+
+### 标量 F16 atomic 源成员
+
+`AtomGlobalAddNoftzF16::src` 与 `RedGlobalAddNoftzF16::src` 在普通和 cache-policy
+两个布局中都使用 `WithLocs<RegOrImm>`。consumer 需要重新构建，并通过 `get_if`
+或 `visit` 选择 `ResolvedRegisterRef` / `ResolvedImmediate`；既有类身份、成员范围和
+布局顺序不变。cache policy 仍是独立的 B64 寄存器操作数，atomic 目标仍保留
+register-or-sink 契约。
+
+只有这四个标量 F16 源角色继承浮点常量使用权限，逻辑 F16 与 SameWidth 保持不变；
+实际 B16/F16 general 寄存器及既有合法分量继续可用。数值浮点表达式复用公共
+binary16 转换器（`1.5` 得到 F16 字 `0x3e00`），整数来源不获得浮点源权限。
+当前规范 F16 字不需要浮点词法历史，但必须只含 low16 位，且不带整数来源缓存或
+浮点负号元数据。IEEE 符号位与 NaN payload 位是数据。这是标量数值转换，
+不是 packed 原始字、成对值或 splat 构造。
+
+既有同宽 Bit 兼容规则也接受当前规范 B16 字，例如不带整数来源或负号元数据的
+`0x3e00`。这是既有 current-data 兼容性，独立于原 AST 拼写；它不增加 Bit literal
+来源权限，不改变 F16 producer 或整数源排除规则。其他 Bit flag 与 packed-format
+规则均不变。
+
+普通形式仍要求 PTX6.3/SM70，global cache-policy 布局仍要求 PTX7.4/SM80。
+地址、对齐、ordering、scope、`noftz`、source identity 及既有
+AvailableContext/RequireCompleteContext 规则独立保留。Packed F16x2、BF16/BF16x2、
+atomic 向量、compare/swap 及所有其他源权限不变。前端检查不证明 GPU 运行时行为或
+opaque cache-policy 内容。

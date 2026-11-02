@@ -1091,6 +1091,10 @@ TEST(AtomicReductionCoverage, ResolvesHalfBfloatAndWideScalarForms) {
   EXPECT_FALSE(dynamic_cast<AtomGlobalAddNoftzF16&>(*body[3])
                    .dst.value.register_ref.has_value());
   EXPECT_EQ(body[4]->instruction_kind(), InstructionKind::RedGlobalAddNoftzF16);
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
+      dynamic_cast<AtomGlobalAddNoftzF16&>(*body[3]).src.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
+      dynamic_cast<RedGlobalAddNoftzF16&>(*body[4]).src.value));
   EXPECT_EQ(body[5]->instruction_kind(),
             InstructionKind::AtomGlobalAddNoftzF16x2);
   EXPECT_EQ(body[6]->instruction_kind(),

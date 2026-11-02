@@ -1,10 +1,13 @@
+#include <algorithm>
 #include <array>
 #include <concepts>
 #include <iostream>
 #include <optional>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 
@@ -1844,8 +1847,307 @@ bool checkInstalledOrdinaryBf16FmaSet() {
   return ir::validateModule(copied).has_value() && ir::validateModule(assigned).has_value();
 }
 
+#if defined(PTX_FRONTEND_OBSERVE_ATOMIC_F16_VIEWS)
+namespace atomic_f16_generated_projection {
+namespace ir = ptx_frontend::resolved_ir;
+/** Borrow only during one synchronous generated check on a live concrete instruction. */
+const ptx_frontend::WithLocs<ir::RegOrImm>* expected = nullptr;
+/** Count actual generated source projections without substituting a manual view. */
+size_t observed = 0;
+/** Preserve all assertion failures while still returning the real checker result. */
+bool mirrors_valid = true;
+#define ATOMIC_VIEW_PARAMS                                             \
+  std::span<const ir::checker::OperandDescriptor> descriptors,         \
+      std::span<const ir::checker::FieldView> fields,                  \
+      std::span<const ir::checker::OperandView> views,                 \
+      std::span<const ir::checker::OperandTypeCompatibilityDescriptor> \
+          compatibility, const ir::checker::Context &context,          \
+      const ir::MatrixInstructionDescriptor *matrix
+/** Invoke the original installed checker after inspecting its generated arguments. */
+extern "C" ir::checker::CheckResult
+    real_atomic_operands(ATOMIC_VIEW_PARAMS) asm(
+        "__real__ZN12ptx_frontend11resolved_ir7checker14check_"
+        "operandsESt4spanIKNS1_17OperandDescriptorELm18446744073709551615EES2_"
+        "IKNS1_9FieldViewELm18446744073709551615EES2_IKNS1_"
+        "11OperandViewELm18446744073709551615EES2_IKNS1_"
+        "34OperandTypeCompatibilityDescriptorELm18446744073709551615EERKNS1_"
+        "7ContextEPKNS0_27MatrixInstructionDescriptorE");
+/** Test-only link interception of the unchanged public checker signature. */
+extern "C" ir::checker::CheckResult
+    wrap_atomic_operands(ATOMIC_VIEW_PARAMS) asm(
+        "__wrap__ZN12ptx_frontend11resolved_ir7checker14check_"
+        "operandsESt4spanIKNS1_17OperandDescriptorELm18446744073709551615EES2_"
+        "IKNS1_9FieldViewELm18446744073709551615EES2_IKNS1_"
+        "11OperandViewELm18446744073709551615EES2_IKNS1_"
+        "34OperandTypeCompatibilityDescriptorELm18446744073709551615EERKNS1_"
+        "7ContextEPKNS0_27MatrixInstructionDescriptorE");
+/** Compare exact current payload pointers, mirrors, metadata and original range storage. */
+ir::checker::CheckResult wrap_atomic_operands(ATOMIC_VIEW_PARAMS) {
+  if (expected)
+    for (const auto& view : views)
+      if (view.field_id == "src") {
+        ++observed;
+        bool valid = view.locations.data() == expected->locs.data() &&
+                     std::ranges::equal(view.locations, expected->locs);
+        const auto binding =
+            std::ranges::find(descriptors, std::string_view{"src"},
+                              &ir::checker::OperandDescriptor::target_field_id);
+        valid =
+            valid && binding != descriptors.end() &&
+            binding->type_expression.kind ==
+                ir::checker::OperandTypeExpressionKind::FixedScalar &&
+            binding->type_expression.fixed_scalar_type == ir::ScalarType::F16 &&
+            binding->register_width_policy ==
+                ptx_frontend::base::ScalarTypeSizePolicy::SameWidth &&
+            binding->allowed_shapes == (ir::checker::OperandShape::Register |
+                                        ir::checker::OperandShape::Immediate) &&
+            !binding->integer_immediate_type && !binding->source_value_vector;
+        if (const auto* reg =
+                std::get_if<ir::ResolvedRegisterRef>(&expected->value)) {
+          valid = valid &&
+                  view.actual_shape == ir::checker::OperandShape::Register &&
+                  view.register_ref == reg &&
+                  view.register_type == reg->declared_type &&
+                  view.register_symbol_id == reg->symbol_id &&
+                  view.register_class == reg->register_class &&
+                  view.register_vector_width == reg->vector_width &&
+                  !view.immediate_type && !view.immediate_bits;
+        } else if (const auto* word =
+                       std::get_if<ir::ResolvedImmediate>(&expected->value)) {
+          valid = valid &&
+                  view.actual_shape == ir::checker::OperandShape::Immediate &&
+                  !view.register_ref && view.immediate_type == word->type &&
+                  view.immediate_bits == word->bits &&
+                  view.immediate_is_negative == word->is_negative &&
+                  view.integer_source_bits == word->integer_source_bits;
+        } else
+          valid = false;
+        mirrors_valid = mirrors_valid && valid;
+      }
+  return real_atomic_operands(descriptors, fields, views, compatibility,
+                              context, matrix);
+}
+#undef ATOMIC_VIEW_PARAMS
+}  // namespace atomic_f16_generated_projection
+#endif
+
+/** Verify the real callback without retaining any callback borrow after the visit. */
+struct InstalledAtomicF16Capture final
+    : ptx_frontend::resolved_ir::detail::IReferenceObserver {
+  /** Actual field is owned by the instruction throughout this synchronous traversal. */
+  const ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>& expected;
+  /** Accumulated pointer/range validity and exact migrated source callback count. */
+  bool valid = true;
+  size_t matches = 0;
+  /** Bind the owning field before entering the visitor. */
+  explicit InstalledAtomicF16Capture(
+      const ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>& field)
+      : expected(field) {}
+  /** Observe the actual variant storage, not a copied immediate or register adapter. */
+  void reg_or_imm(
+      const ptx_frontend::resolved_ir::RegOrImm& value,
+      std::span<const ptx_frontend::SourceRange> ranges,
+      ptx_frontend::resolved_ir::checker::AddressSymbolResolutionPolicy)
+      override {
+    ++matches;
+    valid = valid && &value == &expected.value &&
+            ranges.data() == expected.locs.data() &&
+            std::ranges::equal(ranges, expected.locs);
+  }
+};
+/** Compute end-exclusive source coordinates independently of all generated location caches. */
+ptx_frontend::SourceRange installedAtomicRange(std::string_view text,
+                                               size_t offset, size_t size) {
+  ptx_frontend::SourcePos start{1, 1};
+  for (char character : text.substr(0, offset)) {
+    if (character == '\n') {
+      ++start.line;
+      start.column = 1;
+    } else
+      ++start.column;
+  }
+  return {start, {start.line, start.column + static_cast<int32_t>(size)}};
+}
+/** Check real factory/member/callback behavior for two classes and both selected layouts. */
+bool checkInstalledScalarAtomicF16Sources() {
+  namespace ir = ptx_frontend::resolved_ir;
+  static_assert(std::same_as<decltype(ir::AtomGlobalAddNoftzF16{}.src),
+                             ptx_frontend::WithLocs<ir::RegOrImm>>);
+  static_assert(std::same_as<decltype(ir::RedGlobalAddNoftzF16{}.src),
+                             ptx_frontend::WithLocs<ir::RegOrImm>>);
+  static_assert(std::is_constructible_v<ir::ResolvedFieldValue,
+                                        ptx_frontend::WithLocs<ir::RegOrImm>>);
+  static_assert(std::is_copy_constructible_v<ir::AtomGlobalAddNoftzF16> &&
+                std::is_copy_assignable_v<ir::AtomGlobalAddNoftzF16>);
+  static_assert(std::is_copy_constructible_v<ir::RedGlobalAddNoftzF16> &&
+                std::is_copy_assignable_v<ir::RedGlobalAddNoftzF16>);
+#if defined(PTX_FRONTEND_OBSERVE_ATOMIC_F16_VIEWS)
+  atomic_f16_generated_projection::observed = 0;
+  atomic_f16_generated_projection::mirrors_valid = true;
+#endif
+  for (bool atom : {false, true})
+    for (bool policy : {false, true})
+      for (unsigned arm = 0; arm < 3; ++arm) {
+        const std::string_view spelling = arm == 0   ? "b"
+                                          : arm == 1 ? "h"
+                                                     : "1.5";
+        std::optional<ir::ResolvedModule> module;
+        ptx_frontend::SourceRange expected_range;
+        {
+          std::string source =
+              ".version 9.3\n.target sm_90\n.address_size 64\n.global .align 2 "
+              ".b16 memory;\n"
+              ".entry k(){.reg .b16 d,b;.reg .f16 h;.reg .b64 policy;" +
+              std::string(atom ? "atom" : "red") + ".global.add.noftz" +
+              (policy ? ".L2::cache_hint" : "") + ".f16 " +
+              (atom ? "d,[memory]," : "[memory],");
+          const auto offset = source.size();
+          source += spelling;
+          source += policy ? ",policy;}" : ";}";
+          expected_range =
+              installedAtomicRange(source, offset, spelling.size());
+          ptx_frontend::PtxSyntaxParser parser(source);
+          const auto ast = parser.parseModule();
+          if (!ast || !ast.diagnostics.empty())
+            return false;
+          auto resolved = ir::resolveAndValidateModule(*ast);
+          if (!resolved || !ir::validateModule(*ast, *resolved))
+            return false;
+          module.emplace(std::move(*resolved));
+        }
+        if (module->functions.size() != 1 ||
+            module->functions.front().body.size() != 1)
+          return false;
+        auto copied = *module;
+        ir::ResolvedModule assigned;
+        assigned = copied;
+        ir::ResolvedFunction function(copied.functions.front()),
+            function_assigned;
+        function_assigned = function;
+        assigned.functions.front() = function_assigned;
+        assigned.functions.front().body.front() =
+            function.body.front()->clone();
+        module.reset();
+        auto& instruction = *assigned.functions.front().body.front();
+        const ptx_frontend::WithLocs<ir::RegOrImm>* source = nullptr;
+        if (atom) {
+          const auto* exact =
+              dynamic_cast<const ir::AtomGlobalAddNoftzF16*>(&instruction);
+          if (!exact || exact->operand_layout.value != (policy ? 1u : 0u) ||
+              bool(exact->cache_policy) != policy)
+            return false;
+          source = &exact->src;
+        } else {
+          const auto* exact =
+              dynamic_cast<const ir::RedGlobalAddNoftzF16*>(&instruction);
+          if (!exact || exact->operand_layout.value != (policy ? 1u : 0u) ||
+              bool(exact->cache_policy) != policy)
+            return false;
+          source = &exact->src;
+        }
+        if (source->locs.size() != 1 || source->locs.front() != expected_range)
+          return false;
+        if (arm == 2) {
+          const auto* word = std::get_if<ir::ResolvedImmediate>(&source->value);
+          if (!word || word->type != ir::ScalarType::F16 ||
+              word->bits != 0x3e00 || word->integer_source_bits ||
+              word->is_negative)
+            return false;
+        } else {
+          const auto* reg =
+              std::get_if<ir::ResolvedRegisterRef>(&source->value);
+          if (!reg || !reg->symbol_id || reg->spelling != spelling ||
+              reg->declared_type !=
+                  (arm == 0 ? ir::ScalarType::B16 : ir::ScalarType::F16) ||
+              reg->register_class != ir::ResolvedRegisterClass::General ||
+              reg->vector_width || reg->component)
+            return false;
+        }
+        ir::ResolvedFieldValue field_value = *source;
+        const auto* field_copy =
+            std::get_if<ptx_frontend::WithLocs<ir::RegOrImm>>(&field_value);
+        if (!field_copy || *field_copy != *source)
+          return false;
+        InstalledAtomicF16Capture capture(*source);
+        instruction.visit_references(capture);
+        if (!capture.valid || capture.matches != 1 ||
+            !ir::validateModule(
+                assigned, ir::ModuleValidationPolicy::RequireCompleteContext))
+          return false;
+#if defined(PTX_FRONTEND_OBSERVE_ATOMIC_F16_VIEWS)
+        const auto before = atomic_f16_generated_projection::observed;
+        atomic_f16_generated_projection::expected = source;
+#endif
+        const auto checked = instruction.check(
+            {.target = {.ptx_version = {9, 3}, .sm_version = 90},
+             .instruction_range =
+                 assigned.functions.front().instruction_ranges.front()});
+#if defined(PTX_FRONTEND_OBSERVE_ATOMIC_F16_VIEWS)
+        atomic_f16_generated_projection::expected = nullptr;
+        if (atomic_f16_generated_projection::observed != before + 1 ||
+            !atomic_f16_generated_projection::mirrors_valid)
+          return false;
+#endif
+        if (!checked)
+          return false;
+        const std::string factory_operand = arm == 0   ? "%b0"
+                                            : arm == 1 ? "%h0"
+                                                       : "1.5";
+        const std::string operation =
+            std::string(atom ? "atom" : "red") + ".global.add.noftz" +
+            (policy ? ".L2::cache_hint" : "") + ".f16 " +
+            (atom ? "%d0,[%rd0]," : "[%rd0],") + factory_operand +
+            (policy ? ",%policy0;" : ";");
+        ptx_frontend::PtxSyntaxParser factory_parser(operation);
+        const auto factory_ast = factory_parser.parseInstruction();
+        if (!factory_ast || !factory_ast.diagnostics.empty())
+          return false;
+        auto factory = ir::resolveInstruction(*factory_ast);
+        if (!factory ||
+            (*factory)->instruction_kind() != instruction.instruction_kind())
+          return false;
+        auto clone = (*factory)->clone();
+        if (!clone ||
+            clone->instruction_kind() != instruction.instruction_kind())
+          return false;
+        const ptx_frontend::WithLocs<ir::RegOrImm>* cloned_source = nullptr;
+        if (atom) {
+          const auto* exact =
+              dynamic_cast<const ir::AtomGlobalAddNoftzF16*>(clone.get());
+          if (!exact)
+            return false;
+          cloned_source = &exact->src;
+        } else {
+          const auto* exact =
+              dynamic_cast<const ir::RedGlobalAddNoftzF16*>(clone.get());
+          if (!exact)
+            return false;
+          cloned_source = &exact->src;
+        }
+        if (arm == 2) {
+          const auto* word =
+              std::get_if<ir::ResolvedImmediate>(&cloned_source->value);
+          if (!word || word->type != ir::ScalarType::F16 ||
+              word->bits != 0x3e00 || word->integer_source_bits ||
+              word->is_negative)
+            return false;
+        } else if (!std::get_if<ir::ResolvedRegisterRef>(&cloned_source->value))
+          return false;
+      }
+#if defined(PTX_FRONTEND_OBSERVE_ATOMIC_F16_VIEWS)
+  if (atomic_f16_generated_projection::observed != 12 ||
+      !atomic_f16_generated_projection::mirrors_valid)
+    return false;
+  std::cout
+      << "ATOMIC_GENERATED_VIEWS 12 actual borrowed projections checked\n";
+#endif
+  return true;
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledScalarAtomicF16Sources())
+    return 40;
   if (!checkInstalledOrdinaryBf16FmaSet())
     return 1;
   if (!checkInstalledExplicitBit16Setp())

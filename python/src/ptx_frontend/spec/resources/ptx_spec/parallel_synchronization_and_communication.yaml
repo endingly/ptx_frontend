@@ -187,14 +187,14 @@ operand_patterns:
   atom_global_noftz_f16:
     - {name: dst, kind: reg_or_sink, role: dst, access: write, type: f16, register_width: same_width}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
-    - {name: src, kind: reg, role: src, access: read, type: f16, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: f16, register_width: same_width}
   atom_global_noftz_f16x2:
     - {name: dst, kind: reg_or_sink, role: dst, access: write, type: f16x2, register_width: same_width}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
     - {name: src, kind: reg, role: src, access: read, type: f16x2, register_width: same_width}
   red_global_noftz_f16:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
-    - {name: src, kind: reg, role: src, access: read, type: f16, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: f16, register_width: same_width}
   red_global_noftz_f16x2:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
     - {name: src, kind: reg, role: src, access: read, type: f16x2, register_width: same_width}
@@ -248,7 +248,7 @@ operand_patterns:
   atom_global_noftz_f16_cache_policy:
     - {name: dst, kind: reg_or_sink, role: dst, access: write, type: f16, register_width: same_width}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg, role: src, access: read, type: f16, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: f16, register_width: same_width}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
 
   atom_global_noftz_f16x2_cache_policy:
@@ -279,7 +279,7 @@ operand_patterns:
 
   red_global_noftz_f16_cache_policy:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg, role: src, access: read, type: f16, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: f16, register_width: same_width}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
 
   red_global_noftz_f16x2_cache_policy:

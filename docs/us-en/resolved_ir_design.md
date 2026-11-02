@@ -2073,3 +2073,35 @@ This scalar numeric conversion adds no packed pair/splat or truncation rule;
 packed exact-word and constructor policies remain separate. Instruction rounding,
 saturation, comparison, predicate combination and execution are not evaluated.
 Targets, destinations, other sources and all packed SET forms keep their contracts.
+
+
+### Scalar F16 atomic source members
+
+`AtomGlobalAddNoftzF16::src` and `RedGlobalAddNoftzF16::src` use
+`WithLocs<RegOrImm>` in both the ordinary and cache-policy layouts. Rebuild
+consumers and select `ResolvedRegisterRef` or `ResolvedImmediate` with `get_if`
+or `visit`; the existing class identities, field locations and layout order do
+not change. The cache policy remains a separate B64 register operand, and the
+atomic destination retains its register-or-sink contract.
+
+Only these four scalar F16 source roles inherit floating constant use. They keep
+logical F16 and SameWidth: actual B16/F16 general registers and their existing
+legal components remain supported. Numeric floating expressions use the common
+binary16 converter (`1.5` produces F16 word `0x3e00`); an integer-origin source
+is not a floating permission. Current canonical F16 words need no floating
+lexical history, but require low16 bits, no integer-origin cache and no floating
+negative metadata. IEEE sign and NaN payload bits remain data. This is scalar
+numeric conversion, not a packed raw-word, pair or splat constructor.
+
+The existing same-width Bit compatibility rule also accepts a canonical current
+B16 word such as `0x3e00` without integer-origin or negative metadata. This is
+inherited current-data compatibility, independent of the original AST spelling;
+it adds no Bit literal-source permission and does not change the F16 producer or
+its integer-source exclusion. Other Bit flag and packed-format rules are unchanged.
+
+The ordinary form keeps PTX6.3/SM70 availability; the global cache-policy layout
+keeps PTX7.4/SM80 availability. Address, alignment, ordering, scope, `noftz`,
+source identity and existing AvailableContext/RequireCompleteContext rules remain
+independent. Packed F16x2, BF16/BF16x2, atomic vectors, compare/swap and all other
+source permissions remain unchanged. Frontend checks do not certify GPU runtime
+behavior or opaque cache-policy contents.

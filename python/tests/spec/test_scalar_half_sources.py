@@ -189,33 +189,33 @@ ROLE_ROWS = ((('add', 'add_half', 'default', 'src1'), 'reg', 'register_only_pres
   'separate_value_vector_inheritance_accepted_not_a_scalar_role_promotion',
   False),
  (('atom', 'atom_global_add_noftz_f16', 'no_hint', 'src'),
-  'reg',
-  'additional_required_scalar_atomic_F16_literal_role_separate_followup',
-  False),
+  'reg_or_imm',
+  'scalar_atomic_F16_source_promoted',
+  True),
  (('atom', 'atom_global_add_noftz_f16', 'with_policy', 'src'),
-  'reg',
-  'additional_required_scalar_atomic_F16_literal_role_separate_followup',
-  False),
+  'reg_or_imm',
+  'scalar_atomic_F16_source_promoted',
+  True),
  (('red', 'red_global_add_noftz_f16', 'no_hint', 'src'),
-  'reg',
-  'additional_required_scalar_atomic_F16_literal_role_separate_followup',
-  False),
+  'reg_or_imm',
+  'scalar_atomic_F16_source_promoted',
+  True),
  (('red', 'red_global_add_noftz_f16', 'with_policy', 'src'),
-  'reg',
-  'additional_required_scalar_atomic_F16_literal_role_separate_followup',
-  False))
+  'reg_or_imm',
+  'scalar_atomic_F16_source_promoted',
+  True))
 
 class ScalarHalfSourceTests(unittest.TestCase):
     """Pin all original role keys and the generated public field migration."""
 
     def test_exact_role_and_generated_field_matrix(self) -> None:
-        """Preserve69 comparator roles, promote20 fields in11 existing classes."""
+        """Preserve69 stable roles; promote24 role/layout keys in13 existing classes."""
         spec = get_packaged_spec_database()
         actual = {(i.opcode, v.name, l.name, o.name): o
                   for i in spec.instructions for v in i.variants
                   for l in v.operand_layouts for o in l.operands}
         generated = {i.opcode: from_instruction_spec(i) for i in spec.instructions
-                     if i.opcode in {"add", "sub", "fma", "set", "setp"}}
+                     if i.opcode in {"add", "sub", "fma", "set", "setp", "atom", "red"}}
         classes = set()
         counts = Counter()
         for key, kind, disposition, promoted in ROLE_ROWS:
@@ -229,8 +229,8 @@ class ScalarHalfSourceTests(unittest.TestCase):
                     self.assertIs(field.value_kind, ResolvedValueKind.REG_OR_IMM)
                     classes.add((key[0], variant.cpp_name))
         self.assertEqual(len(ROLE_ROWS), 69)
-        self.assertEqual(sum(row[3] for row in ROLE_ROWS), 20)
-        self.assertEqual(len(classes), 11)
+        self.assertEqual(sum(row[3] for row in ROLE_ROWS), 24)
+        self.assertEqual(len(classes), 13)
         self.assertEqual(counts["register_only_preserved"], 26)
         self.assertEqual(sum(key[0] == "cvt" for key, *_ in ROLE_ROWS), 10)
         for opcode in ("add", "sub"):

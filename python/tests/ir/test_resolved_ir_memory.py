@@ -1860,6 +1860,25 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                     self.assertEqual(binding.type_expression.scalar_type, container)
                     self.assertEqual(binding.register_width_policy,
                                      width_policy)
+                if name == "GlobalAddNoftzF16":
+                    self.assertEqual(tuple(layout.layout_id for layout in variant.operand_layouts),
+                                     ("no_hint", "with_policy"))
+                    for layout in variant.operand_layouts:
+                        binding = next(binding for binding in layout.bindings
+                                       if binding.target_field_id == "src")
+                        self.assertEqual(binding.allowed_shapes,
+                                         (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE))
+                        field = next(field for field in layout.fields if field.name == "src")
+                        self.assertEqual(field_cpp_type(field), "WithLocs<RegOrImm>")
+                if opcode == "atom" and name == "GlobalCasB16":
+                    for layout in variant.operand_layouts:
+                        for source_name in ("compare", "swap"):
+                            binding = next(binding for binding in layout.bindings
+                                           if binding.target_field_id == source_name)
+                            self.assertEqual(binding.allowed_shapes,
+                                             (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE))
+                            field = next(field for field in layout.fields if field.name == source_name)
+                            self.assertEqual(field_cpp_type(field), "WithLocs<RegOrImm>")
                 if opcode == "atom":
                     dst = next(field for field in variant.operand_layouts[0].fields
                                if field.name == "dst")
@@ -1891,6 +1910,13 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                 self.assertIn("cache_hint", (field.name for field in variant.modifier_fields))
                 policy_layout = variant.operand_layouts[1]
                 self.assertEqual(dict(policy_layout.availability), {"ptx": "7.4", "sm": 80})
+                if variant.cpp_name == "GlobalAddNoftzF16":
+                    for layout in variant.operand_layouts:
+                        source = next(b for b in layout.bindings if b.target_field_id == "src")
+                        self.assertEqual(source.allowed_shapes,
+                                         (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE))
+                        self.assertEqual(source.type_expression.scalar_type, "f16")
+                        self.assertIs(source.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
                 policy = policy_layout.bindings[-1]
                 self.assertEqual(policy.target_field_id, "cache_policy")
                 self.assertEqual(policy.type_expression.scalar_type, "b64")

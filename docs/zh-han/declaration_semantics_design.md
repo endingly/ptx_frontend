@@ -24,8 +24,27 @@ signed 结果，任一 unsigned 输入产生 unsigned 结果。依据是 PTX 9.3
 版本见[位运算策略](bitwise_constant_policy.md)。表达式结果保留 64 位数据及符号性，
 直到使用位置转换；destination 类型和规范化源符号缓存不会反向提供表达式类型。
 一元 `~` 产生 unsigned，remainder 将两输入解释为 unsigned 并产生 signed。
-shift count 超出 0–63 仍显式报 frontend error；assembler 接受部分较大的 shift，
-因此该 domain 边界不表示与 assembler 完全一致。
+常量表达式 shift 先将 count 求值为 64 位值，再将其数据解释为 unsigned，
+仅接受 0–63。因此 `1 << (-1 + 2)` 合法；求值为 `-1`、`64`、`65` 或
+`UINT64_MAX` 的 count 被拒绝，不执行 mask 或 clamp。即使 count 是 unsigned，
+结果也保持左操作数的类型：signed 负数右移填充符号位，unsigned 右移填零，
+count 为零时保留输入数据。
+
+0–63 是前端采用的表达式 domain 策略。[手册的常量表达式规则](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-constant-expression-evaluation)
+没有为大于等于 64 的 count 定义结果；本策略不表示厂商要求一律报错，也不表示
+PTX `shl`/`shr` instruction 的执行行为。具体 count 错误保留在失败 count 子树，
+且不标记为 deferred，包括 conditional 或 logical 未选中子表达式中的非法 shift。
+`symbol + 1` 这类合法符号重定位表达式在值未知时保持 deferred；
+`symbol << 1` 和 `symbol >> 1` 是非法重定位操作，不是 deferred 数值 shift。
+initializer 和 array-dimension 的
+声明包装层保留原有覆盖整个表达式的 invalid-initializer/invalid-dimension 诊断；
+对同一 AST 表达式调用公共 evaluator，仍得到具体 count 子树错误。MOV、call
+及 address 使用位置则直接传播该 count 错误。
+
+合法的规范化 immediate 和 storage payload 在源文本/AST 销毁、复制、赋值及
+instruction clone 后，继续接受现有 owned IR 检查。非法 shift 不产生此类 payload，
+因而 owned count tree 重校验不适用，也不引入 count-origin 缓存。数组 extent、
+destination 类型及地址范围限制仍是独立的使用位置约束。
 
 ## 定位与 API
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -477,6 +478,119 @@ TEST(PtxDeclarationSemantics,
 
   EXPECT_TRUE(result.binding.diagnostics.empty());
   EXPECT_TRUE(result.diagnostics.empty());
+}
+
+/** Counts use evaluated 64-bit bits, while the result retains the left type. */
+TEST(PtxDeclarationSemantics, ShiftCountsPreserveTypedEndpointValues) {
+  /** Independent full-width value and type before a consumer narrows either. */
+  struct Case {
+    /** Ordinary source expression used as a global initializer. */
+    std::string_view text;
+    /** Expected 64-bit expression result. */
+    uint64_t bits;
+    /** Expected left-operand signedness, independent of the count type. */
+    bool is_unsigned;
+  };
+  constexpr Case cases[] = {
+      {"1 << 0", UINT64_C(0x0000000000000001), false},
+      {"1 << 63", UINT64_C(0x8000000000000000), false},
+      {"1U << 63", UINT64_C(0x8000000000000000), true},
+      {"-1 >> 0", UINT64_C(0xffffffffffffffff), false},
+      {"-1 >> 63", UINT64_C(0xffffffffffffffff), false},
+      {"-1U >> 0", UINT64_C(0xffffffffffffffff), true},
+      {"-1U >> 63", UINT64_C(0x0000000000000001), true},
+      {"0 << 63", UINT64_C(0x0000000000000000), false},
+      {"1 << (-1 + 2)", UINT64_C(0x0000000000000002), false},
+      {"1 >> 0U", UINT64_C(0x0000000000000001), false},
+  };
+  for (const auto& fixture : cases) {
+    SCOPED_TRACE(fixture.text);
+    PtxSyntaxParser parser(".global .u64 value = (" +
+                           std::string(fixture.text) + ");");
+    auto module = parser.parseModule();
+    ASSERT_TRUE(module);
+    ASSERT_TRUE(module.diagnostics.empty());
+    const auto& declaration =
+        std::get<syntax_ast::AstVariableDeclaration>(module->items.front());
+    const auto& expression = std::get<syntax_ast::AstConstantExpression>(
+        declaration.declarators.front().initializer->value);
+    const auto integer = constantIntegerValue(expression);
+    ASSERT_TRUE(integer);
+    EXPECT_EQ(integer->bits, fixture.bits);
+    EXPECT_EQ(integer->is_unsigned, fixture.is_unsigned);
+    const auto numeric = numericConstantValue(expression);
+    ASSERT_TRUE(numeric);
+    const auto* value = std::get_if<IntegerConstantValue>(&*numeric);
+    ASSERT_NE(value, nullptr);
+    EXPECT_EQ(value->bits, fixture.bits);
+    EXPECT_EQ(value->is_unsigned, fixture.is_unsigned);
+  }
+}
+
+/** Invalid counts remain concrete errors, even inside unselected expressions. */
+TEST(PtxDeclarationSemantics, ShiftCountErrorsRetainTheirOwnSubtree) {
+  /** Source expression and independently located failing count token/subtree. */
+  struct Case {
+    /** Complete expression; syntax is required to succeed. */
+    std::string_view text;
+    /** Exact written count subtree expected in the evaluator diagnostic. */
+    std::string_view count;
+  };
+  constexpr Case cases[] = {
+      {"1 << (-1)", "(-1)"},
+      {"1 << (64)", "(64)"},
+      {"1 << (65)", "(65)"},
+      {"1 << (18446744073709551615U)", "(18446744073709551615U)"},
+      {"1 << ((.u64)-1)", "((.u64)-1)"},
+      {"1 >> (-1)", "(-1)"},
+      {"1 >> (64)", "(64)"},
+      {"1 >> (65)", "(65)"},
+      {"1 >> (18446744073709551615U)", "(18446744073709551615U)"},
+      {"1 >> ((.u64)-1)", "((.u64)-1)"},
+      {"0 << 64", "64"},
+      {"1 ? 7 : (1 << 64)", "64"},
+      {"0 && (1 >> 65)", "65"},
+      {"1 || (1 << -1)", "-1"},
+  };
+  for (const auto& fixture : cases) {
+    SCOPED_TRACE(fixture.text);
+    const std::string prefix = ".global .u64 value = (";
+    const std::string source = prefix + std::string(fixture.text) + ");";
+    PtxSyntaxParser parser(source);
+    auto module = parser.parseModule();
+    ASSERT_TRUE(module);
+    ASSERT_TRUE(module.diagnostics.empty());
+    const auto& declaration =
+        std::get<syntax_ast::AstVariableDeclaration>(module->items.front());
+    const auto& expression = std::get<syntax_ast::AstConstantExpression>(
+        declaration.declarators.front().initializer->value);
+    const auto value = numericConstantValue(expression);
+    ASSERT_FALSE(value);
+    EXPECT_FALSE(value.error().deferred);
+    EXPECT_EQ(value.error().message,
+              "Constant expression shift count must be in 0..63.");
+    const auto column = static_cast<int32_t>(source.rfind(fixture.count) + 1);
+    const SourceRange expected{
+        {1, column}, {1, column + static_cast<int32_t>(fixture.count.size())}};
+    EXPECT_EQ(value.error().range, expected);
+    EXPECT_FALSE(constantIntegerValue(expression));
+  }
+  for (const auto text :
+       {"1 << 1.0", "1.0 >> 1", "1 << 18446744073709551616"}) {
+    SCOPED_TRACE(text);
+    PtxSyntaxParser parser("mov.u64 d, (" + std::string(text) + ");");
+    const auto parsed = parser.parseInstruction();
+    ASSERT_TRUE(parsed);
+    ASSERT_TRUE(parsed.diagnostics.empty());
+    const auto& operand =
+        std::get<syntax_ast::AstConstantOperand>(parsed->operands[1]);
+    const auto value = numericConstantValue(*operand.expression);
+    ASSERT_FALSE(value);
+    EXPECT_FALSE(value.error().deferred);
+    EXPECT_NE(value.error().message,
+              "Constant expression shift count must be in 0..63.");
+    EXPECT_FALSE(constantIntegerValue(*operand.expression));
+  }
 }
 
 /**

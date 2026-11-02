@@ -46,9 +46,33 @@ and their exact tool versions are recorded in the
 [bitwise policy](bitwise_constant_policy.md). Expression results retain their
 64-bit bits and signedness until use conversion; destination types and normalized
 source-sign caches do not retroactively supply an expression type. Unary `~` gives unsigned, while remainder
-interprets both inputs unsigned and produces signed. Shift counts outside
-0–63 remain explicit frontend errors. The assembler accepts some larger shifts,
-so this resource/domain boundary does not claim complete assembler parity.
+interprets both inputs unsigned and produces signed. Constant-expression shifts
+evaluate the count as a 64-bit value and interpret
+its bits as unsigned, accepting exactly 0–63. Thus `1 << (-1 + 2)` is legal,
+while evaluated counts `-1`, `64`, `65`, and `UINT64_MAX` are rejected rather
+than masked or clamped. The result retains the left operand's type even when
+the count is unsigned: signed negative right shifts fill with the sign bit,
+unsigned right shifts fill with zero, and count zero preserves the input bits.
+
+This 0–63 boundary is an adopted frontend expression-domain policy. The manual's
+[constant-expression rules](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-constant-expression-evaluation)
+do not assign a result to counts of 64 or more. The policy is not a vendor
+blanket error requirement or the execution behavior of PTX `shl`/`shr`
+instructions. Concrete count failures remain non-deferred at the failing count
+subtree, including invalid shifts in unselected conditional or logical children.
+A valid symbolic relocation such as `symbol + 1` remains deferred where its
+value is unknown; `symbol << 1` and `symbol >> 1` are invalid relocation
+operations, rather than deferred numeric shifts. Initializer
+and array-dimension declaration wrappers retain their existing whole-expression
+invalid-initializer/invalid-dimension diagnostics. The common evaluator called
+on that same AST expression still supplies the concrete count-subtree error;
+MOV, call and address consumers propagate that count error directly.
+
+Accepted normalized immediate and storage payloads survive source/AST destruction,
+copies, assignments and instruction clones under the existing owned-IR checks.
+Rejected shifts never produce such a payload; owned count-tree revalidation is
+inapplicable, and no count-origin cache is introduced. Array extent, destination
+type and address-range restrictions remain separate use-site constraints.
 
 Module `.reg` and `.local` declarations are checked against the source-target
 ABI assumption: PTX ISA 3.0 or later with a recognized active source target of

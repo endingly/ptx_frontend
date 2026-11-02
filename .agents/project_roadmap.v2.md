@@ -22,6 +22,13 @@
 规则。规范冲突、历史 assembler 证据及其限制见
 [位运算策略](../docs/zh-han/bitwise_constant_policy.md)。
 
+常量表达式 shift 沿用求值后 unsigned count bits 小于 64 的 domain；count 的
+负号拼写本身不是拒绝条件。回归分别核对 0/63 端点的数据与左类型保留、非法
+count 的子树定位及 concrete/deferred 分类，以及真实使用位置和源文本/AST
+销毁后的合法 owned payload。本项测试与文档补全不修改 evaluator 或 `shl`/`shr`
+opcode 规则；0–63 是前端采用的表达式策略，不是硬件 clamp 模拟。详见
+[declaration semantics](../docs/zh-han/declaration_semantics_design.md)。
+
 > ISA 规划基线：
 >
 > - [NVIDIA PTX ISA 9.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/)；

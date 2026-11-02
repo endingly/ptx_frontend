@@ -1575,3 +1575,13 @@ Exact-word 契约仅覆盖既有 literal helper 的 F16x2、BF16x2、E4M3x4 与 
 普通当前 packed word 必须在位宽内、没有 integer-source metadata（包括 optional zero），且没有 integer-negative flag。位宽内的一致当前字修改不认证已擦除的字面量历史。Call literal 已保留 spelling/kind 或已求值输入，因此其余条件合法的 scalar native F16x2 Reg/Param formal 必须经同一 helper 重算保留的直接 word。仅改 typed word 或注入 integer origin 会被拒绝；同时一致修改保留的直接 spelling 与 typed bits 可以仍有效，保存的 AST identity 则独立核对。既有 direct、prototype、target-list 与 storage-function-list 四条 signature 路径共用该规则。Vector formal、return actual grammar、formal ABI readiness 与 BF16x2 的 instruction-only 分类保持不变。
 
 该私有 helper 契约不向九个 multimem vector 字段、六个相邻 scalar packed 字段或 atomic 字段授予 literal 权限。既有 scalar alternate RNE/NaN 策略与 integer-origin 区分仍独立。公共结构、metadata 与生成字段不变；记录 delivery 完成前仍需 current Debug、installed-only consumer 检查及独立 actual-diff 验收。
+
+### 浮点 value-vector source 契约
+
+恰有九个既有 `src` 字段采用 `WithLocs<ResolvedValueVector>`：v2/v4/v8 的 weak、ordered 浮点 store 与浮点 add reduction。Class、selector/layout identity、element type domain、arity、default、availability 和 address 均保持不变。公共 field/factory/observer payload 从 `ResolvedRegisterVector` 迁移，consumer 必须使用匹配的生成头与库重建。每个既有 register lane 包装为 `RegOrImm`，保留 location 与 `ResolvedVectorSource`，并用 `std::get_if` 区分 alternative。原有 null register element 不是 immediate，也不会获得 sink 权限。
+
+全部64个所选 type 分支具有 typed value carrier。其中32个有单数值 numeric producer（15个 F16/F32 与17个 BF16/E4M3/E5M2），20个有裸 unsigned 直接 `0f` 的完整32位 exact-word producer（F16x2/BF16x2/E4M3x4/E5M2x4）。12个 E4M3x2/E5M2x2 分支没有 exact16 lexical producer，也没有已采用的 numeric packing constructor：literal-source 与相应 source-lifetime positive 保持 Source_N_A。其真实 register control 与独立构造的 canonical low16 typed word 仍可验证；源码 producer 缺席不是 typed-data 禁令。Numeric scalar 转换复用既有 binary64 单次舍入策略；packed32 原样保留所有 written word bits，不 splat、量化或 quiet。Integer-valued source expression 仍不兼容 logical Float lane。
+
+Mixed brace 可同时含 register 与 immediate。50个 v2/v4 named 分支保留真实 General whole-base declaration identity、精确 NamedProjection lane、element SameWidth 及16字节 declaration 上限。14个 v8 分支仍仅接受 brace；既有128-element projection buffer 与256-bit generic capacity 不变，本 cohort 至多需要8 lane／128 bit。Immediate projection 不是 user sink。同步 observer 接收实际 payload 与全部 lane range（包括第8 lane），不得保留 callback reference。Copy／assignment／clone 必须从自身 owner 重新取得 view。
+
+普通 typed word 要求所选 logical type、位宽内 bits，且没有 integer-origin／negative flag；一致的当前字修改不重放已擦除的浮点 source history。当前 payload／pointer／range／provenance 检查与保留的 source identity 检查彼此独立。Address alignment、所选 type／modifier／target gate 及不完整上下文延期策略仍适用。本契约不扩展六个 scalar packed 分支、atomic input、packed numeric constructor 或 load destination，也不声称 runtime multimem mapping 或 GPU 执行。记录 delivery 完成前仍需 current generation、Debug、fresh installed public consumer 与独立 actual-diff 证据。

@@ -57,7 +57,8 @@ reduction 输入接受寄存器或在使用处窄转换的整数字面量；`f32
 源码拼写。带符号、包装或 operator 的 exact-word 来源保留既有约束。十进制、`0d`
 及浮点表达式 packed constructor 仍不支持：一个数到四个值的映射仍是 reference-qualified
 边界，并非手册全面禁止浮点字面量。更广 packed source 权限与此四分支 origin 修复分开。
-标量 `f16x2/bf16x2` 与 vector source policy 不变，load 目标仍限寄存器。
+六个相邻标量 `f16x2/bf16x2` source 分支仍限 register；九个所选浮点 vector source 字段
+遵循下述 value-vector 契约。Load 目标仍限寄存器。
 
 Direct 与 owned 检查保留 SameWidth、global address 和 target/flavor 约束。在适用
 instruction check 时，有效的 supplied AST 不能掩盖当前无效 origin。不完整上下文下
@@ -88,3 +89,13 @@ Canonical 清单和负例边界测试见
 这些测试检验前端接受性与源码生命周期，不在 GPU 上执行 multimem 指令。
 
 选定的 v2/v4 data register-vector role 接受普通 named 声明与 brace list。Instruction-only logical format 使用兼容的 fundamental Bit carrier。V8 仍仅接受 brace；普通声明总宽不得超过 128 bit。Named form 不改变逐 element 的 SameWidth 契约。
+
+### 浮点 value-vector source 契约
+
+恰有九个既有 `src` 字段采用 `WithLocs<ResolvedValueVector>`：v2/v4/v8 的 weak、ordered 浮点 store 与浮点 add reduction。Class、selector/layout identity、element type domain、arity、default、availability 和 address 均保持不变。公共 field/factory/observer payload 从 `ResolvedRegisterVector` 迁移，consumer 必须使用匹配的生成头与库重建。每个既有 register lane 包装为 `RegOrImm`，保留 location 与 `ResolvedVectorSource`，并用 `std::get_if` 区分 alternative。原有 null register element 不是 immediate，也不会获得 sink 权限。
+
+全部64个所选 type 分支具有 typed value carrier。其中32个有单数值 numeric producer（15个 F16/F32 与17个 BF16/E4M3/E5M2），20个有裸 unsigned 直接 `0f` 的完整32位 exact-word producer（F16x2/BF16x2/E4M3x4/E5M2x4）。12个 E4M3x2/E5M2x2 分支没有 exact16 lexical producer，也没有已采用的 numeric packing constructor：literal-source 与相应 source-lifetime positive 保持 Source_N_A。其真实 register control 与独立构造的 canonical low16 typed word 仍可验证；源码 producer 缺席不是 typed-data 禁令。Numeric scalar 转换复用既有 binary64 单次舍入策略；packed32 原样保留所有 written word bits，不 splat、量化或 quiet。Integer-valued source expression 仍不兼容 logical Float lane。
+
+Mixed brace 可同时含 register 与 immediate。50个 v2/v4 named 分支保留真实 General whole-base declaration identity、精确 NamedProjection lane、element SameWidth 及16字节 declaration 上限。14个 v8 分支仍仅接受 brace；既有128-element projection buffer 与256-bit generic capacity 不变，本 cohort 至多需要8 lane／128 bit。Immediate projection 不是 user sink。同步 observer 接收实际 payload 与全部 lane range（包括第8 lane），不得保留 callback reference。Copy／assignment／clone 必须从自身 owner 重新取得 view。
+
+普通 typed word 要求所选 logical type、位宽内 bits，且没有 integer-origin／negative flag；一致的当前字修改不重放已擦除的浮点 source history。当前 payload／pointer／range／provenance 检查与保留的 source identity 检查彼此独立。Address alignment、所选 type／modifier／target gate 及不完整上下文延期策略仍适用。本契约不扩展六个 scalar packed 分支、atomic input、packed numeric constructor 或 load destination，也不声称 runtime multimem mapping 或 GPU 执行。记录 delivery 完成前仍需 current generation、Debug、fresh installed public consumer 与独立 actual-diff 证据。

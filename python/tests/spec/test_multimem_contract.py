@@ -170,7 +170,9 @@ class MultimemContractTests(unittest.TestCase):
             operands = variant.operand_layouts[0].operands
             register = next(operand for operand in operands if operand.name in {"dst", "src"})
             if vec:
-                self.assertIs(register.kind, OperandKind.REGISTER_VECTOR)
+                self.assertIs(register.kind, OperandKind.VALUE_VECTOR
+                              if register.name == "src" and family in {"st", "red"}
+                              else OperandKind.REGISTER_VECTOR)
             elif family in {"st", "red"} and types <= {"f32", "f64", "e5m2x4", "e4m3x4"}:
                 self.assertIs(register.kind, OperandKind.REGISTER_OR_IMMEDIATE)
             else:
@@ -235,7 +237,7 @@ class MultimemContractTests(unittest.TestCase):
             operands = variant.operand_layouts[0].operands
             source = next(operand for operand in operands if operand.name == "src")
             types = {value.value for value in self._field(variant, "type").values}
-            if source.kind is OperandKind.REGISTER_VECTOR:
+            if source.kind in {OperandKind.REGISTER_VECTOR, OperandKind.VALUE_VECTOR}:
                 continue
             if types <= {"f16x2", "bf16x2"}:
                 self.assertIs(source.kind, OperandKind.REGISTER)
@@ -253,7 +255,7 @@ class MultimemContractTests(unittest.TestCase):
                 for operand in layout.operands:
                     if (operand.name in {"dst", "src"} and operand.kind in {
                             OperandKind.REGISTER, OperandKind.REGISTER_OR_IMMEDIATE,
-                            OperandKind.REGISTER_VECTOR}):
+                            OperandKind.REGISTER_VECTOR, OperandKind.VALUE_VECTOR}):
                         contracts.append((variant.name, operand))
                         self.assertIs(operand.register_width_policy,
                                       OperandRegisterWidthPolicy.SAME_WIDTH)

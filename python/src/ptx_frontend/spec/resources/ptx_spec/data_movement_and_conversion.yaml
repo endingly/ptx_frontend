@@ -25103,7 +25103,7 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
@@ -25261,7 +25261,7 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
@@ -25342,7 +25342,7 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
@@ -28608,7 +28608,7 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
@@ -28808,7 +28808,7 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
@@ -28889,7 +28889,7 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
@@ -31562,7 +31562,7 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
@@ -31716,7 +31716,7 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
@@ -31793,7 +31793,7 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:

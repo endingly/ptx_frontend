@@ -173,6 +173,8 @@ TEST(Multimem, StaticAddressAndSizeConstraints) {
   EXPECT_TRUE(
       accepts_multimem(multimem_source("multimem.cp.async.bulk.global.shared::"
                                        "cta.bulk_group [mm+16], [sh], 32;")));
+  EXPECT_TRUE(
+      accepts_multimem(multimem_source("multimem.st.v2.f32 [mm], {1.5,1.5};")));
 }
 
 /** Scalar source literals retain typed use bits after syntax AST destruction. */

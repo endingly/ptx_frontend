@@ -1,8 +1,11 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cstddef>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
@@ -51,17 +54,94 @@ std::string named_data_source(const NamedDataCase& item,
 }
 /** Observe only the data vector; address coordinates are separate payloads. */
 struct NamedDataCapture final : detail::IReferenceObserver {
-  /** Borrowed while its owning instruction remains alive. */
-  const ResolvedRegisterVector* value = nullptr;
+  /** Borrowed real vector payload while its owning instruction remains alive. */
+  std::variant<std::monostate, const ResolvedRegisterVector*,
+               const ResolvedValueVector*>
+      data;
+  /** Source ranges paired with the borrowed data vector's actual lanes. */
   std::span<const SourceRange> locations;
-  /** Retain the actual data field and its per-lane source locations. */
+  /** Number of vector callbacks received from the observed instruction. */
+  std::size_t callback_count = 0;
+  /** Retain the actual RegVector field and its per-lane source locations. */
   void register_vector(const ResolvedRegisterVector& vector,
                        std::span<const SourceRange> ranges,
                        checker::AddressSymbolResolutionPolicy) override {
-    value = &vector;
+    data = &vector;
     locations = ranges;
+    ++callback_count;
+  }
+  /** Retain the actual ValueVector field and its per-lane source locations. */
+  void value_vector(const ResolvedValueVector& vector,
+                    std::span<const SourceRange> ranges,
+                    checker::AddressSymbolResolutionPolicy) override {
+    data = &vector;
+    locations = ranges;
+    ++callback_count;
   }
 };
+/** Return source provenance directly from either borrowed vector payload. */
+const ResolvedVectorSource* named_data_source(
+    const NamedDataCapture& capture) {
+  if (const auto* vector =
+          std::get_if<const ResolvedRegisterVector*>(&capture.data);
+      vector != nullptr && *vector != nullptr)
+    return &(*vector)->source;
+  if (const auto* vector =
+          std::get_if<const ResolvedValueVector*>(&capture.data);
+      vector != nullptr && *vector != nullptr)
+    return &(*vector)->source;
+  return nullptr;
+}
+/** Return the actual lane count without copying either carrier's elements. */
+std::size_t named_data_lane_count(const NamedDataCapture& capture) {
+  if (const auto* vector =
+          std::get_if<const ResolvedRegisterVector*>(&capture.data);
+      vector != nullptr && *vector != nullptr)
+    return (*vector)->elements.size();
+  if (const auto* vector =
+          std::get_if<const ResolvedValueVector*>(&capture.data);
+      vector != nullptr && *vector != nullptr)
+    return (*vector)->elements.size();
+  return 0;
+}
+/** Return the real register reference stored in either vector's selected lane. */
+const ResolvedRegisterRef* named_data_lane(const NamedDataCapture& capture,
+                                          std::size_t index) {
+  if (const auto* vector =
+          std::get_if<const ResolvedRegisterVector*>(&capture.data);
+      vector != nullptr && *vector != nullptr) {
+    if (index >= (*vector)->elements.size() || !(*vector)->elements[index])
+      return nullptr;
+    return &*(*vector)->elements[index];
+  }
+  if (const auto* vector =
+          std::get_if<const ResolvedValueVector*>(&capture.data);
+      vector != nullptr && *vector != nullptr) {
+    if (index >= (*vector)->elements.size())
+      return nullptr;
+    return std::get_if<ResolvedRegisterRef>(&(*vector)->elements[index]);
+  }
+  return nullptr;
+}
+/** Swap two actual lane payloads while preserving the observed carrier type. */
+bool named_data_swap_first_lanes(NamedDataCapture& capture) {
+  if (auto* vector =
+          std::get_if<const ResolvedRegisterVector*>(&capture.data);
+      vector != nullptr && *vector != nullptr &&
+      (*vector)->elements.size() >= 2) {
+    auto& actual = const_cast<ResolvedRegisterVector&>(**vector);
+    std::swap(actual.elements[0], actual.elements[1]);
+    return true;
+  }
+  if (auto* vector = std::get_if<const ResolvedValueVector*>(&capture.data);
+      vector != nullptr && *vector != nullptr &&
+      (*vector)->elements.size() >= 2) {
+    auto& actual = const_cast<ResolvedValueVector&>(**vector);
+    std::swap(actual.elements[0], actual.elements[1]);
+    return true;
+  }
+  return false;
+}
 /** Produce an owned model whose source AST and input text are already dead. */
 std::expected<ResolvedModule, ModuleResolveDiagnostics> owned_named_data(
     const NamedDataCase& item, std::string_view operand = "V1") {
@@ -104,6 +184,9 @@ checker::Context named_data_context() {
 
 TEST(NamedDataRegister, OwnsWholeBaseAndCanonicalLanesAfterSourceDeath) {
   const auto context = named_data_context();
+  ASSERT_EQ(named_data_cases.size(), 10u);
+  std::size_t register_vector_case_count = 0;
+  std::size_t value_vector_case_count = 0;
   for (const auto& item : named_data_cases) {
     SCOPED_TRACE(item.operation);
     auto owned = owned_named_data(item);
@@ -121,21 +204,32 @@ TEST(NamedDataRegister, OwnsWholeBaseAndCanonicalLanesAfterSourceDeath) {
     EXPECT_TRUE(validateModule(assigned));
     NamedDataCapture capture;
     assigned.functions.front().body.front()->visit_references(capture);
-    ASSERT_NE(capture.value, nullptr);
-    const auto& value = *capture.value;
-    ASSERT_EQ(value.source.kind, ResolvedVectorSourceKind::NamedVector);
-    ASSERT_TRUE(value.source.whole_base);
-    const auto& base = value.source.whole_base->value.register_ref;
+    ASSERT_EQ(capture.callback_count, 1u);
+    const bool is_register_vector = std::holds_alternative<
+        const ResolvedRegisterVector*>(capture.data);
+    const bool is_value_vector =
+        std::holds_alternative<const ResolvedValueVector*>(capture.data);
+    ASSERT_NE(is_register_vector, is_value_vector);
+    if (is_register_vector)
+      ++register_vector_case_count;
+    else
+      ++value_vector_case_count;
+    const auto* source = named_data_source(capture);
+    ASSERT_NE(source, nullptr);
+    ASSERT_EQ(source->kind, ResolvedVectorSourceKind::NamedVector);
+    ASSERT_TRUE(source->whole_base);
+    const auto& base = source->whole_base->value.register_ref;
     EXPECT_TRUE(base.symbol_id);
     EXPECT_EQ(base.parameterized_index, 1u);
     EXPECT_EQ(base.spelling, "V1");
     EXPECT_EQ(base.vector_width, item.arity);
     EXPECT_FALSE(base.component);
-    ASSERT_EQ(value.elements.size(), item.arity);
+    ASSERT_EQ(named_data_lane_count(capture), item.arity);
     ASSERT_EQ(capture.locations.size(), item.arity);
     for (size_t index = 0; index < item.arity; ++index) {
-      ASSERT_TRUE(value.elements[index]);
-      const auto& lane = *value.elements[index];
+      const auto* lane_value = named_data_lane(capture, index);
+      ASSERT_NE(lane_value, nullptr);
+      const auto& lane = *lane_value;
       ASSERT_TRUE(lane.component);
       EXPECT_EQ(lane.symbol_id, base.symbol_id);
       EXPECT_EQ(lane.parameterized_index, base.parameterized_index);
@@ -148,15 +242,20 @@ TEST(NamedDataRegister, OwnsWholeBaseAndCanonicalLanesAfterSourceDeath) {
       EXPECT_EQ(lane.component->declaration_width, item.arity);
       EXPECT_FALSE(lane.component->selector);
       EXPECT_EQ(lane.component->base_spelling, base.spelling);
-      EXPECT_EQ(lane.component->base_range, value.source.range);
-      EXPECT_EQ(lane.component->range, value.source.range);
-      EXPECT_EQ(capture.locations[index], value.source.range);
+      EXPECT_EQ(lane.component->base_range, source->range);
+      EXPECT_EQ(lane.component->range, source->range);
+      EXPECT_EQ(capture.locations[index], source->range);
     }
     // The current real member is authoritative; retained syntax identity is unchanged.
-    auto& changed = const_cast<ResolvedRegisterVector&>(*capture.value);
-    changed.source.whole_base->value.register_ref.parameterized_index = 0;
-    changed.source.whole_base->value.register_ref.spelling = "V0";
-    for (auto& lane : changed.elements) {
+    auto& changed_source = const_cast<ResolvedVectorSource&>(*source);
+    ASSERT_TRUE(changed_source.whole_base);
+    changed_source.whole_base->value.register_ref.parameterized_index = 0;
+    changed_source.whole_base->value.register_ref.spelling = "V0";
+    for (size_t index = 0; index < item.arity; ++index) {
+      auto* lane = const_cast<ResolvedRegisterRef*>(
+          named_data_lane(capture, index));
+      ASSERT_NE(lane, nullptr);
+      ASSERT_TRUE(lane->component);
       lane->parameterized_index = 0;
       lane->spelling = "V0";
       lane->component->base_spelling = "V0";
@@ -176,6 +275,10 @@ TEST(NamedDataRegister, OwnsWholeBaseAndCanonicalLanesAfterSourceDeath) {
     EXPECT_EQ(stale.error().front().kind,
               checker::CheckDiagnosticKind::ModuleSourceMismatch);
   }
+  EXPECT_EQ(register_vector_case_count + value_vector_case_count,
+            named_data_cases.size());
+  EXPECT_GT(register_vector_case_count, 0u);
+  EXPECT_GT(value_vector_case_count, 0u);
 }
 
 /** Width, declaration shape and unrelated source representations stay separate. */
@@ -225,6 +328,11 @@ TEST(NamedDataRegister, RetainsCarrierAndDeclarationLimits) {
 
 TEST(NamedDataRegister, RejectsIncompleteOrIncoherentOwnedProjection) {
   const auto context = named_data_context();
+  ASSERT_EQ(named_data_cases.size(), 10u);
+  std::array<std::size_t, 10> register_vector_mutations{};
+  std::array<std::size_t, 10> value_vector_mutations{};
+  std::size_t register_vector_case_count = 0;
+  std::size_t value_vector_case_count = 0;
   for (const auto& item : named_data_cases) {
     SCOPED_TRACE(item.operation);
     const auto original = owned_named_data(item);
@@ -234,39 +342,61 @@ TEST(NamedDataRegister, RejectsIncompleteOrIncoherentOwnedProjection) {
       auto changed = *original;
       NamedDataCapture capture;
       changed.functions.front().body.front()->visit_references(capture);
-      ASSERT_TRUE(capture.value && capture.value->source.whole_base);
-      auto& value = const_cast<ResolvedRegisterVector&>(*capture.value);
-      auto& lane = *value.elements.front();
+      ASSERT_EQ(capture.callback_count, 1u);
+      const bool is_register_vector = std::holds_alternative<
+          const ResolvedRegisterVector*>(capture.data);
+      const bool is_value_vector =
+          std::holds_alternative<const ResolvedValueVector*>(capture.data);
+      ASSERT_NE(is_register_vector, is_value_vector);
+      if (mutation == 0) {
+        if (is_register_vector)
+          ++register_vector_case_count;
+        else
+          ++value_vector_case_count;
+      }
+      if (is_register_vector)
+        ++register_vector_mutations[static_cast<std::size_t>(mutation)];
+      else
+        ++value_vector_mutations[static_cast<std::size_t>(mutation)];
+      const auto* observed_source = named_data_source(capture);
+      ASSERT_NE(observed_source, nullptr);
+      ASSERT_TRUE(observed_source->whole_base);
+      ASSERT_EQ(named_data_lane_count(capture), item.arity);
+      auto& source = const_cast<ResolvedVectorSource&>(*observed_source);
+      auto* lane = const_cast<ResolvedRegisterRef*>(
+          named_data_lane(capture, 0));
+      ASSERT_NE(lane, nullptr);
+      ASSERT_TRUE(lane->component);
       switch (mutation) {
         case 0:
-          value.source.whole_base.reset();
+          source.whole_base.reset();
           break;
         case 1:
-          value.source.whole_base->value.register_ref.parameterized_index = 2;
+          source.whole_base->value.register_ref.parameterized_index = 2;
           break;
         case 2:
-          lane.parameterized_index = 0;
+          lane->parameterized_index = 0;
           break;
         case 3:
-          lane.declared_type = ScalarType::B64;
+          lane->declared_type = ScalarType::B64;
           break;
         case 4:
-          lane.symbol_id.reset();
+          lane->symbol_id.reset();
           break;
         case 5:
-          lane.component->lane = 1;
+          lane->component->lane = 1;
           break;
         case 6:
-          std::swap(value.elements[0], value.elements[1]);
+          ASSERT_TRUE(named_data_swap_first_lanes(capture));
           break;
         case 7:
-          lane.component->range = {};
+          lane->component->range = {};
           break;
         case 8:
-          value.source.range = {};
+          source.range = {};
           break;
         case 9:
-          value.source.whole_base->value.register_ref.vector_width =
+          source.whole_base->value.register_ref.vector_width =
               4 == item.arity ? 2 : 4;
           break;
       }
@@ -279,6 +409,15 @@ TEST(NamedDataRegister, RejectsIncompleteOrIncoherentOwnedProjection) {
       EXPECT_FALSE(validateModule(copied));
       EXPECT_FALSE(validateModule(assigned));
     }
+  }
+  EXPECT_EQ(register_vector_case_count + value_vector_case_count,
+            named_data_cases.size());
+  EXPECT_GT(register_vector_case_count, 0u);
+  EXPECT_GT(value_vector_case_count, 0u);
+  for (std::size_t mutation = 0; mutation < register_vector_mutations.size();
+       ++mutation) {
+    EXPECT_GT(register_vector_mutations[mutation], 0u) << mutation;
+    EXPECT_GT(value_vector_mutations[mutation], 0u) << mutation;
   }
 }
 

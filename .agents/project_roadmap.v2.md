@@ -502,6 +502,10 @@ family scope，绝不表示整部 PTX ISA。
 | M0-C01 | ✅ | source → CST → AST | facade 与显式 pipeline 一致 |
 | M0-C02 | ✅ | 语法回归与 coverage | tokenize/CST/AST 边界分别记录 |
 
+ASCII whitespace 覆盖 SP/HT/LF/VT/FF/CR；VT 仅推进一个物理 byte column，
+不换行，也不引入 Unicode normalization 或新 escape。当前 main 的 lexer/CST/AST
+与 owning handoff 定向验证由独立证据记录；actual-diff core acceptance 另行记录。
+
 ## M1：数据驱动 Resolved IR 平台
 
 | ID | 状态 | Issue | 闭环摘要 |

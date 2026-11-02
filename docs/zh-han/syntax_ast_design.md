@@ -266,3 +266,16 @@ context control。
 
 依据：[历史 debug marker](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-atatdwarf)
 及[历史格式窗口](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives)。
+
+### ASCII 空白与物理位置
+
+string 和 comment 之外的空白恰为 SP（`0x20`）、HT（`0x09`）、
+LF（`0x0a`）、VT（`0x0b`）、FF（`0x0c`）与 CR（`0x0d`）。这组六种
+byte 是 frontend 对 PTX ASCII 与等效空白规则采用的工程解释，不是规范中
+逐项列出的六种 terminal，也不是 Unicode 空白策略。
+
+SP、HT、VT、FF 各推进一个物理 byte column。VT 与 FF 不产生新 source line；
+既有 CR、LF、CRLF 处理不变。token、leading trivia、末尾 EOF trivia 与
+`CstFile::sourceText()` 保留精确 byte 和 range。string 或 comment 内的物理 VT
+继续按该 token 的既有规则保存为原始内容，不增加 backslash-v escape，也不做
+源码 normalization。logical/debug location 仍是独立契约。

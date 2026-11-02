@@ -144,3 +144,8 @@ PTX ISA 的 variable declaration 概述提到 optional fixed address，但当前
 
 
 历史 entry body input：PTX 1.0–1.3 保留 owning `LegacyEntryInput`，支持 input LD/MOV、readonly/frame/cache 重连和32764-byte checked logical ceiling；1.4+ header ABI 与2.0+ body call slot 保持区分。精确历史 physical launch packing 仍 reference-boundary qualified。见[parameter contract](../parameter_declarations.md)。
+
+空白 terminal 集合恰为 ASCII SP、HT、LF、VT、FF、CR。VT 计一个物理 byte
+column，不换行；保留既有 CR/LF/CRLF、comment/string 边界及无损 EOF trivia。
+这是 frontend 采用的工程解释，不做 Unicode normalization，也不增加 escape。
+详见[空白物理位置](../syntax_ast_design.md#ascii-空白与物理位置)。

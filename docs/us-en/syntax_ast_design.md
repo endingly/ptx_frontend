@@ -337,3 +337,18 @@ missing-version tests are partial-context controls only.
 
 References: [legacy debug marker](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-atatdwarf)
 and [legacy-format window](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives).
+
+### ASCII whitespace and physical positions
+
+Outside strings and comments, whitespace is exactly SP (`0x20`), HT (`0x09`),
+LF (`0x0a`), VT (`0x0b`), FF (`0x0c`), and CR (`0x0d`). This six-byte set is
+the frontend's adopted engineering interpretation of PTX's ASCII and equivalent
+whitespace rule, rather than a normative six-terminal enumeration or a Unicode
+whitespace policy.
+
+SP, HT, VT, and FF each advance one physical byte column. VT and FF do not
+start a source line; existing CR, LF, and CRLF handling is unchanged. Exact
+bytes and ranges remain in tokens, leading trivia, trailing EOF trivia, and
+`CstFile::sourceText()`. A physical VT inside a string or comment remains raw
+content under that token's existing rules; no backslash-v escape or source
+normalization is added. Logical/debug locations remain a separate contract.

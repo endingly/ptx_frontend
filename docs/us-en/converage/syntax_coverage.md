@@ -156,3 +156,9 @@ For `.target debug`, zero modern section records AND zero legacy records are a d
 
 
 Historical entry body inputs: PTX 1.0–1.3 uses owned `LegacyEntryInput` roles with input LD/MOV, read-only/frame/cache joins and a checked 32764-byte logical ceiling; PTX 1.4+ header ABI and PTX 2.0+ body call slots stay distinct. Exact historical physical launch packing remains reference-boundary qualified. See [parameter contract](../parameter_declarations.md).
+
+The whitespace terminal set is exactly ASCII SP, HT, LF, VT, FF, and CR. VT
+counts one physical byte column and no line break; original CR/LF/CRLF rules,
+comment/string boundaries, and lossless EOF trivia remain. This is the adopted
+frontend interpretation, not Unicode normalization or an added escape. See
+[physical whitespace positions](../syntax_ast_design.md#ascii-whitespace-and-physical-positions).

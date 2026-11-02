@@ -47,6 +47,85 @@ TEST(PtxCstParser, RoundTripsFormFeedWhitespace) {
   EXPECT_EQ(reparsed->sourceText(), source);
 }
 
+/** All six physical ASCII whitespace terminals delimit legal declarations losslessly. */
+TEST(PtxCstParser, RoundTripsSixAsciiWhitespaceTerminals) {
+  for (const char separator : {' ', '\t', '\n', '\v', '\f', '\r'}) {
+    SCOPED_TRACE(static_cast<unsigned>(separator));
+    const std::string byte(1, separator);
+    const auto source = ".global" + byte + ".u32" + byte + "x;";
+    PtxCstParser parser(source);
+    const auto parsed = parser.parseModule();
+    ASSERT_TRUE(parsed);
+    ASSERT_TRUE(parsed.diagnostics.empty());
+    EXPECT_EQ(parsed->sourceText(), source);
+    ASSERT_EQ(parsed->tokens.size(), 5u);
+    EXPECT_EQ(parsed->tokens.back().kind, TokenKind::Eof);
+    ASSERT_EQ(parsed->tokens[1].leading_trivia.size(), 1u);
+    EXPECT_EQ(parsed->tokens[1].leading_trivia[0].text, byte);
+    ASSERT_EQ(parsed->tokens[2].leading_trivia.size(), 1u);
+    EXPECT_EQ(parsed->tokens[2].leading_trivia[0].text, byte);
+  }
+}
+
+/** Mixed terminals, comments, and EOF bytes stay owned after input/parser destruction. */
+TEST(PtxCstParser, OwnsVerticalTabRoundTripAndAllPhysicalRanges) {
+  const std::string expected =
+      "\v.version 9.3\r\n.target sm_90\n.global "
+      "\t\v\f.u32\vvalue\v=\v1\v;\r\v\n"
+      "//a\vcomment\r\n.entry\vk()\v{.reg\v.u32\v%r;mov.u32\v%r,\v0;ret;}\v//"
+      "tail\v";
+  auto owned = [&] {
+    std::string input = expected;
+    PtxCstParser parser(input);
+    auto parsed = parser.parseModule();
+    EXPECT_TRUE(parsed && parsed.diagnostics.empty());
+    return std::move(*parsed);
+  }();
+  EXPECT_EQ(owned.sourceText(), expected);
+  const auto& eof = owned.tokens.back();
+  EXPECT_EQ(eof.kind, TokenKind::Eof);
+  ASSERT_EQ(eof.leading_trivia.size(), 2u);
+  EXPECT_EQ(eof.leading_trivia[0].kind, TriviaKind::Whitespace);
+  EXPECT_EQ(eof.leading_trivia[0].text, "\v");
+  EXPECT_EQ(eof.leading_trivia[1].kind, TriviaKind::LineComment);
+  EXPECT_EQ(eof.leading_trivia[1].text, "//tail\v");
+  PtxCstParser parser(owned.sourceText());
+  const auto reparsed = parser.parseModule();
+  ASSERT_TRUE(reparsed);
+  ASSERT_TRUE(reparsed.diagnostics.empty());
+  EXPECT_EQ(reparsed->sourceText(), expected);
+  ASSERT_EQ(reparsed->tokens.size(), owned.tokens.size());
+  for (size_t i = 0; i < owned.tokens.size(); ++i) {
+    const auto& a = owned.tokens[i];
+    const auto& b = reparsed->tokens[i];
+    EXPECT_EQ(a.kind, b.kind);
+    EXPECT_EQ(a.text, b.text);
+    EXPECT_EQ(a.range, b.range);
+    ASSERT_EQ(a.leading_trivia.size(), b.leading_trivia.size());
+    for (size_t j = 0; j < a.leading_trivia.size(); ++j) {
+      EXPECT_EQ(a.leading_trivia[j].kind, b.leading_trivia[j].kind);
+      EXPECT_EQ(a.leading_trivia[j].text, b.leading_trivia[j].text);
+      EXPECT_EQ(a.leading_trivia[j].range, b.leading_trivia[j].range);
+    }
+  }
+}
+
+/** Parser recovery does not turn unrelated controls or Unicode spaces into acceptance. */
+TEST(PtxCstParser, RejectsOtherOutsideTokenControlsAndUnicodeSpaces) {
+  for (const auto& bytes :
+       {std::string(1, '\0'), std::string("\x01"), std::string("\x07"),
+        std::string("\x08"), std::string("\x1f"), std::string("\x1b"),
+        std::string("\x7f"), std::string("\xc2\xa0"),
+        std::string("\xe2\x80\x83")}) {
+    const auto source = ".global" + bytes + ".u32 x;";
+    PtxCstParser parser(source);
+    const auto parsed = parser.parseModule();
+    EXPECT_FALSE(parsed.diagnostics.empty());
+    if (parsed)
+      EXPECT_EQ(parsed->sourceText(), source);
+  }
+}
+
 /** Decimal-point floats round-trip through both declaration and operand syntax. */
 TEST(PtxCstParser, RoundTripsTrailingDecimalPointFloats) {
   constexpr std::string_view source = R"ptx(// floating source

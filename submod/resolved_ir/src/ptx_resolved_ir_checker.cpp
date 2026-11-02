@@ -45,6 +45,83 @@ bool component_matches_source(const ResolvedRegisterRef& ref, SourceRange range,
            (owner == SourceRange{} || fabric_range_inside(range, owner))));
 }
 
+/** Identify ordinary all-null payloads independently of caller-maintained mirrors. */
+bool ordinary_all_sink_candidate(const OperandDescriptor& descriptor,
+                                 const OperandView& operand) {
+  if (operand.actual_shape != OperandShape::Vector ||
+      descriptor.minimum_elements != 0 || descriptor.maximum_elements != 0)
+    return false;
+  if (operand.register_vector && !operand.register_vector->elements.empty() &&
+      std::ranges::all_of(operand.register_vector->elements,
+                          [](const auto& lane) { return !lane; }))
+    return true;
+  return !operand.value_vector && !operand.mov_value_vector &&
+         !operand.mov_hardware_vector && operand.vector_arity != 0 &&
+         operand.vector_sink_count >= operand.vector_arity;
+}
+
+/** Recognize only the selected scalar/arity pairs whose payload is 256 bits. */
+bool is_all_sink_type_arity(ScalarType type, std::optional<uint8_t> arity) {
+  if (!arity)
+    return false;
+  switch (type) {
+    case ScalarType::B32:
+    case ScalarType::S32:
+    case ScalarType::U32:
+    case ScalarType::F32:
+      return *arity == 8;
+    case ScalarType::B64:
+    case ScalarType::S64:
+    case ScalarType::U64:
+    case ScalarType::F64:
+      return *arity == 4;
+    default:
+      return false;
+  }
+}
+
+/** Join selected descriptor fields to actual owning all-null lanes and mirrors. */
+bool permits_all_sink_destination(const OperandDescriptor& descriptor,
+                                  const OperandView& operand, ScalarType type,
+                                  std::optional<uint8_t> arity,
+                                  const Context& context) {
+  const auto* vector = operand.register_vector;
+  if (descriptor.role != OperandRole::Destination ||
+      descriptor.access != OperandAccess::Write ||
+      descriptor.vector_type_policy != VectorTypePolicy::Element ||
+      !descriptor.allow_vector_sink ||
+      descriptor.vector_sink_payload_bits != 256 ||
+      descriptor.source_value_vector || descriptor.minimum_elements != 0 ||
+      descriptor.maximum_elements != 0 ||
+      descriptor.type_expression.kind !=
+          OperandTypeExpressionKind::ModifierField ||
+      descriptor.type_expression.modifier_field_id.empty() ||
+      descriptor.vector_arity_modifier_field_id.empty() ||
+      !is_all_sink_type_arity(type, arity) || !vector || operand.value_vector ||
+      operand.mov_value_vector || operand.mov_hardware_vector ||
+      vector->elements.empty() ||
+      vector->elements.size() > kMaxOperandElements ||
+      vector->elements.size() != *arity ||
+      operand.vector_arity != vector->elements.size() ||
+      operand.vector_sink_count != vector->elements.size() ||
+      vector->source.kind != ResolvedVectorSourceKind::BraceList ||
+      vector->source.whole_base ||
+      !valid_register_vector_source(*vector, operand.locations, true,
+                                    context.instruction_range))
+    return false;
+  for (size_t index = 0; index < vector->elements.size(); ++index) {
+    if (vector->elements[index] || operand.vector_element_registers[index] ||
+        operand.vector_element_shapes[index] != OperandShape{} ||
+        operand.vector_element_types[index] != ScalarType::Invalid ||
+        operand.vector_element_immediates[index] ||
+        operand.vector_immediate_source_bits[index] ||
+        operand.vector_immediate_bits[index] ||
+        operand.vector_immediate_negative[index])
+      return false;
+  }
+  return true;
+}
+
 std::string format_version(PtxVersion version) {
   return fmt::format("{}.{}", version.major, version.minor);
 }
@@ -1883,6 +1960,21 @@ CheckResult check_operands(
     // trustworthy effective state space. Do not infer one from spelling.
 
     const auto& expression = descriptor.type_expression;
+    // No selected type/arity exists on an untyped descriptor to grant all sinks.
+    if (expression.kind == OperandTypeExpressionKind::None &&
+        ordinary_all_sink_candidate(descriptor, *operand) &&
+        !permits_all_sink_destination(descriptor, *operand, ScalarType::Invalid,
+                                      std::nullopt, context)) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::InvalidVectorOperand,
+          .range = diagnostic_range(operand->locations, context),
+          .message = fmt::format(
+              "Vector operand '{}' requires a selected type and arity for an "
+              "all-sink destination.",
+              descriptor.target_field_id),
+      });
+      continue;
+    }
     if (expression.kind == OperandTypeExpressionKind::None) {
       append_value_availability_diagnostics(*operand, context, diagnostics);
       continue;
@@ -2253,8 +2345,19 @@ CheckResult check_operands(
           }
         }
       }
+      // Owning null lanes cannot be hidden by a stale or caller-forged sink count.
+      const bool owns_all_sinks =
+          operand->register_vector &&
+          !operand->register_vector->elements.empty() &&
+          std::ranges::all_of(operand->register_vector->elements,
+                              [](const auto& lane) { return !lane; });
+      const bool all_sink_destination = permits_all_sink_destination(
+          descriptor, *operand, expected_type, required_vector_arity, context);
       if ((!descriptor.allow_vector_sink && operand->vector_sink_count != 0) ||
-          operand->vector_sink_count >= operand->vector_arity) {
+          operand->vector_sink_count > operand->vector_arity ||
+          ((operand->vector_sink_count == operand->vector_arity ||
+            owns_all_sinks) &&
+           !all_sink_destination)) {
         diagnostics.push_back(CheckDiagnostic{
             .kind = CheckDiagnosticKind::InvalidVectorOperand,
             .range = range,

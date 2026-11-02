@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <variant>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <span>
@@ -1880,5 +1881,147 @@ TEST(ResolvedIrChecker, EvaluatesExactTargetSetsAndConjunctiveRequirements) {
   singular.any_of[0].exact_target_architecture = {33};
   target.identity = base::parse_target_identity("sm_33");
   EXPECT_FALSE(is_available(singular, target));
+}
+
+TEST(ResolvedIrChecker,
+     JoinsAllSinkPermissionToActualPayloadAndSelectedFields) {
+  const std::array<uint8_t, 2> arities{4, 8};
+  OperandDescriptor descriptor{
+      .target_field_id = "dst",
+      .type_expression = {.kind = OperandTypeExpressionKind::ModifierField,
+                          .modifier_field_id = "type"},
+      .role = OperandRole::Destination,
+      .access = OperandAccess::Write,
+      .allowed_shapes = OperandShape::Vector,
+      .allowed_vector_arities = arities,
+      .vector_arity_modifier_field_id = "vector",
+      .vector_type_policy = VectorTypePolicy::Element,
+      .allow_vector_sink = true,
+      .vector_sink_payload_bits = 256};
+  ResolvedRegisterVector vector;
+  vector.elements.resize(8);
+  vector.source.range = {{1, 1}, {1, 50}};
+  std::array<SourceRange, 8> ranges;
+  for (size_t i = 0; i < ranges.size(); ++i)
+    ranges[i] = {{1, static_cast<int32_t>(2 + i * 3)},
+                 {1, static_cast<int32_t>(3 + i * 3)}};
+  OperandView operand{.field_id = "dst",
+                      .actual_shape = OperandShape::Vector,
+                      .register_vector = &vector,
+                      .vector_arity = 8,
+                      .vector_sink_count = 8,
+                      .locations = ranges};
+  std::array<FieldView, 2> fields{
+      {{.field_id = "type", .scalar_type = ScalarType::U32},
+       {.field_id = "vector", .vector_arity = VectorArity::V8}}};
+  const Context context{.target = {}, .instruction_range = {{1, 1}, {1, 100}}};
+  const auto check = [&] {
+    return check_operands(std::span{&descriptor, 1}, fields,
+                          std::span{&operand, 1}, {}, context);
+  };
+  ASSERT_TRUE(check());
+  const auto typed_descriptor = descriptor;
+  descriptor.type_expression.kind = OperandTypeExpressionKind::None;
+  const auto untyped_null = check();
+  ASSERT_FALSE(untyped_null);
+  EXPECT_EQ(untyped_null.error().front().kind,
+            CheckDiagnosticKind::InvalidVectorOperand);
+  descriptor = typed_descriptor;
+  EXPECT_TRUE(check());
+  vector.elements[0].emplace();
+  vector.elements[0]->spelling = "%r0";
+  vector.elements[0]->declared_type = ScalarType::U32;
+  operand.vector_sink_count = 7;
+  operand.vector_element_registers[0] = &*vector.elements[0];
+  operand.vector_element_shapes[0] = OperandShape::Register;
+  operand.vector_element_types[0] = ScalarType::U32;
+  EXPECT_TRUE(check());
+  descriptor.type_expression.kind = OperandTypeExpressionKind::None;
+  EXPECT_TRUE(check());
+  descriptor = typed_descriptor;
+  vector.elements[0].reset();
+  operand.vector_sink_count = 8;
+  operand.vector_element_registers[0] = nullptr;
+  operand.vector_element_shapes[0] = {};
+  operand.vector_element_types[0] = ScalarType::Invalid;
+  ASSERT_TRUE(check());
+  const auto reject_descriptor = [&](auto mutate) {
+    const auto original = descriptor;
+    mutate(descriptor);
+    EXPECT_FALSE(check());
+    descriptor = original;
+  };
+  reject_descriptor([](auto& d) {
+    d.type_expression.kind = OperandTypeExpressionKind::None;
+  });
+  reject_descriptor([](auto& d) {
+    d.type_expression.kind = OperandTypeExpressionKind::FixedScalar;
+    d.type_expression.fixed_scalar_type = ScalarType::U32;
+  });
+  reject_descriptor([](auto& d) { d.type_expression.modifier_field_id = {}; });
+  reject_descriptor([](auto& d) { d.vector_arity_modifier_field_id = {}; });
+  reject_descriptor([](auto& d) {
+    d.role = OperandRole::Source;
+    d.access = OperandAccess::Read;
+  });
+  reject_descriptor([](auto& d) { d.access = OperandAccess::ReadWrite; });
+  reject_descriptor([](auto& d) { d.allow_vector_sink = false; });
+  reject_descriptor([](auto& d) { d.vector_sink_payload_bits = 0; });
+  reject_descriptor([](auto& d) { d.vector_sink_payload_bits = 128; });
+  reject_descriptor(
+      [](auto& d) { d.vector_type_policy = VectorTypePolicy::Aggregate; });
+  reject_descriptor([](auto& d) { d.source_value_vector = true; });
+  const auto reject_view = [&](auto mutate) {
+    const auto original = operand;
+    mutate(operand);
+    EXPECT_FALSE(check());
+    operand = original;
+  };
+  reject_view([](auto& o) { o.register_vector = nullptr; });
+  reject_view([](auto& o) { o.vector_arity = 4; });
+  reject_view([](auto& o) { o.vector_sink_count = 9; });
+  reject_view([](auto& o) { o.vector_sink_count = 7; });
+  reject_view([](auto& o) { o.vector_sink_count = 0; });
+  reject_view(
+      [](auto& o) { o.vector_element_shapes[0] = OperandShape::Register; });
+  reject_view([](auto& o) { o.vector_element_types[0] = ScalarType::U32; });
+  reject_view([](auto& o) { o.vector_immediate_bits[0] = 0; });
+  ResolvedRegisterRef reg;
+  reject_view([&](auto& o) { o.vector_element_registers[0] = &reg; });
+  ResolvedValueVector values;
+  reject_view([&](auto& o) { o.value_vector = &values; });
+  const auto original_vector = vector;
+  vector.source.range = {};
+  EXPECT_FALSE(check());
+  vector = original_vector;
+  vector.source.whole_base.emplace();
+  EXPECT_FALSE(check());
+  vector = original_vector;
+  vector.source.kind = ResolvedVectorSourceKind::NamedVector;
+  EXPECT_FALSE(check());
+  vector = original_vector;
+  vector.elements[0].emplace();
+  EXPECT_FALSE(check());
+  vector = original_vector;
+  const auto original_fields = fields;
+  fields[0].scalar_type.reset();
+  const auto no_type = check();
+  ASSERT_FALSE(no_type);
+  EXPECT_TRUE(std::ranges::any_of(no_type.error(), [](const auto& d) {
+    return d.kind == CheckDiagnosticKind::MissingTypeField;
+  }));
+  fields = original_fields;
+  fields[1].vector_arity.reset();
+  const auto no_arity = check();
+  ASSERT_FALSE(no_arity);
+  EXPECT_TRUE(std::ranges::any_of(no_arity.error(), [](const auto& d) {
+    return d.kind == CheckDiagnosticKind::MissingVectorArityField;
+  }));
+  fields = original_fields;
+  for (const auto type :
+       {ScalarType::Invalid, ScalarType::U16, ScalarType::F16x2}) {
+    fields[0].scalar_type = type;
+    EXPECT_FALSE(check());
+  }
 }
 }  // namespace ptx_frontend::resolved_ir::checker

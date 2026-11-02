@@ -940,7 +940,7 @@ vectors use element type policy: each register element is checked against the
 instruction type, with `EqualOrWider` register width accepted. Legacy payloads
 are capped at 128 bits; the generated cross constraint adds only exact 256-bit
 `.v8` × 32-bit and `.v4` × 64-bit forms at PTX 8.8/SM 100, global when known,
-with partial sinks. The default register-width policy is `SameWidth`, preserving
+with partial sinks and load destinations that contain only sinks. The default register-width policy is `SameWidth`, preserving
 `mov/add/sub`, immediate, and special-register behavior. `ld` destination
 and `st` source register descriptors, together with applicable `cvt` data
 operands, select `EqualOrWider`, so the declared
@@ -1011,7 +1011,16 @@ and applies the global/shared, `volatile.local` PTX 9.1, and scalar
 `.mmio.relaxed.sys` rules. A generated `memory_vector` cross constraint detects
 arity > 4, payload > 128, or sinks; it requires a 256-bit payload, global space
 when known, and PTX 8.8/SM 100. Partial sinks are valid only for those modern
-load/store vectors; all-sink and legacy sinks remain invalid. Static natural
+load/store vectors. Ordinary write-only load destinations also accept fully
+represented brace tuples containing only sinks, with a selected `.v8` type
+`.b32/.s32/.u32/.f32` or `.v4` type `.b64/.s64/.u64/.f64`. The private grant
+joins actual owning null lanes, exact selected type/arity, complete brace/lane
+ranges, and consistent borrowed projections. It adds no public descriptor flag
+and does not infer type from null lanes. All-sink stores, legacy sinks, named
+roots, MOV and texture results retain their existing restrictions. The global,
+32-byte alignment and PTX 8.8/SM 100 checks still apply. Incomplete-context
+`AvailableContext` success retains its existing instruction-check deferral and
+is not a feature-availability guarantee. Static natural
 alignment covers scalar, legacy `.v2/.v4`, and modern 256-bit total access sizes
 when the address is known.
 

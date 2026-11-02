@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <array>
+#include <concepts>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 
 #include <fmt/format.h>
@@ -1142,9 +1144,11 @@ TEST(ResolvedModule, ChecksModernLoadStoreRegisterVectors) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_3);
   const auto& all_sinks = *parsed_module_3;
   const auto all_sinks_resolved = resolveModule(all_sinks);
-  ASSERT_FALSE(all_sinks_resolved.has_value());
-  EXPECT_EQ(all_sinks_resolved.error().front().message,
-            "A vector must contain at least one register.");
+  ASSERT_TRUE(all_sinks_resolved.has_value());
+  EXPECT_TRUE(validateModule(*all_sinks_resolved,
+                             ModuleValidationPolicy::AvailableContext));
+  EXPECT_FALSE(validateModule(*all_sinks_resolved,
+                              ModuleValidationPolicy::RequireCompleteContext));
 }
 
 TEST(ResolvedModule, KeepsNonMemoryRegisterWidthChecksStrict) {
@@ -2423,6 +2427,860 @@ TEST(ResolvedModule, RejectsNonPredicateExecutionGuard) {
   EXPECT_EQ(resolved.error().front().message,
             "Expected a predicate register, but '%condition' is declared "
             "'.u32'.");
+}
+
+/** Keep declarations and range placement identical across causal source pairs. */
+std::string allSinkSource(
+    std::string_view instruction, std::string_view type = "u32",
+    std::string_view headers = ".version 8.8\n.target sm_100\n") {
+  return std::string(headers) +
+         ".address_size 64\n.global .align 32 .b8 g[32];\n"
+         ".shared .align 32 .b8 sh[32];\n.entry kernel() {\n.local .align 32 "
+         ".b8 loc[32];\n"
+         ".reg .pred %p;\n.reg .v4 .u32 V;\n.reg .u64 %addr;\n.reg ." +
+         std::string(type) + " %live;\n.reg .b64 %policy;\n" +
+         std::string(instruction) + "\n}\n";
+}
+
+/** Resolve inside a source lifetime and return only independently owned state. */
+ResolvedModule allSinkOwn(
+    std::string_view instruction, std::string_view type = "u32",
+    std::string_view headers = ".version 8.8\n.target sm_100\n") {
+  const auto source = allSinkSource(instruction, type, headers);
+  const auto ast = parseModule(source);
+  if (!ast || !ast.diagnostics.empty())
+    throw std::runtime_error("all-sink fixture parse: " + source);
+  auto module = resolveModuleOnly(*ast);
+  if (!module)
+    throw std::runtime_error(module.error().front().message);
+  return std::move(*module);
+}
+
+/** Count references synchronously without retaining borrowed payloads. */
+struct AllSinkReferences final : detail::IReferenceObserver {
+  /** Number of live destination lanes in the visited ordinary tuple. */
+  size_t lanes = 0;
+  /** Number of independently retained address operands. */
+  size_t addresses = 0;
+  /** Number of scalar policy operands, separate from destination lanes. */
+  size_t scalars = 0;
+  /** Number of retained execution predicates. */
+  size_t predicates = 0;
+  /** Inspect owning optional lanes only during this callback. */
+  void register_vector(const ResolvedRegisterVector& vector,
+                       std::span<const SourceRange>,
+                       checker::AddressSymbolResolutionPolicy) override {
+    lanes += std::ranges::count_if(vector.elements,
+                                   [](const auto& lane) { return bool(lane); });
+  }
+  /** Count address payloads without borrowing beyond the call. */
+  void address(const ResolvedAddress&, std::span<const SourceRange>,
+               checker::AddressSymbolResolutionPolicy) override {
+    ++addresses;
+  }
+  /** Count a scalar operand independently of sink lanes. */
+  void reg(const ResolvedRegisterRef&, std::span<const SourceRange>,
+           checker::AddressSymbolResolutionPolicy) override {
+    ++scalars;
+  }
+  /** Count the execution guard retained before operand traversal. */
+  void predicate(const ResolvedPredicate&, std::span<const SourceRange>,
+                 checker::AddressSymbolResolutionPolicy) override {
+    ++predicates;
+  }
+};
+
+/** Preserve exact field identities and all-null values through copies and clones. */
+template <class T>
+  requires std::derived_from<T, Instruction>
+void checkAllSinkCell(std::string_view live, std::string_view all,
+                      ScalarType type, std::string_view physical_type,
+                      size_t arity, uint16_t layout) {
+  {
+    const auto source = allSinkSource(all, physical_type);
+    const auto ast = parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    auto resolved = resolveModuleOnly(*ast);
+    ASSERT_TRUE(resolved) << resolved.error().front().message;
+    EXPECT_TRUE(validateModule(*ast, *resolved));
+  }
+  auto module = allSinkOwn(all, physical_type);
+  ASSERT_EQ(module.functions.front().body.size(), 1u);
+  const auto* typed =
+      dynamic_cast<const T*>(module.functions.front().body.front().get());
+  ASSERT_NE(typed, nullptr);
+  EXPECT_EQ(typed->operand_layout.value, layout);
+  EXPECT_EQ(typed->type.value, type);
+  EXPECT_EQ(typed->vector.value,
+            arity == 8 ? VectorArity::V8 : VectorArity::V4);
+  ASSERT_EQ(typed->dst.value.elements.size(), arity);
+  EXPECT_TRUE(std::ranges::all_of(typed->dst.value.elements,
+                                  [](const auto& lane) { return !lane; }));
+  EXPECT_EQ(typed->dst.value.source.kind, ResolvedVectorSourceKind::BraceList);
+  EXPECT_FALSE(typed->dst.value.source.whole_base);
+  EXPECT_TRUE(valid_register_vector_source(
+      typed->dst.value, typed->dst.locs, true,
+      module.functions.front().instruction_ranges.front()));
+  const checker::Context ctx{
+      .target = {.ptx_version = {8, 8}, .sm_version = 100},
+      .instruction_range = module.functions.front().instruction_ranges.front()};
+  EXPECT_TRUE(typed->check(ctx));
+  EXPECT_TRUE(validateModule(module));
+  auto copy = module;
+  ResolvedModule assigned;
+  assigned = copy;
+  auto moved = std::move(copy);
+  ResolvedModule move_assigned;
+  move_assigned = std::move(assigned);
+  EXPECT_TRUE(validateModule(moved));
+  EXPECT_TRUE(validateModule(move_assigned));
+  const auto clone = typed->clone();
+  ASSERT_NE(clone.get(), typed);
+  const auto* cloned = dynamic_cast<const T*>(clone.get());
+  ASSERT_NE(cloned, nullptr);
+  EXPECT_EQ(cloned->dst.value, typed->dst.value);
+  EXPECT_EQ(cloned->dst.locs, typed->dst.locs);
+  EXPECT_TRUE(clone->check(ctx));
+  auto control = allSinkOwn(live, physical_type);
+  EXPECT_TRUE(validateModule(control));
+  AllSinkReferences null_refs;
+  typed->visit_references(null_refs);
+  AllSinkReferences live_refs;
+  control.functions.front().body.front()->visit_references(live_refs);
+  EXPECT_EQ(null_refs.lanes, 0u);
+  EXPECT_EQ(live_refs.lanes, 1u);
+  EXPECT_EQ(null_refs.addresses, 1u);
+  EXPECT_EQ(null_refs.scalars, live_refs.scalars);
+  EXPECT_EQ(null_refs.scalars,
+            all.find("%policy") != std::string_view::npos ? 1u : 0u);
+  // Standalone resolution uses numbered registers without declaration binding.
+  std::string factory_source(all);
+  if (const auto policy = factory_source.find("%policy");
+      policy != std::string::npos)
+    factory_source.replace(policy, 7, "%rd0");
+  PtxSyntaxParser parser(factory_source);
+  const auto syntax = parser.parseInstruction();
+  ASSERT_INSTRUCTION_PARSE_SUCCEEDS(syntax);
+  const auto factory = resolveLd(*syntax);
+  ASSERT_TRUE(factory) << factory.error().message;
+  EXPECT_NE(dynamic_cast<const T*>(factory->get()), nullptr);
+  EXPECT_TRUE((*factory)->check(checker::Context{
+      .target = ctx.target, .instruction_range = syntax->range}));
+  auto& current = dynamic_cast<T&>(*control.functions.front().body.front());
+  current.dst = typed->dst;
+  EXPECT_TRUE(current.check(ctx));
+  EXPECT_TRUE(validateModule(control));
+}
+
+/** Exercise the eight exact selected type/arity pairs for one descriptor layout. */
+template <class T>
+  requires std::derived_from<T, Instruction>
+void checkAllSinkVariant(std::string_view variant, std::string_view layout_name,
+                         std::string_view prototype, uint16_t layout) {
+  constexpr std::array<std::pair<std::string_view, ScalarType>, 8> types{
+      {{"b32", ScalarType::B32},
+       {"s32", ScalarType::S32},
+       {"u32", ScalarType::U32},
+       {"f32", ScalarType::F32},
+       {"b64", ScalarType::B64},
+       {"s64", ScalarType::S64},
+       {"u64", ScalarType::U64},
+       {"f64", ScalarType::F64}}};
+  for (const auto& [name, type] : types) {
+    const size_t arity = name.substr(1) == "32" ? 8 : 4;
+    const auto suffix = fmt::format(".v{}.{}", arity, name);
+    std::string all(prototype);
+    all.replace(all.find(".v8.b32"), 7, suffix);
+    const auto start = all.find('{');
+    const auto end = all.find('}', start);
+    std::string tuple = "{";
+    for (size_t i = 0; i < arity; ++i)
+      tuple += (i ? ", _" : "_");
+    tuple += '}';
+    all.replace(start, end - start + 1, tuple);
+    auto live = all;
+    live.replace(start + 1, 1, "%live");
+    SCOPED_TRACE(fmt::format("ALLSINK-CELL-{}-{}-v{}-{}", variant, layout_name,
+                             arity, name));
+    checkAllSinkCell<T>(live, all, type, name, arity, layout);
+  }
+}
+
+TEST(ResolvedModule, ChecksAllSinkLoadSelectedVariantsAndOwnedCopies) {
+  checkAllSinkVariant<LdGlobalL2EvictVector>(
+      "ld_global_l2_evict_vector", "default",
+      "ld.global.L2::evict_normal.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 0);
+  checkAllSinkVariant<LdL2EvictVector>(
+      "ld_l2_evict_vector", "default",
+      "ld.L2::evict_normal.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 0);
+  checkAllSinkVariant<LdGlobalL1L2CacheHintPrefetchVector>(
+      "ld_global_l1_l2_cache_hint_prefetch_vector", "default",
+      "ld.global.L2::evict_normal.L2::cache_hint.v8.b32 {_, _, _, _, _, _, _, "
+      "_}, [g], %policy;",
+      0);
+  checkAllSinkVariant<LdGlobalL1L2CacheHintPrefetchVector>(
+      "ld_global_l1_l2_cache_hint_prefetch_vector", "without_policy",
+      "ld.global.L2::evict_normal.L2::cache_hint.v8.b32 {_, _, _, _, _, _, _, "
+      "_}, [g];",
+      1);
+  checkAllSinkVariant<LdL2EvictCacheHintVector>(
+      "ld_l2_evict_cache_hint_vector", "default",
+      "ld.L2::evict_normal.L2::cache_hint.v8.b32 {_, _, _, _, _, _, _, _}, "
+      "[g], %policy;",
+      0);
+  checkAllSinkVariant<LdL2EvictCacheHintVector>(
+      "ld_l2_evict_cache_hint_vector", "without_policy",
+      "ld.L2::evict_normal.L2::cache_hint.v8.b32 {_, _, _, _, _, _, _, _}, "
+      "[g];",
+      1);
+  checkAllSinkVariant<LdGlobalL1EvictVector>(
+      "ld_global_l1_evict_vector", "default",
+      "ld.global.L1::evict_normal.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 0);
+  checkAllSinkVariant<LdL1EvictVector>(
+      "ld_l1_evict_vector", "default",
+      "ld.L1::evict_normal.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 0);
+  checkAllSinkVariant<LdGlobalL1CacheHintPrefetchVector>(
+      "ld_global_l1_cache_hint_prefetch_vector", "default",
+      "ld.global.L1::evict_normal.L2::cache_hint.v8.b32 {_, _, _, _, _, _, _, "
+      "_}, [g], %policy;",
+      0);
+  checkAllSinkVariant<LdGlobalL1CacheHintPrefetchVector>(
+      "ld_global_l1_cache_hint_prefetch_vector", "without_policy",
+      "ld.global.L1::evict_normal.L2::cache_hint.v8.b32 {_, _, _, _, _, _, _, "
+      "_}, [g];",
+      1);
+  checkAllSinkVariant<LdL1CacheHintVector>(
+      "ld_l1_cache_hint_vector", "default",
+      "ld.L1::evict_normal.L2::cache_hint.v8.b32 {_, _, _, _, _, _, _, _}, "
+      "[g], %policy;",
+      0);
+  checkAllSinkVariant<LdL1CacheHintVector>(
+      "ld_l1_cache_hint_vector", "without_policy",
+      "ld.L1::evict_normal.L2::cache_hint.v8.b32 {_, _, _, _, _, _, _, _}, "
+      "[g];",
+      1);
+  checkAllSinkVariant<LdGlobalL2CacheHintVector>(
+      "ld_global_l2_cache_hint_vector", "default",
+      "ld.global.L2::cache_hint.v8.b32 {_, _, _, _, _, _, _, _}, [g], %policy;",
+      0);
+  checkAllSinkVariant<LdGlobalL2CacheHintVector>(
+      "ld_global_l2_cache_hint_vector", "without_policy",
+      "ld.global.L2::cache_hint.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 1);
+  checkAllSinkVariant<LdL2CacheHintVector>(
+      "ld_l2_cache_hint_vector", "default",
+      "ld.L2::cache_hint.v8.b32 {_, _, _, _, _, _, _, _}, [g], %policy;", 0);
+  checkAllSinkVariant<LdL2CacheHintVector>(
+      "ld_l2_cache_hint_vector", "without_policy",
+      "ld.L2::cache_hint.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 1);
+  checkAllSinkVariant<LdGlobalL2PrefetchVector>(
+      "ld_global_l2_prefetch_vector", "default",
+      "ld.global.L2::64B.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 0);
+  checkAllSinkVariant<LdL2PrefetchVector>(
+      "ld_l2_prefetch_vector", "default",
+      "ld.L2::64B.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 0);
+  checkAllSinkVariant<LdGenericVector>(
+      "ld_generic_vector", "default",
+      "ld.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 0);
+  checkAllSinkVariant<LdExplicitVector>(
+      "ld_explicit_vector", "default",
+      "ld.global.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 0);
+  checkAllSinkVariant<LdGlobalNcVector>(
+      "ld_global_nc_vector", "default",
+      "ld.global.nc.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 0);
+  checkAllSinkVariant<LdGlobalNcL2Evict>(
+      "ld_global_nc_l2_evict", "default",
+      "ld.global.nc.L2::evict_normal.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 0);
+  checkAllSinkVariant<LdGlobalNcL2EvictCacheHintVector>(
+      "ld_global_nc_l2_evict_cache_hint_vector", "default",
+      "ld.global.nc.L2::evict_normal.L2::cache_hint.v8.b32 {_, _, _, _, _, _, "
+      "_, _}, [g], %policy;",
+      0);
+  checkAllSinkVariant<LdGlobalNcL2EvictCacheHintVector>(
+      "ld_global_nc_l2_evict_cache_hint_vector", "without_policy",
+      "ld.global.nc.L2::evict_normal.L2::cache_hint.v8.b32 {_, _, _, _, _, _, "
+      "_, _}, [g];",
+      1);
+  checkAllSinkVariant<LdGlobalNcL1EvictVector>(
+      "ld_global_nc_l1_evict_vector", "default",
+      "ld.global.nc.L1::evict_normal.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 0);
+  checkAllSinkVariant<LdGlobalNcL1CacheHintPrefetchLegacyVector>(
+      "ld_global_nc_l1_cache_hint_prefetch_legacy_vector", "default",
+      "ld.global.nc.L1::evict_normal.L2::cache_hint.v8.b32 {_, _, _, _, _, _, "
+      "_, _}, [g], %policy;",
+      0);
+  checkAllSinkVariant<LdGlobalNcL1CacheHintPrefetchLegacyVector>(
+      "ld_global_nc_l1_cache_hint_prefetch_legacy_vector", "without_policy",
+      "ld.global.nc.L1::evict_normal.L2::cache_hint.v8.b32 {_, _, _, _, _, _, "
+      "_, _}, [g];",
+      1);
+  checkAllSinkVariant<LdGlobalNcCacheHintVector>(
+      "ld_global_nc_cache_hint_vector", "default",
+      "ld.global.nc.L2::cache_hint.v8.b32 {_, _, _, _, _, _, _, _}, [g], "
+      "%policy;",
+      0);
+  checkAllSinkVariant<LdGlobalNcCacheHintVector>(
+      "ld_global_nc_cache_hint_vector", "without_policy",
+      "ld.global.nc.L2::cache_hint.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 1);
+  checkAllSinkVariant<LdGlobalNcL2PrefetchVector>(
+      "ld_global_nc_l2_prefetch_vector", "default",
+      "ld.global.nc.L2::64B.v8.b32 {_, _, _, _, _, _, _, _}, [g];", 0);
+}
+
+TEST(ResolvedModule, RejectsAllSinkLoadSourceBoundaries) {
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-v8-seven");
+    const auto source =
+        allSinkSource("ld.global.v8.u32 {_, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-v8-nine");
+    const auto source =
+        allSinkSource("ld.global.v8.u32 {_, _, _, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-v4-three");
+    const auto source = allSinkSource("ld.global.v4.u64 {_, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-v4-five");
+    const auto source = allSinkSource("ld.global.v4.u64 {_, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-empty");
+    const auto source = allSinkSource("ld.global.v8.u32 {}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-legacy-128");
+    const auto source = allSinkSource("ld.global.v4.u32 {_, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-legacy-v2");
+    const auto source = allSinkSource("ld.global.v2.u64 {_, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-underwidth");
+    const auto source =
+        allSinkSource("ld.global.v8.u16 {_, _, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-overwidth");
+    const auto source =
+        allSinkSource("ld.global.v8.u64 {_, _, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-b128");
+    const auto source = allSinkSource("ld.global.v4.b128 {_, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-missing-type");
+    const auto source =
+        allSinkSource("ld.global.v8 {_, _, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-unmodeled-type");
+    const auto source =
+        allSinkSource("ld.global.v8.f16x2 {_, _, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-missing-vector");
+    const auto source =
+        allSinkSource("ld.global.u32 {_, _, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-nested-vector");
+    const auto source =
+        allSinkSource("ld.global.v8.u32 {{_, _}, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-integer-lane");
+    const auto source =
+        allSinkSource("ld.global.v8.u32 {0, _, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-named-v8");
+    auto source = allSinkSource("ld.global.v8.u32 V, [g];");
+    source.replace(source.find(".reg .v4"), 8, ".reg .v8");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-LD-standalone-sink");
+    const auto source = allSinkSource("ld.global.v8.u32 _, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-v8-seven");
+    const auto source =
+        allSinkSource("ld.global.nc.v8.u32 {_, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-v8-nine");
+    const auto source =
+        allSinkSource("ld.global.nc.v8.u32 {_, _, _, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-v4-three");
+    const auto source = allSinkSource("ld.global.nc.v4.u64 {_, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-v4-five");
+    const auto source =
+        allSinkSource("ld.global.nc.v4.u64 {_, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-empty");
+    const auto source = allSinkSource("ld.global.nc.v8.u32 {}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-legacy-128");
+    const auto source = allSinkSource("ld.global.nc.v4.u32 {_, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-legacy-v2");
+    const auto source = allSinkSource("ld.global.nc.v2.u64 {_, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-underwidth");
+    const auto source =
+        allSinkSource("ld.global.nc.v8.u16 {_, _, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-overwidth");
+    const auto source =
+        allSinkSource("ld.global.nc.v8.u64 {_, _, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-b128");
+    const auto source =
+        allSinkSource("ld.global.nc.v4.b128 {_, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-missing-type");
+    const auto source =
+        allSinkSource("ld.global.nc.v8 {_, _, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-unmodeled-type");
+    const auto source =
+        allSinkSource("ld.global.nc.v8.f16x2 {_, _, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-missing-vector");
+    const auto source =
+        allSinkSource("ld.global.nc.u32 {_, _, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-nested-vector");
+    const auto source =
+        allSinkSource("ld.global.nc.v8.u32 {{_, _}, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-integer-lane");
+    const auto source =
+        allSinkSource("ld.global.nc.v8.u32 {0, _, _, _, _, _, _, _}, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-named-v8");
+    auto source = allSinkSource("ld.global.nc.v8.u32 V, [g];");
+    source.replace(source.find(".reg .v4"), 8, ".reg .v8");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+  {
+    SCOPED_TRACE("ALLSINK-SRC-NC-standalone-sink");
+    const auto source = allSinkSource("ld.global.nc.v8.u32 _, [g];");
+    const auto ast = parseModule(source);
+    if (ast && ast.diagnostics.empty()) {
+      const auto m = resolveModuleOnly(*ast);
+      EXPECT_FALSE(m && validateModule(*m));
+    }
+  }
+}
+
+/** Apply one representable current mutation independently of original syntax. */
+template <class T>
+  requires std::derived_from<T, Instruction>
+void checkAllSinkCurrentMutants(std::string_view instruction,
+                                std::string_view live) {
+  const auto baseline = allSinkOwn(instruction);
+  ASSERT_TRUE(validateModule(baseline));
+  const auto live_module = allSinkOwn(live);
+  const auto real_lane =
+      dynamic_cast<const T&>(*live_module.functions.front().body.front())
+          .dst.value.elements[0];
+  ASSERT_TRUE(real_lane);
+  const auto reject = [&](auto mutate) {
+    auto current = baseline;
+    auto& typed = dynamic_cast<T&>(*current.functions.front().body.front());
+    mutate(typed);
+    const checker::Context ctx{
+        .target = {.ptx_version = {8, 8}, .sm_version = 100},
+        .instruction_range =
+            current.functions.front().instruction_ranges.front()};
+    EXPECT_FALSE(typed.check(ctx));
+    EXPECT_FALSE(validateModule(current));
+  };
+  reject([](T& t) {
+    t.dst.value.elements.pop_back();
+    t.dst.locs.pop_back();
+  });
+  reject([](T& t) {
+    t.dst.value.elements.emplace_back();
+    t.dst.locs.push_back(t.dst.locs.back());
+  });
+  reject([](T& t) { t.type.value = ScalarType::Invalid; });
+  reject([](T& t) { t.type.value = ScalarType::U16; });
+  reject([](T& t) { t.type.value = ScalarType::F16x2; });
+  reject([](T& t) {
+    t.dst.value.source.kind = ResolvedVectorSourceKind::NamedVector;
+  });
+  reject([](T& t) { t.dst.value.source.whole_base.emplace(); });
+  reject([](T& t) { t.dst.locs[0] = {{999, 1}, {999, 2}}; });
+  reject([](T& t) { t.dst.value.source.range = {{999, 1}, {999, 100}}; });
+  reject([](T& t) { t.dst.value.source.range = {}; });
+  reject([&](T& t) {
+    t.dst.value.elements[0] = real_lane;
+    t.dst.value.elements[0]->register_class = ResolvedRegisterClass::Predicate;
+  });
+  reject([&](T& t) {
+    t.dst.value.elements[0] = real_lane;
+    t.dst.value.elements[0]->declared_type = ScalarType::U16;
+  });
+  auto shared_source = std::string(instruction);
+  shared_source.replace(shared_source.find("[g]"), 3, "[sh]");
+  auto shared = allSinkOwn(shared_source);
+  const auto& shared_address =
+      dynamic_cast<const T&>(*shared.functions.front().body.front()).address;
+  reject([&](T& t) { t.address = shared_address; });
+  auto store =
+      allSinkOwn("st.global.v8.u32 [g], {%live, _, _, _, _, _, _, _};");
+  auto& st =
+      dynamic_cast<StExplicitVector&>(*store.functions.front().body.front());
+  st.src = dynamic_cast<const T&>(*baseline.functions.front().body.front()).dst;
+  const checker::Context store_context{
+      .target = {.ptx_version = {8, 8}, .sm_version = 100}};
+  EXPECT_FALSE(st.check(store_context));
+  EXPECT_FALSE(validateModule(store));
+  auto legal = baseline;
+  dynamic_cast<T&>(*legal.functions.front().body.front()).type.value =
+      ScalarType::B32;
+  EXPECT_TRUE(validateModule(legal));
+  const auto ast = parseModule(allSinkSource(instruction));
+  ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+  EXPECT_TRUE(validateModule(*ast, legal));
+  EXPECT_TRUE(validateModule(*ast, baseline));
+  const auto changed = parseModule(allSinkSource(live));
+  ASSERT_MODULE_PARSE_SUCCEEDS(changed);
+  auto changed_owned = allSinkOwn(live);
+  EXPECT_TRUE(validateModule(*changed, changed_owned));
+  const auto changed_result = validateModule(*changed, baseline);
+  ASSERT_FALSE(changed_result);
+  EXPECT_TRUE(std::ranges::any_of(changed_result.error(), [](const auto& d) {
+    return d.kind == checker::CheckDiagnosticKind::ModuleSourceMismatch;
+  }));
+  auto b32_source = std::string(instruction);
+  b32_source.replace(b32_source.find(".u32"), 4, ".b32");
+  const auto b32_ast = parseModule(allSinkSource(b32_source));
+  ASSERT_MODULE_PARSE_SUCCEEDS(b32_ast);
+  auto b32_module = allSinkOwn(b32_source);
+  EXPECT_TRUE(validateModule(*b32_ast, b32_module));
+  const auto changed_type_result = validateModule(*b32_ast, baseline);
+  ASSERT_FALSE(changed_type_result);
+  EXPECT_TRUE(
+      std::ranges::any_of(changed_type_result.error(), [](const auto& d) {
+        return d.kind == checker::CheckDiagnosticKind::ModuleSourceMismatch;
+      }));
+  auto invalid = baseline;
+  dynamic_cast<T&>(*invalid.functions.front().body.front())
+      .dst.value.elements.pop_back();
+  EXPECT_FALSE(validateModule(*ast, invalid));
+}
+
+TEST(ResolvedModule, RejectsAllSinkLoadCurrentMutantsWithoutSyntax) {
+  checkAllSinkCurrentMutants<LdExplicitVector>(
+      "ld.global.v8.u32 {_, _, _, _, _, _, _, _}, [g];",
+      "ld.global.v8.u32 {%live, _, _, _, _, _, _, _}, [g];");
+  checkAllSinkCurrentMutants<LdGlobalNcVector>(
+      "ld.global.nc.v8.u32 {_, _, _, _, _, _, _, _}, [g];",
+      "ld.global.nc.v8.u32 {%live, _, _, _, _, _, _, _}, [g];");
+}
+
+TEST(ResolvedModule, KeepsAllSinkLoadAvailabilityAndIndependentMemoryChecks) {
+  for (const auto opcode : {"ld.global", "ld.global.nc"}) {
+    const auto instruction =
+        std::string(opcode) + ".v8.u32 {_, _, _, _, _, _, _, _}, [g];";
+    const auto live =
+        std::string(opcode) + ".v8.u32 {%live, _, _, _, _, _, _, _}, [g];";
+    for (const auto headers :
+         {".version 8.8\n.target sm_100\n", ".version 9.3\n.target sm_100\n",
+          ".version 8.7\n.target sm_100\n", ".version 8.8\n.target sm_90\n"}) {
+      for (const auto& source_instruction : {instruction, live}) {
+        auto module = allSinkOwn(source_instruction, "u32", headers);
+        const auto checked = validateModule(module);
+        const bool supported =
+            std::string_view(headers).find("8.7") == std::string_view::npos &&
+            std::string_view(headers).find("sm_90") == std::string_view::npos;
+        EXPECT_EQ(bool(checked), supported) << headers;
+        if (!supported) {
+          const auto kind =
+              std::string_view(headers).find("8.7") != std::string_view::npos
+                  ? checker::CheckDiagnosticKind::UnsupportedPtxVersion
+                  : checker::CheckDiagnosticKind::UnsupportedSmVersion;
+          ASSERT_FALSE(checked);
+          EXPECT_TRUE(std::ranges::any_of(
+              checked.error(), [&](const auto& d) { return d.kind == kind; }));
+        }
+      }
+    }
+    for (const auto headers : {".version 8.8\n", ".target sm_100\n", ""}) {
+      auto module = allSinkOwn(instruction, "u32", headers);
+      EXPECT_TRUE(
+          validateModule(module, ModuleValidationPolicy::AvailableContext));
+      const auto strict = validateModule(module);
+      ASSERT_FALSE(strict);
+      EXPECT_TRUE(std::ranges::any_of(strict.error(), [](const auto& d) {
+        return d.kind == checker::CheckDiagnosticKind::MissingValidationContext;
+      }));
+    }
+    const auto unknown =
+        allSinkOwn(instruction, "u32", ".version 8.8\n.target sm_123a\n");
+    EXPECT_FALSE(
+        validateModule(unknown, ModuleValidationPolicy::AvailableContext));
+    EXPECT_FALSE(validateModule(unknown));
+    for (const auto address : {"sh", "loc", "g+8"}) {
+      auto all = instruction;
+      all.replace(all.find("[g]"), 3, std::string("[") + address + "]");
+      auto one = live;
+      one.replace(one.find("[g]"), 3, std::string("[") + address + "]");
+      const auto all_result = validateModule(allSinkOwn(all));
+      const auto one_result = validateModule(allSinkOwn(one));
+      ASSERT_FALSE(all_result);
+      ASSERT_FALSE(one_result);
+      EXPECT_EQ(all_result.error().front().kind,
+                one_result.error().front().kind);
+    }
+    if (std::string_view(opcode) == "ld.global") {
+      EXPECT_FALSE(validateModule(
+          allSinkOwn("ld.v8.u32 {_, _, _, _, _, _, _, _}, [sh];")));
+      EXPECT_FALSE(validateModule(
+          allSinkOwn("ld.v8.u32 {%live, _, _, _, _, _, _, _}, [sh];")));
+    }
+    for (const auto& tuple : {std::string("{_, _, _, _, _, _, _, _}"),
+                              std::string("{%live, _, _, _, _, _, _, _}")}) {
+      const auto ast = parseModule(allSinkSource(
+          std::string(opcode) + ".invalid_cache.v8.u32 " + tuple + ", [g];"));
+      if (ast && ast.diagnostics.empty()) {
+        const auto m = resolveModuleOnly(*ast);
+        EXPECT_FALSE(m && validateModule(*m));
+      }
+    }
+  }
+}
+
+TEST(ResolvedModule, KeepsAllSinkLoadSharedAndAdjacentExclusions) {
+  for (const auto space : {"shared::cta", "shared::cluster"}) {
+    for (const auto type :
+         {"b32", "s32", "u32", "f32", "b64", "s64", "u64", "f64"}) {
+      const bool wide = std::string_view(type).substr(1) == "64";
+      const auto prefix =
+          std::string("ld.") + space + (wide ? ".v4." : ".v8.") + type + " ";
+      for (const auto first : {"_", "%live"}) {
+        const auto tuple = std::string("{") + first +
+                           (wide ? ", _, _, _}" : ", _, _, _, _, _, _, _}");
+        const auto m = allSinkOwn(prefix + tuple + ", [sh];", type);
+        const auto* base = m.functions.front().body.front().get();
+        if (std::string_view(space) == "shared::cta")
+          EXPECT_NE(dynamic_cast<const LdSharedCtaVector*>(base), nullptr);
+        else
+          EXPECT_NE(dynamic_cast<const LdSharedClusterVector*>(base), nullptr);
+        EXPECT_FALSE(validateModule(m));
+      }
+    }
+  }
+  for (const auto instruction :
+       {"st.global.v8.u32 [g], {_, _, _, _, _, _, _, _};",
+        "ldu.global.v4.u32 {_, _, _, _}, [g];",
+        "mov.v4.u32 {_, _, _, _}, {%live, %live, %live, %live};",
+        "ld.global.v8.u32 {%live, %live, _, _, _, _, _, _}, [g];"}) {
+    const auto ast = parseModule(allSinkSource(instruction));
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    const auto m = resolveModuleOnly(*ast);
+    EXPECT_FALSE(m && validateModule(*m));
+  }
+  EXPECT_TRUE(validateModule(
+      allSinkOwn("st.global.v8.u32 [g], {%live, _, _, _, _, _, _, _};")));
+  EXPECT_TRUE(validateModule(allSinkOwn("ld.global.v4.u32 V, [g];")));
+  const auto predicated =
+      allSinkOwn("@%p ld.global.v8.u32 {_, _, _, _, _, _, _, _}, [g];");
+  EXPECT_TRUE(validateModule(predicated));
+  ASSERT_EQ(predicated.functions.front().body.size(), 1u);
+  AllSinkReferences references;
+  predicated.functions.front().body.front()->visit_references(references);
+  EXPECT_EQ(references.lanes, 0u);
+  EXPECT_EQ(references.predicates, 1u);
+  EXPECT_EQ(references.addresses, 1u);
+  EXPECT_TRUE(validateModule(
+      allSinkOwn("ld.v8.u32 {_, _, _, _, _, _, _, _}, [%addr];")));
 }
 
 }  // namespace

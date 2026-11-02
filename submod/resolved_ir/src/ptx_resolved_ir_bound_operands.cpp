@@ -1694,6 +1694,38 @@ std::optional<ResolveDiagnostic> duplicate_destination_lane(
   return std::nullopt;
 }
 
+/** Derive the selected ordinary destination's exact 256-bit sink permission. */
+bool permits_all_sink_destination(
+    const ResolvedOperandBindingDescriptor& binding, ScalarType type,
+    std::optional<uint8_t> arity) {
+  if (binding.role != checker::OperandRole::Destination ||
+      binding.access != checker::OperandAccess::Write ||
+      binding.vector_type_policy != checker::VectorTypePolicy::Element ||
+      !binding.allow_vector_sink || binding.vector_sink_payload_bits != 256 ||
+      binding.source_value_vector || binding.minimum_elements != 0 ||
+      binding.maximum_elements != 0 ||
+      binding.type_expression.kind !=
+          checker::OperandTypeExpressionKind::ModifierField ||
+      binding.type_expression.modifier_field_id.empty() ||
+      binding.vector_arity_modifier_field_id.empty() || !arity)
+    return false;
+  switch (type) {
+    case ScalarType::B32:
+    case ScalarType::S32:
+    case ScalarType::U32:
+    case ScalarType::F32:
+      return *arity == 8;
+    case ScalarType::B64:
+    case ScalarType::S64:
+    case ScalarType::U64:
+    case ScalarType::F64:
+      return *arity == 4;
+    default:
+      return false;
+  }
+}
+
+/** Resolve scalar register lanes; the private all-sink grant defaults closed. */
 std::expected<WithLocs<ResolvedRegisterVector>, ResolveDiagnostic>
 resolve_reg_vector(const syntax_ast::AstOperand& operand,
                    ScalarType instruction_type,
@@ -1704,7 +1736,8 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
                    bool allow_sink, size_t sink_payload_bits,
                    std::span<const ScalarType> allowed_register_types,
                    bool require_uniform_register_family, bool is_destination,
-                   const ResolveContext* context, bool allow_named = false) {
+                   const ResolveContext* context, bool allow_named = false,
+                   bool allow_all_sink = false) {
   const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
   const auto range = syntax_ast::sourceRange(operand);
   std::optional<WithLocs<ResolvedVectorRegisterRef>> whole_base;
@@ -1921,7 +1954,10 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
     }
     result.elements.emplace_back(std::move(register_ref->value));
   }
-  if (sink_count == arity) {
+  if (sink_count == arity &&
+      (!allow_all_sink || result.elements.empty() ||
+       result.elements.size() > checker::kMaxOperandElements ||
+       !valid_register_vector_source(result, locations, true))) {
     return std::unexpected(ResolveDiagnostic{
         .range = range,
         .message = "A vector must contain at least one register.",
@@ -3751,7 +3787,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
           binding.require_uniform_register_family,
           binding.access == checker::OperandAccess::Write ||
               binding.access == checker::OperandAccess::ReadWrite,
-          context, binding.allow_named_vector);
+          context, binding.allow_named_vector,
+          permits_all_sink_destination(binding, *type, *arity));
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

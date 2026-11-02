@@ -742,7 +742,7 @@ descriptor 将期望元素数链接到该 field，而不是按 arity 复制 vari
 element type policy：每个 register element 都按 instruction type 检查，允许
 `EqualOrWider` register width。legacy payload 最多 128 bit；generated cross constraint
 另加入 PTX 8.8/SM 100 的精确 256-bit `.v8` × 32-bit 与 `.v4` × 64-bit form，地址已知时
-要求 global，并允许部分 sink。默认 register-width policy 为 `SameWidth`，
+要求 global，允许部分 sink 及全 sink load destination。默认 register-width policy 为 `SameWidth`，
 保持 `mov/add/sub`、immediate 与 special-register 的既有行为；`ld` destination、
 `st` source register descriptor 及适用的 `cvt` data operand 选择 `EqualOrWider`，
 因此声明 register 位宽可大于等于
@@ -799,7 +799,14 @@ cache 的组合；对已知 address space 执行 global/shared、PTX 9.1 的
 `volatile.local` 及 scalar `.mmio.relaxed.sys` 规则，而不猜测 unknown generic
 address。生成的 `memory_vector` cross constraint 以 arity > 4、payload > 128 或 sink
 识别 modern candidate，要求 256 bit、地址已知时 global、以及 PTX 8.8/SM 100；只有这些
-modern load/store vector 可使用部分 sink，all-sink 与 legacy sink 仍拒绝。scalar、legacy
+modern load/store vector 可使用部分 sink。普通 write-only load destination 也接受完整
+brace tuple 的全 sink：选定 `.v8` 配 `.b32/.s32/.u32/.f32`，或 `.v4` 配
+`.b64/.s64/.u64/.f64`。私有许可核对实际 owned null lane、选定 type/arity、
+完整 brace/lane range 以及一致的 borrowed projection；不增加公共 descriptor flag，
+也不从 null lane 推断类型。全 sink store、legacy sink、named root、MOV 和 texture
+result 保持既有约束。global、32-byte alignment、PTX 8.8/SM 100 检查仍执行。
+缺少上下文时 `AvailableContext` 的成功保留既有的整条指令检查延后行为，
+不构成 feature availability 保证。scalar、legacy
 `.v2/.v4` 与 modern 256-bit 的静态 natural alignment 会按 total access size 检查已知 address。
 
 `ResolvedAddress` 另行记录 enclosing function kind。generated address view 仅从已绑定的

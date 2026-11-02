@@ -1069,6 +1069,12 @@ warp-level matrix topology，并为 WGMMA/TCGEN05 提供公共 shape/type/layout
 
 WGMMA 与 TCGEN05 milestone 不得再次用硬编码 tuple 数量表示 matrix fragment。
 
+局部参考解释：WMMA `m8n8k4` F64 沿用既有 A/B 各 1、C/D 各 2 个 64 位寄存器规则；
+[双语解释](../docs/zh-han/converage/matrix_reference_interpretations.md)记录冲突条款、容量依据及
+16 字节 C/D 对齐。定向回归分别核对精确的 36 个静态 identity 与独立 source/owned/control
+义务，生产规则未改。本项仅补充该局部工程解释的测试与说明，不改变上述整族状态。
+
+
 ---
 
 # 14. M16：Hopper WGMMA

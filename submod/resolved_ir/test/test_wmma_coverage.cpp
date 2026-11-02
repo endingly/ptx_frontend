@@ -203,6 +203,315 @@ TEST(WmmaCoverage, F64FragmentsAndStrideLimits) {
   EXPECT_FALSE(resolveModule(*invalid_parsed).has_value());
 }
 
+/** Spell a complete brace fragment using distinct declared scalar registers. */
+std::string f64Fragment(char role, unsigned count) {
+  std::string text = "{";
+  for (unsigned lane = 0; lane < count; ++lane)
+    text += (lane ? ",%" : "%") + std::string(1, role) + std::to_string(lane);
+  return text + "}";
+}
+
+/** Spell one role's load/store or compute use, retaining independent layouts. */
+std::string f64RoleInstruction(unsigned role, unsigned count,
+                               std::string_view layouts = "row.col",
+                               std::string_view rounding = "") {
+  if (role < 3)
+    return "wmma.load." + std::string(1, "abc"[role]) +
+           ".sync.aligned.m8n8k4.global.col.f64 " +
+           f64Fragment("abc"[role], count) + ", [tile], 8;";
+  if (role == 3)
+    return "wmma.store.d.sync.aligned.m8n8k4.global.row.f64 [tile], " +
+           f64Fragment('d', count) + ", 8;";
+  return "wmma.mma.sync.aligned.m8n8k4." + std::string(layouts) +
+         std::string(rounding) + ".f64.f64.f64.f64 " +
+         f64Fragment('d', role == 7 ? count : 2) + ", " +
+         f64Fragment('a', role == 4 ? count : 1) + ", " +
+         f64Fragment('b', role == 5 ? count : 1) + ", " +
+         f64Fragment('c', role == 6 ? count : 2) + ";";
+}
+
+/** Build a strict legal donor with initialized lanes and an independent spare. */
+std::string f64RoleModule(std::string_view instruction,
+                          std::string_view carrier = "f64") {
+  std::string text =
+      ".version 9.3\n.target sm_80\n.address_size 64\n"
+      ".global .align 16 .b64 tile[128];\n.entry kernel(){\n.reg ." +
+      std::string(carrier) + " %a<3>, %b<3>, %c<3>, %d<3>, %x;\n";
+  for (const char role : std::string_view("abcd"))
+    for (unsigned lane = 0; lane < 3; ++lane)
+      text +=
+          "mov.b64 %" + std::string(1, role) + std::to_string(lane) + ",0;\n";
+  return text +
+         "mov.b64 %x,0;\n"
+         "wmma.load.a.sync.aligned.m8n8k4.global.col.f64 {%x},[tile],8;\n" +
+         std::string(instruction) + "\n}";
+}
+
+/** Resolve a fully checked donor, releasing source text and syntax owners. */
+std::expected<ResolvedModule, ModuleResolveDiagnostics> ownedF64Role(
+    std::string text) {
+  const auto parsed = test_helpers::parseModule(text);
+  EXPECT_TRUE(parsed && parsed.diagnostics.empty());
+  if (!parsed || !parsed.diagnostics.empty())
+    return std::unexpected(ModuleResolveDiagnostics{});
+  return resolveModule(*parsed);
+}
+
+/** Borrow a selected mutable role from the exact concrete generated form. */
+WithLocs<ResolvedRegisterVector>& f64RoleField(Instruction& instruction,
+                                               unsigned role) {
+  switch (role) {
+    case 0:
+      return dynamic_cast<WmmaLoadAM8n8k4ColGlobalF64&>(instruction).dst;
+    case 1:
+      return dynamic_cast<WmmaLoadBM8n8k4ColGlobalF64&>(instruction).dst;
+    case 2:
+      return dynamic_cast<WmmaLoadCM8n8k4ColGlobalF64&>(instruction).dst;
+    case 3:
+      return dynamic_cast<WmmaStoreDM8n8k4RowGlobalF64&>(instruction).src;
+    default: {
+      auto& mma = dynamic_cast<WmmaMmaM8n8k4RowColF64F64F64F64&>(instruction);
+      if (role == 4)
+        return mma.a;
+      if (role == 5)
+        return mma.b;
+      if (role == 6)
+        return mma.c;
+      return mma.dst;
+    }
+  }
+}
+
+/** Borrow immutable topology only from a matching concrete generated class. */
+const MatrixInstructionDescriptor* f64Descriptor(
+    const Instruction& instruction) {
+  if (const auto* form =
+          dynamic_cast<const WmmaLoadAM8n8k4ColGlobalF64*>(&instruction))
+    return form->matrix_descriptor();
+  if (const auto* form =
+          dynamic_cast<const WmmaLoadBM8n8k4ColGlobalF64*>(&instruction))
+    return form->matrix_descriptor();
+  if (const auto* form =
+          dynamic_cast<const WmmaLoadCM8n8k4ColGlobalF64*>(&instruction))
+    return form->matrix_descriptor();
+  if (const auto* form =
+          dynamic_cast<const WmmaStoreDM8n8k4RowGlobalF64*>(&instruction))
+    return form->matrix_descriptor();
+  if (const auto* form =
+          dynamic_cast<const WmmaMmaM8n8k4RowRowF64F64F64F64*>(&instruction))
+    return form->matrix_descriptor();
+  if (const auto* form =
+          dynamic_cast<const WmmaMmaM8n8k4RowColF64F64F64F64*>(&instruction))
+    return form->matrix_descriptor();
+  if (const auto* form =
+          dynamic_cast<const WmmaMmaM8n8k4ColRowF64F64F64F64*>(&instruction))
+    return form->matrix_descriptor();
+  if (const auto* form =
+          dynamic_cast<const WmmaMmaM8n8k4ColColF64F64F64F64*>(&instruction))
+    return form->matrix_descriptor();
+  return nullptr;
+}
+
+/** Cardinality must fail at its role's range, independently of source identity. */
+TEST(WmmaCoverage, F64ExactRoleCardinalitySourceAndOwned) {
+  const checker::Context supported{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80}};
+  for (unsigned role = 0; role < 8; ++role) {
+    SCOPED_TRACE(role);
+    const unsigned legal =
+        role == 0 || role == 1 || role == 4 || role == 5 ? 1 : 2;
+    const auto good_text = f64RoleModule(f64RoleInstruction(role, legal));
+    auto owned = ownedF64Role(good_text);
+    ASSERT_TRUE(owned) << owned.error().front().message;
+    ASSERT_TRUE(
+        validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+    auto& instruction = *owned->functions.front().body.back();
+    auto& field = f64RoleField(instruction, role);
+    const auto saved = field;
+    ASSERT_EQ(field.value.elements.size(), legal);
+    ASSERT_EQ(field.locs.size(), legal);
+    ASSERT_NE(f64Descriptor(instruction), nullptr);
+    EXPECT_EQ(f64Descriptor(instruction)->shape, (MatrixShape{8, 8, 4}));
+    for (const auto& lane : field.value.elements) {
+      ASSERT_TRUE(lane);
+      EXPECT_TRUE(lane->symbol_id);
+      EXPECT_EQ(lane->declared_type, ScalarType::F64);
+      EXPECT_EQ(lane->register_class, ResolvedRegisterClass::General);
+    }
+    const auto& body = owned->functions.front().body;
+    const auto& spare =
+        dynamic_cast<const WmmaLoadAM8n8k4ColGlobalF64&>(*body[body.size() - 2])
+            .dst.value.elements.front();
+    for (const unsigned count : {1u, 2u, 3u}) {
+      if (count == legal || (legal == 1 && count == 3))
+        continue;
+      SCOPED_TRACE(count);
+      const auto bad_text = f64RoleModule(f64RoleInstruction(role, count));
+      const auto bad_ast = test_helpers::parseModule(bad_text);
+      ASSERT_MODULE_PARSE_SUCCEEDS(bad_ast);
+      const auto bad = resolveModule(*bad_ast);
+      ASSERT_FALSE(bad);
+      EXPECT_TRUE(std::ranges::any_of(bad.error(), [&](const auto& diagnostic) {
+        return diagnostic.stage() == ResolveDiagnosticStage::Resolution &&
+               diagnostic.message == "Vector operand requires " +
+                                         std::to_string(legal) + " to " +
+                                         std::to_string(legal) + " elements." &&
+               diagnostic.range.start == saved.value.source.range.start &&
+               diagnostic.range.end ==
+                   (SourcePos{saved.value.source.range.start.line,
+                              saved.value.source.range.start.column +
+                                  static_cast<int32_t>(4 * count + 1)});
+      })) << bad.error().front().message;
+      // The invalid source never supplies the independently mutated owned donor.
+      field = saved;
+      if (count < legal) {
+        field.value.elements.resize(count);
+        field.locs.resize(count);
+      } else {
+        field.value.elements.push_back(spare);
+        field.locs.push_back(saved.locs.front());
+      }
+      ASSERT_TRUE(valid_register_vector_source(field.value, field.locs, true));
+      EXPECT_NE(field.value.elements.front()->symbol_id, spare->symbol_id);
+      const auto checked = instruction.check(supported);
+      ASSERT_FALSE(checked);
+      EXPECT_TRUE(
+          std::ranges::any_of(checked.error(), [&](const auto& diagnostic) {
+            return diagnostic.kind ==
+                       checker::CheckDiagnosticKind::InvalidVectorOperand &&
+                   diagnostic.range == saved.locs.front() &&
+                   diagnostic.message.find("element count") !=
+                       std::string::npos;
+          }));
+      EXPECT_FALSE(validateModule(
+          *owned, ModuleValidationPolicy::RequireCompleteContext));
+      const auto good_ast = test_helpers::parseModule(good_text);
+      ASSERT_MODULE_PARSE_SUCCEEDS(good_ast);
+      const auto supplied = validateModule(
+          *good_ast, *owned, ModuleValidationPolicy::RequireCompleteContext);
+      ASSERT_FALSE(supplied);
+      EXPECT_TRUE(
+          std::ranges::any_of(supplied.error(), [](const auto& diagnostic) {
+            return diagnostic.kind ==
+                   checker::CheckDiagnosticKind::InvalidVectorOperand;
+          }));
+      field = saved;
+      EXPECT_TRUE(instruction.check(supported));
+      EXPECT_TRUE(validateModule(
+          *owned, ModuleValidationPolicy::RequireCompleteContext));
+      EXPECT_TRUE(validateModule(
+          *good_ast, *owned, ModuleValidationPolicy::RequireCompleteContext));
+    }
+    field.value.elements.front() = spare;
+    EXPECT_TRUE(instruction.check(supported));
+    EXPECT_TRUE(
+        validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+    const auto original_ast = test_helpers::parseModule(good_text);
+    ASSERT_MODULE_PARSE_SUCCEEDS(original_ast);
+    EXPECT_TRUE(validateModule(*original_ast, *owned,
+                               ModuleValidationPolicy::RequireCompleteContext));
+    field = saved;
+    ResolvedModule copied = *owned;
+    ResolvedModule assigned;
+    assigned = copied;
+    ResolvedModule moved = std::move(assigned);
+    EXPECT_TRUE(
+        validateModule(moved, ModuleValidationPolicy::RequireCompleteContext));
+    auto& copied_instruction = *moved.functions.front().body.back();
+    EXPECT_EQ(f64RoleField(copied_instruction, role), saved);
+    EXPECT_EQ(f64Descriptor(copied_instruction), f64Descriptor(instruction));
+    auto cloned = copied_instruction.clone();
+    EXPECT_EQ(f64RoleField(*cloned, role), saved);
+    EXPECT_TRUE(cloned->check(supported));
+    ResolvedFunction function_copy = owned->functions.front();
+    ResolvedFunction function_assigned;
+    function_assigned = function_copy;
+    EXPECT_EQ(f64RoleField(*function_assigned.body.back(), role), saved);
+    EXPECT_TRUE(function_assigned.body.back()->check(supported));
+  }
+}
+
+/** Layout and rounding alternatives preserve 64-bit ordinary data carriers. */
+TEST(WmmaCoverage, F64LayoutsRoundingAndDataCarriers) {
+  for (const auto carrier : {"f64", "b64"})
+    for (const auto layouts : {"row.row", "row.col", "col.row", "col.col"})
+      for (const auto rounding : {"", ".rn", ".rz", ".rm", ".rp"}) {
+        SCOPED_TRACE(std::string(carrier) + layouts + rounding);
+        auto load_a = f64RoleInstruction(0, 1);
+        auto load_b = f64RoleInstruction(1, 1);
+        if (std::string_view(layouts).starts_with("row"))
+          load_a.replace(load_a.find(".global.col."), 12, ".global.row.");
+        if (std::string_view(layouts).ends_with("row"))
+          load_b.replace(load_b.find(".global.col."), 12, ".global.row.");
+        const auto pipeline = load_a + "\n" + load_b + "\n" +
+                              f64RoleInstruction(2, 2) + "\n" +
+                              f64RoleInstruction(7, 2, layouts, rounding) +
+                              "\n" + f64RoleInstruction(3, 2);
+        auto owned = ownedF64Role(f64RoleModule(pipeline, carrier));
+        ASSERT_TRUE(owned) << owned.error().front().message;
+        EXPECT_TRUE(validateModule(
+            *owned, ModuleValidationPolicy::RequireCompleteContext));
+        const auto& descriptor = *f64Descriptor(
+            *owned->functions.front()
+                 .body[owned->functions.front().body.size() - 2]);
+        ASSERT_EQ(descriptor.fragment_count, 4);
+        EXPECT_EQ(descriptor.fragments[0].register_count, 2);
+        EXPECT_EQ(descriptor.fragments[1].register_count, 1);
+        EXPECT_EQ(descriptor.fragments[2].register_count, 1);
+        EXPECT_EQ(descriptor.fragments[3].register_count, 2);
+      }
+}
+
+/** Memory alignment and scalar width remain separate from fragment counts. */
+TEST(WmmaCoverage, F64IndependentAlignmentWidthAndTarget) {
+  const auto good = f64RoleModule(f64RoleInstruction(2, 2));
+  for (const auto replacement : {"[tile+8], 8;", "[tile], 9;", "[tile], 7;"}) {
+    auto text = good;
+    const auto at = text.rfind("[tile], 8;");
+    ASSERT_NE(at, std::string::npos);
+    text.replace(at, std::string("[tile], 8;").size(), replacement);
+    const auto parsed = test_helpers::parseModule(text);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    EXPECT_FALSE(resolveModule(*parsed));
+  }
+  for (const auto version : {"7.7", "7.8"}) {
+    auto text = good;
+    text.replace(text.find("9.3"), 3, version);
+    for (auto at = text.find(".global"); at != std::string::npos;
+         at = text.find(".global", at + 7))
+      text.replace(at, 7, ".shared");
+    const auto last_space = text.rfind(".shared.col.f64");
+    ASSERT_NE(last_space, std::string::npos);
+    text.replace(last_space, 7, ".shared::cta");
+    const auto shared = test_helpers::parseModule(text);
+    ASSERT_MODULE_PARSE_SUCCEEDS(shared);
+    EXPECT_EQ(bool(resolveModule(*shared)), std::string_view(version) == "7.8");
+  }
+  auto narrow = good;
+  const auto declaration = narrow.find(".reg .f64");
+  ASSERT_NE(declaration, std::string::npos);
+  narrow.replace(declaration, 9, ".reg .f32");
+  // Remove initialization so the negative isolates WMMA's scalar width guard.
+  auto begin = narrow.find("mov.b64");
+  const auto end = narrow.find("wmma.load.a", begin);
+  narrow.erase(begin, end - begin);
+  const auto parsed = test_helpers::parseModule(narrow);
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  EXPECT_FALSE(resolveModule(*parsed));
+  auto owned = ownedF64Role(good);
+  ASSERT_TRUE(owned);
+  const checker::Context old_target{
+      .target = {.ptx_version = {9, 3}, .sm_version = 75}};
+  EXPECT_FALSE(owned->functions.front().body.back()->check(old_target));
+  for (const auto version :
+       {checker::PtxVersion{6, 5}, checker::PtxVersion{7, 0}}) {
+    const checker::Context context{
+        .target = {.ptx_version = version, .sm_version = 80}};
+    EXPECT_EQ(bool(owned->functions.front().body.back()->check(context)),
+              version == (checker::PtxVersion{7, 0}));
+  }
+}
+
 /** Resolve a logical form above the legacy enum reflection scan range. */
 TEST(WmmaCoverage, ResolvesHighestLogicalForm) {
   const auto parsed = test_helpers::parseModule(R"ptx(

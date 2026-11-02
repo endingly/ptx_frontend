@@ -903,6 +903,10 @@ struct OperandDescriptor {
       ImmediateConversionPolicy::Narrow;
   /** Present only for compound typed video operands. */
   std::optional<VideoOperandDescriptor> video;
+  /** Optional raw integer alternative; absent retains ordinary logical conversion.
+   * Engaged B16 applies only to read scalar F16/BF16 Register|Immediate sources.
+   */
+  std::optional<ScalarType> integer_immediate_type{};
 };
 struct FieldView {
   std::string_view field_id;

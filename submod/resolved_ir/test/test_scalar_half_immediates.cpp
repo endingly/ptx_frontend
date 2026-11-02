@@ -361,7 +361,7 @@ TEST(ScalarHalfImmediates, PreservesIntegerAndExactSingleExpressionBoundaries) {
     ASSERT_MODULE_PARSE_SUCCEEDS(call);
     EXPECT_FALSE(resolveAndValidateModule(*call));
   }
-  // The separate explicit Bit16 SETP route is not adjudicated by these ordinary F16 negatives.
+  // The separate explicit Bit16 SETP route does not widen these ordinary F16 sources.
   for (const auto source : {"1.5", "0f3fc00000", "0d3ff8000000000000"}) {
     const auto bit =
         test_helpers::parseModule(half_source({"mov.b16 b,$;"}, source));

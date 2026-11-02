@@ -182,7 +182,9 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
     elif "video" in raw:
         raise ValueError("video operand contract requires video_operand")
 
+    integer_immediate_type = _normalize_integer_immediate_type(raw, type_expression)
     return OperandSpec(
+        integer_immediate_type=integer_immediate_type,
         video=video,
         name=raw["name"],
         kind=kind,
@@ -219,6 +221,27 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         texture_unbracketed=texture_unbracketed,
         texture_resource_kind=texture_resource_kind,
     )
+
+
+def _normalize_integer_immediate_type(
+    raw: dict[str, Any], expression: OperandTypeExpression | None,
+) -> str | None:
+    """Validate explicit integer routing after all established operand diagnostics."""
+    if "integer_immediate_type" not in raw:
+        return None
+    value = raw["integer_immediate_type"]
+    if type(value) is not str or value != "b16":
+        raise ValueError("integer_immediate_type requires the explicit Bit type b16")
+    if (raw["kind"] is not OperandKind.REGISTER_OR_IMMEDIATE
+            or raw["access"] is not OperandAccess.READ
+            or raw["role"] not in (OperandRole.SOURCE, OperandRole.SOURCE_1, OperandRole.SOURCE_2,
+                                   OperandRole.SOURCE_3, OperandRole.SOURCE_4, OperandRole.METADATA,
+                                   OperandRole.MASK, OperandRole.IMMEDIATE)
+            or expression is None
+            or expression.kind is not OperandTypeExpressionKind.FIXED_SCALAR
+            or expression.scalar_type not in ("f16", "bf16")):
+        raise ValueError("integer_immediate_type requires a read scalar half reg_or_imm source")
+    return value
 
 
 def _normalize_shfl_sink_options(raw: dict[str, Any]) -> _ShflSinkOptions:

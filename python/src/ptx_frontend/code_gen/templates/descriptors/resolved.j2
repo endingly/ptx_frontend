@@ -40,7 +40,8 @@
               .preserve_parameter_address_space = {{ model.preserve_parameter_address_space }},{{ members(model.address_members) }}{% if model.parameter_constraint is not none %}
               .parameter_constraint = {{ parameter(model.parameter_constraint) }},{% endif %}{{ members(model.topology_members) }}
               .immediate_conversion_policy = {{ model.immediate_conversion_policy }},{% if model.video is not none %}
-              .video = {{ video(model.video) }},{% endif %}
+              .video = {{ video(model.video) }},{% endif %}{% if model.integer_immediate_type is not none %}
+              .integer_immediate_type = {{ model.integer_immediate_type }},{% endif %}
           }{% endmacro %}{% macro address_space(model) %}          checker::AddressStateSpaceDescriptor{
               .state_space = {{ model.state_space }},
               .availability = {{ availability(model.availability) }},

@@ -5,7 +5,7 @@ import unittest
 from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.ir.resolved_ir import from_instruction_spec, ResolvedValueKind
 
-# The bounded original comparator includes explicit register-only and separate queues.
+# The original comparator separates scalar promotions from existing vector carriers.
 ROLE_ROWS = ((('add', 'add_half', 'default', 'src1'), 'reg', 'register_only_preserved', False),
  (('add', 'add_half', 'default', 'src2'), 'reg', 'register_only_preserved', False),
  (('add', 'add_mixed_f32', 'default', 'src'),
@@ -153,40 +153,40 @@ ROLE_ROWS = ((('add', 'add_half', 'default', 'src1'), 'reg', 'register_only_pres
   'eligible_f16_source_subject_to_independent_valid_instruction_tuple',
   False),
  (('multimem', 'multimem_st_float_none_v2_default_weak', 'default', 'src'),
-  'reg_vector',
-  'separate_vector_constant_inheritance_proof_queue_not_a_normative_register_only_verdict',
+  'value_vector',
+  'separate_value_vector_inheritance_accepted_not_a_scalar_role_promotion',
   False),
  (('multimem', 'multimem_st_float_none_v2_default_ordered', 'default', 'src'),
-  'reg_vector',
-  'separate_vector_constant_inheritance_proof_queue_not_a_normative_register_only_verdict',
+  'value_vector',
+  'separate_value_vector_inheritance_accepted_not_a_scalar_role_promotion',
   False),
  (('multimem', 'multimem_red_float_add_v2_default_red', 'default', 'src'),
-  'reg_vector',
-  'separate_vector_constant_inheritance_proof_queue_not_a_normative_register_only_verdict',
+  'value_vector',
+  'separate_value_vector_inheritance_accepted_not_a_scalar_role_promotion',
   False),
  (('multimem', 'multimem_st_float_none_v4_default_weak', 'default', 'src'),
-  'reg_vector',
-  'separate_vector_constant_inheritance_proof_queue_not_a_normative_register_only_verdict',
+  'value_vector',
+  'separate_value_vector_inheritance_accepted_not_a_scalar_role_promotion',
   False),
  (('multimem', 'multimem_st_float_none_v4_default_ordered', 'default', 'src'),
-  'reg_vector',
-  'separate_vector_constant_inheritance_proof_queue_not_a_normative_register_only_verdict',
+  'value_vector',
+  'separate_value_vector_inheritance_accepted_not_a_scalar_role_promotion',
   False),
  (('multimem', 'multimem_red_float_add_v4_default_red', 'default', 'src'),
-  'reg_vector',
-  'separate_vector_constant_inheritance_proof_queue_not_a_normative_register_only_verdict',
+  'value_vector',
+  'separate_value_vector_inheritance_accepted_not_a_scalar_role_promotion',
   False),
  (('multimem', 'multimem_st_float_none_v8_default_weak', 'default', 'src'),
-  'reg_vector',
-  'separate_vector_constant_inheritance_proof_queue_not_a_normative_register_only_verdict',
+  'value_vector',
+  'separate_value_vector_inheritance_accepted_not_a_scalar_role_promotion',
   False),
  (('multimem', 'multimem_st_float_none_v8_default_ordered', 'default', 'src'),
-  'reg_vector',
-  'separate_vector_constant_inheritance_proof_queue_not_a_normative_register_only_verdict',
+  'value_vector',
+  'separate_value_vector_inheritance_accepted_not_a_scalar_role_promotion',
   False),
  (('multimem', 'multimem_red_float_add_v8_default_red', 'default', 'src'),
-  'reg_vector',
-  'separate_vector_constant_inheritance_proof_queue_not_a_normative_register_only_verdict',
+  'value_vector',
+  'separate_value_vector_inheritance_accepted_not_a_scalar_role_promotion',
   False),
  (('atom', 'atom_global_add_noftz_f16', 'no_hint', 'src'),
   'reg',
@@ -239,7 +239,7 @@ class ScalarHalfSourceTests(unittest.TestCase):
             self.assertEqual(domain, {"f16", "bf16"})
 
     def test_exact_alternate_scalar_source_closure(self) -> None:
-        """Keep five admitted BF16 fields and zero scalar E4M3/E5M2 callers."""
+        """Keep original five BF16 fields plus four scalar SETP sources; no scalar FP8 callers."""
         spec = get_packaged_spec_database()
         actual = set()
         for instruction in spec.instructions:
@@ -262,6 +262,10 @@ class ScalarHalfSourceTests(unittest.TestCase):
                             actual.add((instruction.opcode, variant.name, layout.name,
                                         operand.name, scalar))
         self.assertEqual(actual, {
+            ("setp", "setp_bf16", "default", "src1", "bf16"),
+            ("setp", "setp_bf16", "default", "src2", "bf16"),
+            ("setp", "setp_bf16_boolean", "default", "src1", "bf16"),
+            ("setp", "setp_bf16_boolean", "default", "src2", "bf16"),
             ("add", "add_mixed_f32", "default", "src", "bf16"),
             ("sub", "sub_mixed_f32", "default", "src", "bf16"),
             ("cvt", "cvt_f32_bf16", "default", "src", "bf16"),

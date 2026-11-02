@@ -1585,3 +1585,27 @@ Exact-word 契约仅覆盖既有 literal helper 的 F16x2、BF16x2、E4M3x4 与 
 Mixed brace 可同时含 register 与 immediate。50个 v2/v4 named 分支保留真实 General whole-base declaration identity、精确 NamedProjection lane、element SameWidth 及16字节 declaration 上限。14个 v8 分支仍仅接受 brace；既有128-element projection buffer 与256-bit generic capacity 不变，本 cohort 至多需要8 lane／128 bit。Immediate projection 不是 user sink。同步 observer 接收实际 payload 与全部 lane range（包括第8 lane），不得保留 callback reference。Copy／assignment／clone 必须从自身 owner 重新取得 view。
 
 普通 typed word 要求所选 logical type、位宽内 bits，且没有 integer-origin／negative flag；一致的当前字修改不重放已擦除的浮点 source history。当前 payload／pointer／range／provenance 检查与保留的 source identity 检查彼此独立。Address alignment、所选 type／modifier／target gate 及不完整上下文延期策略仍适用。本契约不扩展六个 scalar packed 分支、atomic input、packed numeric constructor 或 load destination，也不声称 runtime multimem mapping 或 GPU 执行。记录 delivery 完成前仍需 current generation、Debug、fresh installed public consumer 与独立 actual-diff 证据。
+
+## 显式标量 Bit16 来源
+
+实现已经通过完整 model/default 审核、normal generation、定向 Debug 检查及匹配的 installed consumer；独立最终验收仍待完成。
+`integer_immediate_type` 是尾部 optional `ScalarType` member，默认缺省。
+仅八个既有 scalar SETP source row 选择 B16：F16/BF16 普通及 Boolean form 的
+src1/src2。四个 BF16 source member 从 register reference 迁移为 `RegOrImm`，
+采用 logical BF16 和 SameWidth；四个 F16 member 的 kind/type/width 不变。
+Descriptor ABI 变化要求重新编译所有 consumer。
+
+来源只求值一次。整数结果选择显式 raw B16 arm：`1` 是 word `0x0001`，
+`0x10001` 窄化为同一 word 并保留 64-bit integer origin。浮点结果沿用既有 logical
+converter：`1.0` 为 F16 `0x3c00` 或 BF16 `0x3f80`。直接 unsigned `0f` 保留
+既有 root route 和 lexical precision，不通过包装或试转换分类。缺省 policy 的普通
+logical floating operand 仍拒绝 integer origin，packed format 也不变。本支持不扩展
+packed SETP、atomic、storage、call 或其他 scalar source 权限。
+
+当前 immediate 由实际 type 选择 arm，两个 word 都限制在 16 bit。Logical numeric
+word 没有 integer origin 或 integer negative flag；B16 origin 可以缺省，存在时仍检查
+mask/sign 一致性，cache-free word 要求 negative flag 为 false。合法 word/arm 修改
+不认证已经擦除的源码历史；变更 supplied syntax 仍执行独立的 source association。
+Instruction check 的证明使用完整 target context，AvailableContext 延后不构成合法性证书。
+F16 实际 carrier 仍为 B16 或 F16，BF16 仍为实际 B16，并保留 intrinsic declaration/class
+检查；不改变 Base compatibility。

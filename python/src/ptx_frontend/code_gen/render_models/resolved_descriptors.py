@@ -15,6 +15,9 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedInstruction,
     ResolvedModifierBinding,
     ResolvedOperandBinding,
+    ResolvedOperandRole,
+    ResolvedOperandAccess,
+    ResolvedOperandShape,
     ResolvedOperandTypeExpression,
     ResolvedOperandTypeExpressionKind,
     TensorAccessMode,
@@ -106,6 +109,7 @@ class ResolvedOperandBindingModel:
     topology_members: tuple[ResolvedBindingMemberModel, ...]
     immediate_conversion_policy: str
     video: ResolvedVideoOperandModel | None
+    integer_immediate_type: str | None = None
 
 @dataclass(frozen=True)
 class ResolvedAddressStateSpaceModel:
@@ -214,6 +218,21 @@ def _build_operand_binding(binding: ResolvedOperandBinding, name: str, backend: 
                            register_types_name: str | None = None) -> ResolvedOperandBindingModel:
     """Preserve designated-member order and typed nested operand constraints."""
 
+    if binding.integer_immediate_type is not None:
+        expression = binding.type_expression
+        if (binding.integer_immediate_type != "b16"
+                or expression.kind is not ResolvedOperandTypeExpressionKind.FIXED_SCALAR
+                or expression.scalar_type not in ("f16", "bf16")
+                or binding.role is not ResolvedOperandRole.SOURCE
+                or binding.access is not ResolvedOperandAccess.READ
+                or len(binding.allowed_shapes) != 2
+                or set(binding.allowed_shapes) != {
+                    ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE}
+                or binding.source_value_vector
+                or (binding.minimum_elements, binding.maximum_elements)
+                   not in ((None, None), (0, 0))):
+            raise ValueError("integer_immediate_type requires a read scalar half binding")
+
     member = ResolvedBindingMemberModel
     vector: list[ResolvedBindingMemberModel] = []
     if binding.allowed_vector_arities:
@@ -308,7 +327,9 @@ def _build_operand_binding(binding: ResolvedOperandBinding, name: str, backend: 
         build_availability(dict(binding.sink_availability)) if binding.sink_availability else None,
         tuple(symbol), str(binding.preserve_parameter_address_space).lower(), tuple(address), parameter,
         tuple(topology), cpp_value(CppDomain.IMMEDIATE_CONVERSION_POLICIES,
-            binding.immediate_conversion_policy.value, backend=backend), video)
+            binding.immediate_conversion_policy.value, backend=backend), video,
+        cpp_value(CppDomain.SCALAR_TYPES, binding.integer_immediate_type, backend=backend)
+            if binding.integer_immediate_type is not None else None)
 
 
 def _build_binding_storage(name: str, bindings: tuple[ResolvedOperandBinding, ...], backend: CodegenUnit) -> ResolvedBindingStorageModel:

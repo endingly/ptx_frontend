@@ -440,10 +440,13 @@ resolve_decimal_float_literal(const syntax_ast::AstImmediate& immediate,
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_value(
     const declaration_semantics::NumericConstantValue& value, SourceRange range,
-    ScalarType type, bool require_target_range) {
+    ScalarType type, bool require_target_range,
+    std::optional<ScalarType> integer_immediate_type) {
   if (const auto* integer =
           std::get_if<declaration_semantics::IntegerConstantValue>(&value))
-    return convert_integer_value(*integer, range, type, require_target_range);
+    return convert_integer_value(*integer, range,
+                                 integer_immediate_type.value_or(type),
+                                 require_target_range);
   if (!floating_destination_compatible(type, ScalarType::F64))
     return std::unexpected(
         ResolveDiagnostic{.range = range,
@@ -462,14 +465,15 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_value(
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     const syntax_ast::AstConstantOperand& operand, ScalarType type,
-    bool require_target_range) {
+    bool require_target_range,
+    std::optional<ScalarType> integer_immediate_type) {
   const auto value =
       declaration_semantics::numericConstantValue(*operand.expression);
   if (!value)
     return std::unexpected(ResolveDiagnostic{.range = value.error().range,
                                              .message = value.error().message});
   return resolve_numeric_value(*value, operand.range, type,
-                               require_target_range);
+                               require_target_range, integer_immediate_type);
 }
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
@@ -509,12 +513,15 @@ bool is_numeric_operand(const syntax_ast::AstOperand& operand) {
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_operand(
     const syntax_ast::AstOperand& operand, ScalarType type,
-    bool require_target_range) {
+    bool require_target_range,
+    std::optional<ScalarType> integer_immediate_type) {
   if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand))
-    return resolve_immediate_value(*immediate, type, require_target_range);
+    return resolve_immediate_value(*immediate, type, require_target_range,
+                                   integer_immediate_type);
   if (const auto* expression =
           std::get_if<syntax_ast::AstConstantOperand>(&operand))
-    return resolve_immediate_value(*expression, type, require_target_range);
+    return resolve_immediate_value(*expression, type, require_target_range,
+                                   integer_immediate_type);
   if (const auto* negated =
           std::get_if<syntax_ast::AstNegatedImmediate>(&operand)) {
     auto value = resolve_immediate_value(negated->immediate, ScalarType::B64);
@@ -525,7 +532,7 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_operand(
     return resolve_numeric_value(
         declaration_semantics::IntegerConstantValue{
             value->bits == 0 ? uint64_t{1} : uint64_t{0}, false},
-        negated->range, type, require_target_range);
+        negated->range, type, require_target_range, integer_immediate_type);
   }
   return std::unexpected(
       ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
@@ -534,7 +541,8 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_operand(
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     const syntax_ast::AstImmediate& immediate, ScalarType type,
-    bool require_target_range) {
+    bool require_target_range,
+    std::optional<ScalarType> integer_immediate_type) {
   std::string_view text = immediate.syntax.text;
   bool negative = false;
   if (!text.empty() && (text.front() == '+' || text.front() == '-')) {
@@ -546,8 +554,9 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     case syntax_ast::AstImmediateKind::DecimalInteger:
     case syntax_ast::AstImmediateKind::BinaryInteger:
     case syntax_ast::AstImmediateKind::HexInteger:
-      return resolve_integer_literal(immediate, type, text, negative,
-                                     require_target_range);
+      return resolve_integer_literal(immediate,
+                                     integer_immediate_type.value_or(type),
+                                     text, negative, require_target_range);
     case syntax_ast::AstImmediateKind::F32Hex:
       if (text.size() != immediate.syntax.text.size())
         return std::unexpected(invalid_immediate(
@@ -562,8 +571,9 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
                                            immediate.syntax.text);
     case syntax_ast::AstImmediateKind::WarpSize:
       // PTX defines WARP_SZ as the signed source integer constant 32.
-      return resolve_integer_literal(immediate, type, "32", negative,
-                                     require_target_range);
+      return resolve_integer_literal(immediate,
+                                     integer_immediate_type.value_or(type),
+                                     "32", negative, require_target_range);
   }
   throw ResolveException("Unknown AstImmediateKind.");
 }

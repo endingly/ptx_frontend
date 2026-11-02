@@ -565,6 +565,7 @@ class ResolvedOperandBinding:
     texture_unbracketed: bool = False
     texture_resource_kind: TextureResourceRole | None = None
     texture_residency_required: bool = False
+    integer_immediate_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1936,6 +1937,19 @@ def _build_operand_layout(
     video_instruction: VideoInstructionSpec | None = None,
 ) -> ResolvedOperandLayout:
     fields = tuple(_build_operand_field(operand) for operand in operands)
+    for operand, field in zip(operands, fields):
+        if operand.integer_immediate_type is None:
+            continue
+        expression = operand.type_expression
+        if (operand.integer_immediate_type != "b16"
+                or operand.kind is not OperandKind.REGISTER_OR_IMMEDIATE
+                or field.value_kind is not ResolvedValueKind.REG_OR_IMM
+                or _require_operand_role(field) is not ResolvedOperandRole.SOURCE
+                or _require_operand_access(field) is not ResolvedOperandAccess.READ
+                or expression is None
+                or expression.kind is not OperandTypeExpressionKind.FIXED_SCALAR
+                or expression.scalar_type not in ("f16", "bf16")):
+            raise ValueError("integer_immediate_type requires a read scalar half RegOrImm binding")
     return ResolvedOperandLayout(
         layout_id=layout_id,
         cpp_name=file_stem_to_pascal_case(layout_id),
@@ -1943,6 +1957,7 @@ def _build_operand_layout(
         bindings=tuple(
             ResolvedOperandBinding(
                 target_field_id=field.name,
+                integer_immediate_type=operand.integer_immediate_type,
                 type_expression=_resolve_operand_type_expression(
                     operand.type_expression,
                     modifier_field_ids,

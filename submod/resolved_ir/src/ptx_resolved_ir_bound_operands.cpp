@@ -1601,9 +1601,11 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
       address->range};
 }
 
+/** Resolve a scalar source; only its validated binding may supply an integer arm. */
 std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
     const syntax_ast::AstOperand& operand, ScalarType type,
-    const ResolveContext* context, bool require_target_range = false) {
+    const ResolveContext* context, bool require_target_range = false,
+    std::optional<ScalarType> integer_immediate_type = std::nullopt) {
   if (std::holds_alternative<syntax_ast::AstIdentifierRef>(operand) ||
       std::holds_alternative<syntax_ast::AstVectorMember>(operand)) {
     auto register_ref = resolve_register(operand, context);
@@ -1613,8 +1615,8 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
                               syntax_ast::sourceRange(operand)};
   }
   if (is_numeric_operand(operand)) {
-    auto value =
-        detail::resolve_numeric_operand(operand, type, require_target_range);
+    auto value = detail::resolve_numeric_operand(
+        operand, type, require_target_range, integer_immediate_type);
     if (!value)
       return std::unexpected(value.error());
     return WithLocs<RegOrImm>{RegOrImm{*value},
@@ -3341,6 +3343,13 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     const syntax_ast::AstOperand& operand,
     const ResolvedInstructionFields& fields, const ResolveContext* context,
     [[maybe_unused]] NamedArrayAddressPolicy named_array_policy) {
+  if (binding.integer_immediate_type &&
+      (field.value_kind != ResolvedValueKind::RegOrImm ||
+       !valid_integer_immediate_type_policy(binding)))
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message =
+            "Invalid integer immediate alternative for this resolved field."});
   switch (field.value_kind) {
     case ResolvedValueKind::VideoOperand: {
       if (!binding.video)
@@ -3503,7 +3512,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       auto value = resolve_reg_or_imm(
           operand, *type, context,
           binding.immediate_conversion_policy ==
-              checker::ImmediateConversionPolicy::RequireTargetRange);
+              checker::ImmediateConversionPolicy::RequireTargetRange,
+          binding.integer_immediate_type);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

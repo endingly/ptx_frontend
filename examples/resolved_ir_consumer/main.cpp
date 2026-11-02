@@ -2,6 +2,7 @@
 #include <concepts>
 #include <iostream>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -1628,8 +1629,132 @@ ret;
   return !ir::validateModule(*ast, moved) && ir::validateModule(copied);
 }
 
+/** Borrow source members only from this actual instruction's bounded owner lifetime. */
+std::array<const ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>*,
+           2>
+installedSetpSources(
+    const ptx_frontend::resolved_ir::Instruction& instruction) {
+  namespace ir = ptx_frontend::resolved_ir;
+  if (const auto* p = dynamic_cast<const ir::SetpF16*>(&instruction))
+    return {&p->src1, &p->src2};
+  if (const auto* p = dynamic_cast<const ir::SetpF16Boolean*>(&instruction))
+    return {&p->src1, &p->src2};
+  if (const auto* p = dynamic_cast<const ir::SetpBf16*>(&instruction))
+    return {&p->src1, &p->src2};
+  if (const auto* p = dynamic_cast<const ir::SetpBf16Boolean*>(&instruction))
+    return {&p->src1, &p->src2};
+  throw std::runtime_error("Expected scalar SETP sources");
+}
+
+/** Require new descriptor ABI, both policy arms and all four migrated BF16 members. */
+bool checkInstalledExplicitBit16Setp() {
+  namespace ir = ptx_frontend::resolved_ir;
+  static_assert(
+      std::same_as<decltype(ir::SetpBf16{}.src1.value), ir::RegOrImm>);
+  static_assert(
+      std::same_as<decltype(ir::SetpBf16{}.src2.value), ir::RegOrImm>);
+  static_assert(
+      std::same_as<decltype(ir::SetpBf16Boolean{}.src1.value), ir::RegOrImm>);
+  static_assert(
+      std::same_as<decltype(ir::SetpBf16Boolean{}.src2.value), ir::RegOrImm>);
+  ir::checker::OperandDescriptor legacy{.target_field_id = "legacy"};
+  if (legacy.integer_immediate_type)
+    return false;
+  const ptx_frontend::SourceRange range{{1, 1}, {1, 2}};
+  ir::checker::OperandDescriptor policy{
+      .target_field_id = "src",
+      .type_expression =
+          {.kind = ir::checker::OperandTypeExpressionKind::FixedScalar,
+           .fixed_scalar_type = ir::ScalarType::BF16},
+      .role = ir::checker::OperandRole::Source,
+      .access = ir::checker::OperandAccess::Read,
+      .allowed_shapes = ir::checker::OperandShape::Register |
+                        ir::checker::OperandShape::Immediate,
+      .integer_immediate_type = ir::ScalarType::B16};
+  ir::checker::OperandView view{
+      .field_id = "src",
+      .actual_shape = ir::checker::OperandShape::Immediate,
+      .immediate_type = ir::ScalarType::B16,
+      .immediate_bits = 1,
+      .immediate_is_negative = false,
+      .locations = std::span{&range, 1}};
+  const auto check = [&] {
+    return ir::checker::check_operands(std::span{&policy, 1}, {},
+                                       std::span{&view, 1}, {}, {});
+  };
+  if (!check())
+    return false;
+  view.immediate_type = ir::ScalarType::BF16;
+  view.immediate_bits = 0x3f80;
+  if (!check())
+    return false;
+  policy.integer_immediate_type = ir::ScalarType::U16;
+  const auto invalid = check();
+  if (invalid ||
+      invalid.error().front().kind !=
+          ir::checker::CheckDiagnosticKind::RuleViolation ||
+      invalid.error().front().range != range)
+    return false;
+  for (bool bf : {false, true})
+    for (bool boolean : {false, true})
+      for (bool raw_first : {false, true}) {
+        std::optional<ir::ResolvedModule> module;
+        {
+          const std::string operation =
+              std::string("setp.eq") + (boolean ? ".and" : "") +
+              (bf ? ".bf16" : ".f16") + " p," +
+              (raw_first ? "1,1.0" : "1.0,1") + (boolean ? ",q;" : ";");
+          const std::string text =
+              ".version 9.3\n.target sm_90\n.entry k(){.reg .pred p,q;" +
+              operation + "}";
+          ptx_frontend::PtxSyntaxParser parser(text);
+          const auto ast = parser.parseModule();
+          if (!ast || !ast.diagnostics.empty())
+            return false;
+          auto result = ir::resolveAndValidateModule(*ast);
+          if (!result || !ir::validateModule(*ast, *result))
+            return false;
+          module.emplace(std::move(*result));
+        }
+        auto copied = *module;
+        ir::ResolvedModule assigned;
+        assigned = copied;
+        auto function = assigned.functions.front();
+        assigned.functions.front() = function;
+        assigned.functions.front().body.front() =
+            function.body.front()->clone();
+        if (!ir::validateModule(assigned))
+          return false;
+        const auto fields =
+            installedSetpSources(*assigned.functions.front().body.front());
+        for (size_t i = 0; i < fields.size(); ++i) {
+          const auto* word =
+              std::get_if<ir::ResolvedImmediate>(&fields[i]->value);
+          if (!word || fields[i]->locs.size() != 1 ||
+              fields[i]->locs.front() == ptx_frontend::SourceRange{})
+            return false;
+          const bool raw = (i == 0) == raw_first;
+          if (word->type != (raw  ? ir::ScalarType::B16
+                             : bf ? ir::ScalarType::BF16
+                                  : ir::ScalarType::F16) ||
+              word->bits != (raw  ? 1u
+                             : bf ? 0x3f80u
+                                  : 0x3c00u) ||
+              bool(word->integer_source_bits) != raw || word->is_negative)
+            return false;
+        }
+        if (!assigned.functions.front().body.front()->check(
+                ir::checker::Context{
+                    .target = {.ptx_version = {9, 3}, .sm_version = 90}}))
+          return false;
+      }
+  return true;
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledExplicitBit16Setp())
+    return 1;
   if (!checkInstalledPragmas())
     return 39;
   if (!checkInstalledLanguageDomain())

@@ -254,8 +254,8 @@ TEST(SetpCompleteness, RejectsFloatingAndSpecialRegisterCombineSources) {
   EXPECT_FALSE(resolveModule(*special).has_value());
 }
 
-/** Scalar half numeric sources coexist with separately pending Bit/alternate routes. */
-TEST(SetpCompleteness, SeparatesNumericHalfAndPendingSourceRoutes) {
+/** Scalar raw/numeric sources remain separate from packed register-only forms. */
+TEST(SetpCompleteness, SeparatesScalarRawNumericAndPackedSourceRoutes) {
   for (const auto type : {"f16", "f16x2", "bf16", "bf16x2"}) {
     const bool packed = std::string_view(type).ends_with("x2");
     const std::string carrier = std::string_view(type) == "f16" ? "f16"
@@ -282,22 +282,29 @@ TEST(SetpCompleteness, SeparatesNumericHalfAndPendingSourceRoutes) {
         const auto ast = parseInstruction(source);
         ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
         const auto result = resolveSetp(*ast);
-        const bool numeric_half = std::string_view(type) == "f16" &&
-                                  std::string_view(immediate) == "1.0";
-        // F16 raw Bit16 and alternate-format source routes remain separate deliveries,
-        // not normative literal prohibitions inferred from current producer failure.
-        EXPECT_EQ(result.has_value(), numeric_half);
+        const bool scalar = !packed;
+        EXPECT_EQ(result.has_value(), scalar);
         const auto complete = parseModule(prefix + source + " }");
         ASSERT_MODULE_PARSE_SUCCEEDS(complete);
-        EXPECT_EQ(resolveAndValidateModule(*complete).has_value(),
-                  numeric_half);
-
-        if (result && numeric_half) {
-          const auto& form = dynamic_cast<const SetpF16&>(**result);
-          const auto& source_value = first ? form.src1.value : form.src2.value;
-          const auto& value = std::get<ResolvedImmediate>(source_value);
-          EXPECT_EQ(value.type, ScalarType::F16);
-          EXPECT_EQ(value.bits, 0x3c00U);
+        EXPECT_EQ(resolveAndValidateModule(*complete).has_value(), scalar);
+        if (result && scalar) {
+          const RegOrImm* actual = nullptr;
+          if (std::string_view(type) == "f16") {
+            const auto& form = dynamic_cast<const SetpF16&>(**result);
+            actual = first ? &form.src1.value : &form.src2.value;
+          } else {
+            const auto& form = dynamic_cast<const SetpBf16&>(**result);
+            actual = first ? &form.src1.value : &form.src2.value;
+          }
+          const auto& value = std::get<ResolvedImmediate>(*actual);
+          const bool raw = std::string_view(immediate) == "0x3c00";
+          EXPECT_EQ(value.type, raw ? ScalarType::B16
+                                : std::string_view(type) == "f16"
+                                    ? ScalarType::F16
+                                    : ScalarType::BF16);
+          EXPECT_EQ(value.bits,
+                    raw || std::string_view(type) == "f16" ? 0x3c00U : 0x3f80U);
+          EXPECT_EQ(value.integer_source_bits.has_value(), raw);
         }
       }
     }

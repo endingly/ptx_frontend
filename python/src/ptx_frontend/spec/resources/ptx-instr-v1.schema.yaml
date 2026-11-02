@@ -833,6 +833,11 @@ $defs:
               $ref: "#/$defs/ptx_type_name"
           - $ref: "#/$defs/type_expr"
 
+      integer_immediate_type:
+        description: Explicit raw integer alternative for a read scalar half source.
+        type: string
+        enum: [b16]
+
       register_width:
         description: >
           Width relation accepted for a register operand relative to its

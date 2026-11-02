@@ -1957,3 +1957,33 @@ All64 selected type branches have typed value carriers. Exactly32 have one-value
 Mixed braces may contain registers and immediates. The50 v2/v4 named branches retain actual General whole-base declaration identity, exact NamedProjection lanes, element SameWidth and the16-byte declaration cap. The14 v8 branches remain brace-only; the existing128-element projection buffer and256-bit generic capacity are unchanged, and this cohort needs at most8 lanes/128 bits. Immediate projection is not a user sink. Synchronous observers receive actual payloads and all lane ranges, including lane8, and must not retain callback references. Copies/assignments/clones reacquire views from their own owners.
 
 Ordinary typed words require the selected logical type, in-width bits and absent integer-origin/negative flags; coherent current edits do not replay erased floating source history. Current payload/pointer/range/provenance checks and retained source-identity checks remain independent. Address alignment, selected type/modifier/target gates and incomplete-context deferral still apply. This contract does not widen the six scalar packed branches, atomic inputs, packed numeric constructors or load destinations, and makes no runtime multimem mapping or GPU execution claim. Current generation, Debug, fresh installed public-consumer and independent actual-diff evidence remain required before delivery completion.
+
+## Explicit scalar Bit16 sources
+
+The implementation has passed full-model/default audits, normal generation, focused
+Debug checks and a matching installed public consumer. Independent final acceptance
+remains pending. The `integer_immediate_type` descriptor member is
+an optional trailing `ScalarType`, absent by default. Exactly eight existing
+scalar SETP source rows engage B16: src1/src2 on the plain and Boolean F16/BF16
+forms. Four BF16 source members migrate from register references to `RegOrImm`,
+with logical BF16 and SameWidth; the four F16 members keep their existing kind,
+logical type and width. The descriptor ABI requires rebuilding all consumers.
+
+The source is evaluated once. An integer result chooses the explicit raw B16 arm:
+`1` is word `0x0001`, and `0x10001` narrows to the same word while retaining its
+64-bit integer origin. A floating result uses the existing logical converter:
+`1.0` gives F16 `0x3c00` or BF16 `0x3f80`. Direct unsigned `0f` keeps its existing
+root route and lexical precision; no wrapper or trial conversion classifies it.
+Ordinary logical floating operands with absent policy still reject integer
+origin, including the packed formats. This support does not extend packed
+SETP, atomic, storage, call or other scalar source permissions.
+
+Current immediates select their arm by their actual type. Both words fit 16 bits;
+numeric logical words have no integer origin or integer negative flag. B16
+origin is optional; if present its mask/sign consistency remains checked, and a
+cache-free word requires a false negative flag. Coherent word/arm edits do not
+authenticate erased source history. Changed supplied syntax still has its
+existing separate source association. Complete target context is required for
+instruction-check proof; AvailableContext deferral is not a legality certificate.
+Actual F16 carriers remain B16 or F16; BF16 carriers remain actual B16, with the
+existing intrinsic declaration/class guards. No Base compatibility rule changes.

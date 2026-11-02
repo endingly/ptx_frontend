@@ -3,6 +3,7 @@
 
 #include "ptx_address_register_type.hpp"
 #include "ptx_resolved_ir_packed_literal.hpp"
+#include "ptx_resolved_ir_private.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -1637,6 +1638,42 @@ CheckResult check_operands(
       continue;
     }
 
+    if (descriptor.integer_immediate_type) {
+      if (!::ptx_frontend::resolved_ir::detail::
+              valid_integer_immediate_type_policy(descriptor)) {
+        diagnostics.push_back(
+            {CheckDiagnosticKind::RuleViolation,
+             diagnostic_range(operand->locations, context),
+             "Invalid integer immediate alternative for this descriptor."});
+        continue;
+      }
+      if (operand->actual_shape == OperandShape::Immediate) {
+        const auto primary = descriptor.type_expression.fixed_scalar_type;
+        const bool raw =
+            operand->immediate_type == descriptor.integer_immediate_type;
+        const bool numeric = operand->immediate_type == primary;
+        if (operand->immediate_type && !raw && !numeric) {
+          diagnostics.push_back({CheckDiagnosticKind::OperandTypeMismatch,
+                                 diagnostic_range(operand->locations, context),
+                                 "Immediate type is neither the logical half "
+                                 "format nor its raw Bit16 alternative."});
+          continue;
+        }
+        if (!operand->immediate_type || !operand->immediate_bits ||
+            *operand->immediate_bits > 0xffffU ||
+            (numeric && (operand->integer_source_bits ||
+                         operand->immediate_is_negative.value_or(false))) ||
+            (raw && !operand->integer_source_bits &&
+             operand->immediate_is_negative.value_or(false))) {
+          diagnostics.push_back({CheckDiagnosticKind::ImmediateValueMismatch,
+                                 diagnostic_range(operand->locations, context),
+                                 "Scalar half source requires a canonical "
+                                 "logical or raw Bit16 word."});
+          continue;
+        }
+      }
+    }
+
     // Every source-backed data immediate retains both the evaluated source
     // integer and its use-width bits, including operands with no fixed
     // immediate constraint of their own.
@@ -2508,6 +2545,8 @@ CheckResult check_operands(
               to_string(expected_type)),
       });
     } else if (operand->immediate_type &&
+               !(descriptor.integer_immediate_type &&
+                 operand->actual_shape == OperandShape::Immediate) &&
                !scalar_types_compatible(*operand->immediate_type,
                                         expected_type)) {
       diagnostics.push_back(CheckDiagnostic{

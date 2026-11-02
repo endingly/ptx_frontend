@@ -977,6 +977,8 @@ class OperandSpec:
     texture_unbracketed: bool = False
     texture_resource_kind: TextureResourceRole | None = None
     video: VideoOperandSpec | None = None
+    # Absent preserves ordinary logical-type numeric conversion; engaged is raw B16.
+    integer_immediate_type: str | None = None
 
 
 @dataclass(frozen=True)

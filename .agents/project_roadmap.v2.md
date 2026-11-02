@@ -1462,3 +1462,11 @@ Legacy SHFL availability uses the complete PTX/SM removal window: PTX >=3.0 and 
 Historical101/101A source profiles begin at8.6,101F at8.8, including9.0/9.3. Their exact source identities remain101 while explicit catalog feature correspondence is110. The bounded231 historical metadata operations preserve854 original110 conditions and25 restricted parents; public consumers link the additive feature helper. This does not claim GPU execution or complete historical target coverage.
 
 备用标量转换提供 BF16/E4M3/E5M2 的 binary64 整数位单次 RNE 与 low16/low8 当前字检查，仅作用于现有五个 BF16 源字段；E4/E5 仅有 helper 与通用 checker 能力。公共 API、模型及生成字段不变，其他源权限、packed、call/storage 与完整目标验收仍独立待办。
+
+Scalar SETP explicit Bit16 implementation (independent final acceptance pending): one optional trailing descriptor
+property engages eight existing scalar source rows; four BF16 members become
+RegOrImm/logical BF16/SameWidth. F16 kind/type/width, accepted ALT converters,
+packed-origin guards and intrinsic register eligibility remain unchanged.
+Current-parent integration, full137/default audits, normal generation, focused Debug
+and a matching fresh installed SDK have passed; the 359 obligations have qualified
+current evidence. Distinct actual-diff final acceptance remains pending.

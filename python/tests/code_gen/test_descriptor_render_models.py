@@ -15,10 +15,14 @@ from ptx_frontend.code_gen.render_models.checker_descriptors import build_checke
 from ptx_frontend.code_gen.render_models.matrix import MatrixDescriptorModel
 from ptx_frontend.code_gen.render_models.resolved_descriptors import (
     ResolvedTypeExpressionModel,
+    _build_operand_binding,
     build_resolved_descriptor_storage,
 )
 from ptx_frontend.code_gen.render_models.syntax_descriptors import build_syntax_descriptor_storage
-from ptx_frontend.ir.resolved_ir import from_instruction_spec
+from ptx_frontend.ir.resolved_ir import (
+    from_instruction_spec, ResolvedOperandRole, ResolvedOperandAccess,
+    ResolvedOperandShape, ResolvedOperandTypeExpressionKind,
+)
 from ptx_frontend.ir.syntax_ast import from_InstructionSpec
 from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.resources import packaged_backend_spec
@@ -34,6 +38,62 @@ class DescriptorRenderModelTests(unittest.TestCase):
         cls.backend = load_cpp_backend(packaged_backend_spec())
         cls.specifications = get_packaged_spec_database().instructions
         cls.mov = next(spec for spec in cls.specifications if spec.opcode == "mov")
+
+    def test_integer_alternative_is_a_trailing_typed_optional(self) -> None:
+        """Default bindings stay absent; only eight half sources render B16."""
+        specification = next(s for s in self.specifications if s.opcode == "setp")
+        storage = build_resolved_descriptor_storage(from_instruction_spec(specification), self.backend)
+        policies = [binding.integer_immediate_type for group in storage.binding_groups
+                    for binding in group.bindings if binding.integer_immediate_type is not None]
+        self.assertTrue(policies)
+        self.assertTrue(all(value == "ScalarType::B16" for value in policies))
+        variant = next(v for v in from_instruction_spec(specification).variants
+                       if v.variant_id == "setp_f16")
+        layout = variant.operand_layouts[0]
+        without = replace(layout, layout_id="without_policy", bindings=tuple(
+            replace(b, integer_immediate_type=None) if b.target_field_id == "src1" else b
+            for b in layout.bindings))
+        manual = replace(from_instruction_spec(specification), variants=(
+            replace(variant, operand_layouts=(layout, without)),))
+        interned = build_resolved_descriptor_storage(manual, self.backend)
+        self.assertEqual(len(interned.binding_groups), 2)
+        policies = {b.integer_immediate_type for group in interned.binding_groups
+                    for b in group.bindings if b.target_field_id == "src1"}
+        self.assertEqual(policies, {None, "ScalarType::B16"})
+
+    def test_manual_integer_alternative_rendering_validates_existing_scalar_facts(self) -> None:
+        """Forged derived bindings cannot bypass the normalizer's engaged context."""
+        specification = next(s for s in self.specifications if s.opcode == "setp")
+        instruction = from_instruction_spec(specification)
+        binding = next(b for v in instruction.variants if v.variant_id == "setp_f16"
+                       for layout in v.operand_layouts for b in layout.bindings
+                       if b.target_field_id == "src1")
+        for logical in ("f16", "bf16"):
+            valid = replace(binding, type_expression=replace(
+                binding.type_expression, scalar_type=logical))
+            rendered = _build_operand_binding(valid, "manual", self.backend)
+            self.assertEqual(rendered.integer_immediate_type, "ScalarType::B16")
+            self.assertIsNone(_build_operand_binding(replace(valid,
+                integer_immediate_type=None), "manual", self.backend).integer_immediate_type)
+        invalid = [replace(binding, integer_immediate_type=value)
+                   for value in ("b32", "u16", "f16", "b8", "invalid")]
+        invalid += [replace(binding, type_expression=replace(
+            binding.type_expression, scalar_type=value)) for value in ("f32", "b16", "f16x2")]
+        invalid += [replace(binding, role=ResolvedOperandRole.DESTINATION),
+                    replace(binding, access=ResolvedOperandAccess.WRITE),
+                    replace(binding, access=ResolvedOperandAccess.READ_WRITE),
+                    replace(binding, source_value_vector=True),
+                    replace(binding, minimum_elements=2, maximum_elements=2),
+                    replace(binding, type_expression=replace(binding.type_expression,
+                        kind=ResolvedOperandTypeExpressionKind.MODIFIER_FIELD,
+                        scalar_type=None, modifier_field_id="type"))]
+        invalid += [replace(binding, allowed_shapes=shape) for shape in (
+            (ResolvedOperandShape.REGISTER,), (ResolvedOperandShape.IMMEDIATE,),
+            (ResolvedOperandShape.VECTOR, ResolvedOperandShape.IMMEDIATE))]
+        for candidate in invalid:
+            with self.subTest(binding=candidate):
+                with self.assertRaisesRegex(ValueError, "read scalar half"):
+                    _build_operand_binding(candidate, "manual", self.backend)
 
     def test_storage_builders_do_not_render_nested_fragments(self) -> None:
         """All storage builders work while the shared renderer is unavailable."""

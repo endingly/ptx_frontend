@@ -1,6 +1,13 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
+#include <cstdint>
 #include <optional>
+#include <stdexcept>
+#include <vector>
+
+#include <fmt/format.h>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -202,45 +209,399 @@ TEST(Multimem, ScalarLiteralSourcesAfterAstDeath) {
   EXPECT_FALSE(validateModule(*owned));
 }
 
-/** Raw packed FP8 literals retain their exact 32-bit use representation. */
-TEST(Multimem, PackedFp8LiteralBitsAfterAstDeath) {
-  std::optional<ResolvedModule> owned;
-  {
-    auto ast = test_helpers::parseModule(multimem_source(R"ptx(
-  multimem.st.e4m3x4 [mm], 0x100000001;
-  multimem.st.e5m2x4 [mm], 0f3f800000;
-)ptx"));
-    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
-    auto result = resolveAndValidateModule(*ast);
-    ASSERT_TRUE(result.has_value()) << result.error().front().message;
-    owned.emplace(std::move(*result));
+/** Borrow the two concrete packed-store fields only while their instruction lives. */
+struct PackedOriginSlot {
+  /** Mutable current source; its instruction owns the alternative and ranges. */
+  WithLocs<RegOrImm>& source;
+  /** Current selected logical type, independent of the immediate's type. */
+  WithLocs<ScalarType>& type;
+  /** Current selected default layout and its retained source provenance. */
+  ResolvedOperandLayoutTag& layout;
+};
+
+/** Locate the same existing source field on the weak or ordered packed form. */
+PackedOriginSlot packed_origin_slot(Instruction& instruction) {
+  if (auto* weak = dynamic_cast<MultimemStFloatFp8PackedNoneScalarDefaultWeak*>(
+          &instruction))
+    return {weak->src, weak->type, weak->operand_layout};
+  if (auto* ordered =
+          dynamic_cast<MultimemStFloatFp8PackedNoneScalarDefaultOrdered*>(
+              &instruction))
+    return {ordered->src, ordered->type, ordered->operand_layout};
+  throw std::runtime_error("Expected the selected scalar packed store.");
+}
+
+/** Form an existing weak/default or relaxed/sys source, with no hidden producer. */
+std::string packed_origin_operation(bool ordered, ScalarType type,
+                                    std::string_view value) {
+  return std::string("multimem.st.") + (ordered ? "relaxed.sys." : "") +
+         (type == ScalarType::E4m3x4 ? "e4m3x4" : "e5m2x4") + " [mm], " +
+         std::string(value) + ";";
+}
+
+/** Return an independent owner after actual source, parser and AST destruction. */
+ResolvedModule packed_origin_owner(std::string_view operation) {
+  const auto text = multimem_source(operation);
+  const auto ast = test_helpers::parseModule(text);
+  if (!ast || !ast.diagnostics.empty())
+    throw std::runtime_error("Packed source fixture did not parse.");
+  auto module = resolveAndValidateModule(*ast);
+  if (!module)
+    throw std::runtime_error(module.error().front().message);
+  return std::move(*module);
+}
+
+/** Supply complete current feature context and the actual instruction extent. */
+checker::Context packed_origin_context(const ResolvedModule& module) {
+  return {
+      .target = {.ptx_version = {9, 3},
+                 .sm_version = 100,
+                 .identity = *base::parse_target_identity("sm_100a")},
+      .instruction_range = module.functions.front().instruction_ranges.front()};
+}
+
+/** Require current canonical-word failures at the actual immediate operand. */
+void expect_packed_origin_result(const checker::CheckResult& checked,
+                                 bool valid, SourceRange range) {
+  ASSERT_EQ(bool(checked), valid)
+      << (checked ? "unexpected success" : checked.error().front().message);
+  if (!valid) {
+    ASSERT_FALSE(checked.error().empty());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::ImmediateValueMismatch);
+    EXPECT_EQ(checked.error().front().range, range);
+    EXPECT_NE(checked.error().front().message.find("Packed FP8 immediate"),
+              std::string::npos);
   }
-  ASSERT_TRUE(owned);
-  ASSERT_TRUE(validateModule(*owned));
-  const auto& body = owned->functions.front().body;
-  ASSERT_EQ(body.size(), 3u);
-  auto* first = dynamic_cast<MultimemStFloatFp8PackedNoneScalarDefaultWeak*>(
-      body[0].get());
-  ASSERT_NE(first, nullptr);
-  auto* second = dynamic_cast<MultimemStFloatFp8PackedNoneScalarDefaultWeak*>(
-      body[1].get());
-  ASSERT_NE(second, nullptr);
-  auto* integer = std::get_if<ResolvedImmediate>(&first->src.value);
-  auto* float_bits = std::get_if<ResolvedImmediate>(&second->src.value);
-  ASSERT_NE(integer, nullptr);
-  ASSERT_NE(float_bits, nullptr);
-  EXPECT_EQ(integer->type, ScalarType::E4m3x4);
-  EXPECT_EQ(integer->bits, 1u);
-  ASSERT_TRUE(integer->integer_source_bits);
-  EXPECT_EQ(*integer->integer_source_bits, 0x100000001u);
-  EXPECT_EQ(float_bits->type, ScalarType::E5m2x4);
-  EXPECT_EQ(float_bits->bits, 0x3f800000u);
-  EXPECT_FALSE(float_bits->integer_source_bits);
-  integer->bits = 2;
-  EXPECT_FALSE(validateModule(*owned));
-  integer->bits = 1;
-  float_bits->bits = 0x100000000u;
-  EXPECT_FALSE(validateModule(*owned));
+}
+
+/** Copy observer values synchronously; no borrowed source or payload escapes. */
+struct PackedOriginObservation final : detail::IReferenceObserver {
+  /** Independent snapshot of the current scalar data projection. */
+  std::optional<ResolvedImmediate> immediate;
+  /** Owned source ranges corresponding to the copied projection. */
+  std::vector<SourceRange> locations;
+  /** Observe only the immediate alternative of the actual typed source. */
+  void reg_or_imm(const RegOrImm& operand, std::span<const SourceRange> ranges,
+                  checker::AddressSymbolResolutionPolicy) override {
+    if (const auto* value = std::get_if<ResolvedImmediate>(&operand)) {
+      immediate = *value;
+      locations.assign(ranges.begin(), ranges.end());
+    }
+  }
+};
+
+/** Raw words have no integer origin and permit coherent current data edits. */
+TEST(Multimem, PackedFp8LiteralBitsAfterAstDeath) {
+  constexpr std::array<std::string_view, 8> mutations{
+      "sourcebits-zero",    "sourcebits-equal",
+      "sourcebits-wide",    "signed-coherent",
+      "negative-no-origin", "highbits",
+      "word-edit",          "restore"};
+  for (const bool ordered : {false, true})
+    for (const auto type : {ScalarType::E4m3x4, ScalarType::E5m2x4}) {
+      for (size_t index = 0; index < mutations.size(); ++index) {
+        SCOPED_TRACE(std::string(ordered ? "ordered-" : "weak-") +
+                     std::string(to_string(type)) + "-" +
+                     std::string(mutations[index]));
+        const auto literal = index == 0   ? "0f00000000"
+                             : index == 3 ? "0fffffffff"
+                                          : "0f00000001";
+        const auto operation = packed_origin_operation(ordered, type, literal);
+        auto module = packed_origin_owner(operation);
+        ASSERT_EQ(module.functions.front().body.size(), 2u);
+        auto& instruction = *module.functions.front().body.front();
+        EXPECT_EQ(instruction.instruction_kind(),
+                  ordered
+                      ? MultimemStFloatFp8PackedNoneScalarDefaultOrdered::kind
+                      : MultimemStFloatFp8PackedNoneScalarDefaultWeak::kind);
+        auto slot = packed_origin_slot(instruction);
+        ASSERT_EQ(slot.type.value, type);
+        ASSERT_EQ(slot.layout.value, 0u);
+        auto* value = std::get_if<ResolvedImmediate>(&slot.source.value);
+        ASSERT_NE(value, nullptr);
+        ASSERT_EQ(value->type, type);
+        ASSERT_FALSE(value->integer_source_bits);
+        ASSERT_FALSE(value->is_negative);
+        const auto range = slot.source.locs.front();
+        const auto context = packed_origin_context(module);
+        ASSERT_TRUE(instruction.check(context));
+        ASSERT_TRUE(validateModule(module));
+        if (index == 0)
+          value->integer_source_bits = 0;
+        if (index == 1)
+          value->integer_source_bits = 1;
+        if (index == 2)
+          value->integer_source_bits = 0x100000001ULL;
+        if (index == 3) {
+          value->integer_source_bits = UINT64_MAX;
+          value->is_negative = true;
+        }
+        if (index == 4)
+          value->is_negative = true;
+        if (index == 5)
+          value->bits = 0x100000000ULL;
+        if (index == 6)
+          value->bits = 2;
+        if (index == 7) {
+          value->integer_source_bits = 1;
+          EXPECT_FALSE(instruction.check(context));
+          value->integer_source_bits.reset();
+        }
+        const bool valid = index >= 6;
+        expect_packed_origin_result(instruction.check(context), valid, range);
+        expect_packed_origin_result(validateModule(module), valid, range);
+        {
+          const auto text = multimem_source(operation);
+          const auto ast = test_helpers::parseModule(text);
+          ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+          expect_packed_origin_result(validateModule(*ast, module), valid,
+                                      range);
+        }
+        auto copied = module;
+        ResolvedModule assigned;
+        assigned = copied;
+        auto moved = std::move(copied);
+        ResolvedModule move_assigned;
+        move_assigned = std::move(assigned);
+        expect_packed_origin_result(validateModule(moved), valid, range);
+        expect_packed_origin_result(validateModule(move_assigned), valid,
+                                    range);
+        const auto cloned = instruction.clone();
+        expect_packed_origin_result(cloned->check(context), valid, range);
+        PackedOriginObservation observation;
+        cloned->visit_references(observation);
+        ASSERT_TRUE(observation.immediate);
+        EXPECT_EQ(*observation.immediate, *value);
+        EXPECT_EQ(observation.locations, slot.source.locs);
+        value->integer_source_bits.reset();
+        value->is_negative = false;
+        value->bits = 1;
+        EXPECT_TRUE(instruction.check(context));
+        EXPECT_TRUE(validateModule(module));
+      }
+    }
+}
+
+TEST(Multimem, PackedFloatRejectsIntegerSourcesWithoutLosingBitContexts) {
+  constexpr std::array<std::string_view, 14> integers{
+      "0",           "1",    "0b1",       "01",          "0x3c3c3c3c",
+      "0x3c3c3c3cU", "-1",   "-1U",       "0x100000001", "(1+2)",
+      "((.u64)1)",   "(!0)", "(1.0<2.0)", "(1?1:2U)"};
+  for (const bool ordered : {false, true})
+    for (const auto type : {ScalarType::E4m3x4, ScalarType::E5m2x4}) {
+      for (const auto literal : integers) {
+        const auto operation = packed_origin_operation(ordered, type, literal);
+        SCOPED_TRACE(operation);
+        const auto ast = test_helpers::parseModule(multimem_source(operation));
+        ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+        const auto only = resolveModuleOnly(*ast);
+        ASSERT_FALSE(only);
+        ASSERT_FALSE(only.error().empty());
+        EXPECT_EQ(only.error().front().stage(),
+                  ResolveDiagnosticStage::Resolution);
+        EXPECT_FALSE(only.error().front().checker_kind);
+        EXPECT_NE(only.error().front().message.find("Integer literal"),
+                  std::string::npos);
+        EXPECT_GT(only.error().front().range.start.line, 0);
+        const auto checked = resolveAndValidateModule(*ast);
+        ASSERT_FALSE(checked);
+        EXPECT_EQ(checked.error().front().stage(),
+                  ResolveDiagnosticStage::Resolution);
+        EXPECT_TRUE(validateModule(packed_origin_owner(
+            packed_origin_operation(ordered, type, "0f00000001"))));
+      }
+      EXPECT_TRUE(validateModule(
+          packed_origin_owner("mov.b32 %b0, 0x3c3c3c3c; " +
+                              packed_origin_operation(ordered, type, "%b0"))));
+    }
+  for (const auto operation :
+       {"mov.b32 %b0, 0x100000001;", "multimem.st.b32 [mm], 0x100000001;",
+        "mov.b32 %b0, -1;", "mov.b32 %b0, 0xffffffffU;"}) {
+    EXPECT_TRUE(validateModule(packed_origin_owner(operation)));
+  }
+  auto bit = packed_origin_owner("multimem.st.b32 [mm], 0x100000001;");
+  auto& store = dynamic_cast<MultimemStIntegerNoneScalarDefaultWeak&>(
+      *bit.functions.front().body.front());
+  auto& immediate = std::get<ResolvedImmediate>(store.src.value);
+  EXPECT_EQ(immediate.bits, 1u);
+  EXPECT_EQ(immediate.integer_source_bits, 0x100000001ULL);
+  immediate.bits = 2;
+  const auto mismatch = store.check(packed_origin_context(bit));
+  ASSERT_FALSE(mismatch);
+  EXPECT_EQ(mismatch.error().front().kind,
+            checker::CheckDiagnosticKind::ImmediateValueMismatch);
+  EXPECT_NE(
+      mismatch.error().front().message.find("inconsistent with its integer"),
+      std::string::npos);
+  EXPECT_FALSE(validateModule(bit));
+}
+
+TEST(Multimem, PackedFloatPreservesUnsignedRawWordsAndSurfaceLimits) {
+  constexpr std::array<uint32_t, 8> words{0,           1,           0x80000000U,
+                                          0x3c3c3c3cU, 0x3e3e3e3eU, 0x7fc00001U,
+                                          0x7f800001U, 0xffffffffU};
+  for (const bool ordered : {false, true})
+    for (const auto type : {ScalarType::E4m3x4, ScalarType::E5m2x4}) {
+      for (const auto word : words) {
+        const auto operation = packed_origin_operation(
+            ordered, type, fmt::format("0f{:08x}", word));
+        auto module = packed_origin_owner(operation);
+        auto slot = packed_origin_slot(*module.functions.front().body.front());
+        const auto& immediate = std::get<ResolvedImmediate>(slot.source.value);
+        EXPECT_EQ(slot.type.value, type);
+        EXPECT_EQ(slot.layout.value, 0u);
+        EXPECT_EQ(immediate.type, type);
+        EXPECT_EQ(immediate.bits, word);
+        EXPECT_FALSE(immediate.integer_source_bits);
+        EXPECT_FALSE(immediate.is_negative);
+        EXPECT_TRUE(validateModule(module));
+        PtxSyntaxParser parser(operation);
+        const auto ast = parser.parseInstruction();
+        ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
+        const auto factory = resolveMultimem(*ast);
+        ASSERT_TRUE(factory) << factory.error().message;
+        EXPECT_TRUE((*factory)->check(
+            checker::Context{.target = packed_origin_context(module).target,
+                             .instruction_range = ast->range}));
+      }
+      for (const auto literal :
+           {"+0f3c3c3c3c", "-0f3c3c3c3c", "(0f3c3c3c3c)", "(0f3c3c3c3c+0)",
+            "((.u64)0f3c3c3c3c)", "1.5", "0d3ff8000000000000", "(1.0+0.5)"}) {
+        const auto operation = packed_origin_operation(ordered, type, literal);
+        EXPECT_FALSE(accepts_multimem(multimem_source(operation))) << operation;
+      }
+      if (ordered) {
+        auto operation = packed_origin_operation(true, type, "0f00000001");
+        operation.replace(operation.find("relaxed.sys"), 11, "release.gpu");
+        EXPECT_TRUE(validateModule(packed_origin_owner(operation)));
+      }
+    }
+}
+
+TEST(Multimem, PackedFloatRetainsIndependentTypeSpaceTargetAndContextChecks) {
+  for (const bool ordered : {false, true})
+    for (const auto type : {ScalarType::E4m3x4, ScalarType::E5m2x4}) {
+      const auto operation =
+          packed_origin_operation(ordered, type, "0f00000001");
+      auto module = packed_origin_owner(operation);
+      auto& instruction = *module.functions.front().body.front();
+      auto slot = packed_origin_slot(instruction);
+      auto& immediate = std::get<ResolvedImmediate>(slot.source.value);
+      const auto other =
+          type == ScalarType::E4m3x4 ? ScalarType::E5m2x4 : ScalarType::E4m3x4;
+      immediate.type = other;
+      EXPECT_FALSE(instruction.check(packed_origin_context(module)));
+      EXPECT_FALSE(validateModule(module));
+      slot.type.value = other;
+      EXPECT_TRUE(instruction.check(packed_origin_context(module)));
+      EXPECT_TRUE(validateModule(module));
+      for (const auto reg : {"%byte0", "%addr"})
+        EXPECT_FALSE(accepts_multimem(
+            multimem_source(packed_origin_operation(ordered, type, reg))));
+      for (const auto address : {"sh", "local_value"}) {
+        auto changed = operation;
+        changed.replace(changed.find("[mm]"), 4,
+                        "[" + std::string(address) + "]");
+        const auto ast = test_helpers::parseModule(multimem_source(changed));
+        ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+        const auto normalized = resolveModuleOnly(*ast);
+        ASSERT_TRUE(normalized) << normalized.error().front().message;
+        EXPECT_FALSE(validateModule(*normalized));
+        const auto strict = resolveAndValidateModule(*ast);
+        ASSERT_FALSE(strict);
+        EXPECT_EQ(strict.error().front().stage(),
+                  ResolveDiagnosticStage::Checking);
+        EXPECT_TRUE(strict.error().front().checker_kind);
+      }
+      for (const auto target : {"sm_90", "sm_100"}) {
+        const auto ast =
+            test_helpers::parseModule(multimem_source(operation, target));
+        ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+        const auto strict = resolveAndValidateModule(*ast);
+        ASSERT_FALSE(strict);
+        EXPECT_EQ(strict.error().front().stage(),
+                  ResolveDiagnosticStage::Checking);
+      }
+      for (const bool remove_version : {false, true}) {
+        auto text = multimem_source(operation);
+        const std::string header =
+            remove_version ? ".version 9.3\n" : ".target sm_100a\n";
+        text.erase(text.find(header), header.size());
+        const auto ast = test_helpers::parseModule(text);
+        ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+        auto partial = resolveModuleOnly(*ast);
+        ASSERT_TRUE(partial) << partial.error().front().message;
+        auto partial_slot =
+            packed_origin_slot(*partial->functions.front().body.front());
+        std::get<ResolvedImmediate>(partial_slot.source.value)
+            .integer_source_bits = 1;
+        EXPECT_TRUE(
+            validateModule(*partial, ModuleValidationPolicy::AvailableContext));
+        EXPECT_TRUE(validateModule(*ast, *partial,
+                                   ModuleValidationPolicy::AvailableContext));
+        const auto strict = validateModule(*partial);
+        ASSERT_FALSE(strict);
+        EXPECT_TRUE(std::ranges::any_of(strict.error(), [](const auto& d) {
+          return d.kind ==
+                 checker::CheckDiagnosticKind::MissingValidationContext;
+        }));
+        EXPECT_FALSE(partial->functions.front().body.front()->check(
+            packed_origin_context(*partial)));
+      }
+    }
+  ResolvedImmediate vector_value{.bits = 1, .type = ScalarType::F32};
+  EXPECT_TRUE(valid_value_vector_immediate(vector_value));
+  vector_value.integer_source_bits = 0;
+  EXPECT_FALSE(valid_value_vector_immediate(vector_value));
+  vector_value.integer_source_bits.reset();
+  vector_value.is_negative = true;
+  EXPECT_FALSE(valid_value_vector_immediate(vector_value));
+}
+
+TEST(Multimem, PackedFloatDirectViewsRetainTypedOriginAndBitConsistency) {
+  using namespace checker;
+  const SourceRange range{{1, 1}, {1, 10}};
+  const Context context{.target = {}, .instruction_range = range};
+  OperandDescriptor descriptor{
+      .target_field_id = "src",
+      .type_expression = {.kind = OperandTypeExpressionKind::FixedScalar,
+                          .fixed_scalar_type = ScalarType::E4m3x4},
+      .role = OperandRole::Source,
+      .access = OperandAccess::Read,
+      .allowed_shapes = OperandShape::Immediate};
+  OperandView operand{.field_id = "src",
+                      .actual_shape = OperandShape::Immediate,
+                      .immediate_type = ScalarType::E4m3x4,
+                      .immediate_bits = 0,
+                      .immediate_is_negative = false,
+                      .locations = std::span{&range, 1}};
+  const auto check = [&] {
+    return check_operands(std::span{&descriptor, 1}, {}, std::span{&operand, 1},
+                          {}, context);
+  };
+  for (const auto type : {ScalarType::E4m3x4, ScalarType::E5m2x4}) {
+    descriptor.type_expression.fixed_scalar_type = type;
+    operand.immediate_type = type;
+    ASSERT_TRUE(check());
+    operand.integer_source_bits = 0;
+    const auto zero = check();
+    ASSERT_FALSE(zero);
+    EXPECT_EQ(zero.error().front().kind,
+              CheckDiagnosticKind::ImmediateValueMismatch);
+    operand.integer_source_bits.reset();
+    EXPECT_TRUE(check());
+    operand.immediate_type = ScalarType::F32;
+    EXPECT_FALSE(check());
+    operand.immediate_type = type;
+  }
+  descriptor.type_expression.fixed_scalar_type = ScalarType::B32;
+  operand.immediate_type = ScalarType::B32;
+  operand.immediate_bits = 1;
+  operand.integer_source_bits = 0x100000001ULL;
+  EXPECT_TRUE(check());
+  operand.immediate_bits = 2;
+  EXPECT_FALSE(check());
 }
 
 /** Omitted red qualifiers retain absent source ranges and typed defaults. */

@@ -440,7 +440,8 @@ std::pair<uint64_t, bool> integer_constraint_value(
 }
 
 /**
- * Recheck integer-source use-width bits and raw 32-bit packed FP8 literals.
+ * Recheck integer-source use-width bits and canonical raw packed FP8 words.
+ * Packed floating words have no integer origin, including an optional zero.
  * Fixed integer constraints use the original source value for legality, while
  * consumers observe the converted bits; both representations must agree.
  */
@@ -462,8 +463,8 @@ CheckResult check_source_immediate_consistency(const OperandView& operand,
           *operand.immediate_type);
   if (packed_raw32 &&
       (*operand.immediate_bits > std::numeric_limits<uint32_t>::max() ||
-       (!operand.integer_source_bits &&
-        operand.immediate_is_negative.value_or(false)))) {
+       operand.integer_source_bits ||
+       operand.immediate_is_negative.value_or(false))) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::ImmediateValueMismatch,
         .range = diagnostic_range(operand.locations, context),
@@ -472,8 +473,7 @@ CheckResult check_source_immediate_consistency(const OperandView& operand,
             operand.field_id),
     }});
   }
-  if (!operand.integer_source_bits ||
-      (!is_integer_type(*operand.immediate_type) && !packed_raw32))
+  if (!operand.integer_source_bits || !is_integer_type(*operand.immediate_type))
     return {};
   const uint8_t byte_width = base::scalar_size_of(*operand.immediate_type);
   if (byte_width == 0 || byte_width > sizeof(uint64_t))

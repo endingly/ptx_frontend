@@ -45,11 +45,24 @@ vector 逐 lane 遵守该规则。整数 signedness 可不同，同大小 Bit �
 检查器复用通用类型化操作数、modifier 和引用遍历。对已知声明检查全局与共享地址空间、
 标量或向量输入类型、字节地址对齐，以及绑定元数据一致性。整数/位类型的标量 store 和
 reduction 输入接受寄存器或在使用处窄转换的整数字面量；`f32/f64` 标量输入接受现有的
-类型化浮点字面量。对标量 FP8 `e4m3x4/e5m2x4` store，整数字面量提供经窄转换的
-原始 32 位模式，`0f` 字面量直接复制原始 32 位模式；拒绝十进制浮点与 `0d` 字面量。
-这个有界 packed 字面量兼容范围依据 CUDA 13.3 `ptxas` 探针，而非手册中明确的
-multimem 字面量规则。标量 `f16x2/bf16x2` 和所有向量输入仍限寄存器，load 目标
-也仍限寄存器。Bulk 目标与源均要求
+类型化浮点字面量。对现有 weak/default 与 ordered 标量 FP8
+`e4m3x4/e5m2x4` store，拒绝整数字面量及求值得到的整数结果。把整数窄转换为
+32 bit，不会使它成为逻辑浮点操作数的 Bit 来源。显式 `mov.b32` 准备后使用 B32
+寄存器仍合法；前端不会隐式插入这条 move。
+
+无符号、无包装的直接 `0f` 字面量保留完整 32-bit 字，包括编码的 sign 与 NaN
+模式，不做浮点转换、splat 或 quieting。当前 packed immediate 必须不超过 32 bit，
+没有 `integer_source_bits`（optional 值为零也属于存在），且 `is_negative=false`。
+没有整数来源的当前 word 可以合法修改；检查针对当前 typed data，不认证已经擦除的
+源码拼写。带符号、包装或 operator 的 exact-word 来源保留既有约束。十进制、`0d`
+及浮点表达式 packed constructor 仍不支持：一个数到四个值的映射仍是 reference-qualified
+边界，并非手册全面禁止浮点字面量。更广 packed source 权限与此四分支 origin 修复分开。
+标量 `f16x2/bf16x2` 与 vector source policy 不变，load 目标仍限寄存器。
+
+Direct 与 owned 检查保留 SameWidth、global address 和 target/flavor 约束。在适用
+instruction check 时，有效的 supplied AST 不能掩盖当前无效 origin。不完整上下文下
+`AvailableContext` 保留既有的整条指令检查延后行为；成功不证明被延后的 operand invariant。
+Bulk 目标与源均要求
 16 字节对齐；立即数字节数须能被 16 整除。寄存器字节数仍是运行时义务。两个 release-async 族要求寄存器基址（可带立即数偏移）；
 即使符号声明为 global，也不接受仅符号基址。
 写出 `.cp_mask` 必须提供最后的 byte-mask 操作数。Release async store/reduce

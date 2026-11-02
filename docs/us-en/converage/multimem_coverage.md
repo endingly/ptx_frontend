@@ -55,12 +55,30 @@ For known declarations it checks global vs shared source spaces, scalar or
 vector source types, byte-address alignment, and bound metadata consistency.
 Scalar integer/bit store and reduction inputs accept registers or integer
 literals with use-site narrowing. `f32/f64` scalar inputs accept the existing
-typed floating literals. For scalar FP8 `e4m3x4/e5m2x4` stores, integer
-literals supply narrowed raw 32-bit bits and `0f` literals copy their raw
-32-bit pattern; decimal floats and `0d` literals are rejected. This bounded
-packed-literal support follows CUDA 13.3 `ptxas` probes rather than an explicit
-multimem literal rule in the manual. Scalar `f16x2/bf16x2` and all vector
-inputs remain register-only; load destinations remain registers.
+typed floating literals. For the existing weak/default and ordered scalar FP8
+`e4m3x4/e5m2x4` stores, integer literals and evaluated integer results are
+rejected. Narrowing an integer to 32 bits does not make it a Bit source for a
+logical floating operand. An explicit `mov.b32` preparation followed by a B32
+register source remains legal; the frontend does not insert that move.
+
+A bare unsigned direct `0f` literal preserves its entire 32-bit word, including
+encoded sign and NaN-looking bits, without floating conversion, splatting or
+quieting. The current packed immediate requires at most 32 bits, no
+`integer_source_bits` (including optional zero), and `is_negative=false`.
+Origin-free current word edits remain legal; these checks validate current
+typed data rather than authenticate erased source spelling. Signed, wrapped
+and operator-based exact-word sources retain their existing restrictions.
+Decimal, `0d` and floating-expression packed constructors remain unsupported:
+the one-number-to-four-values mapping is reference-qualified, not a blanket
+manual ban on floating literals. Broader packed source permissions are separate
+from this four-branch origin repair. Scalar `f16x2/bf16x2` and vector source
+policies are unchanged; load destinations remain registers.
+
+Direct and owned checks retain SameWidth, global-address and target/flavor
+constraints. A valid supplied AST cannot mask invalid current origin when
+instruction checks apply. Incomplete-context `AvailableContext` retains its
+existing whole-instruction deferral; success there does not certify skipped
+operand invariants.
 Bulk destinations and sources need 16-byte alignment; an immediate byte size
 must be divisible by 16. A register size remains a runtime obligation. The two release-async families
 require a register base (with an optional immediate offset); a symbol-only

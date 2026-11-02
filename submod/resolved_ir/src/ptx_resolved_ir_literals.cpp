@@ -55,7 +55,7 @@ std::expected<uint64_t, ResolveDiagnostic> parse_unsigned_literal(
   return value;
 }
 
-/** Apply a scalar operand's integer conversion to an already evaluated source. */
+/** Convert an evaluated integer source only for genuine integer or Bit uses. */
 std::expected<ResolvedImmediate, ResolveDiagnostic> convert_integer_value(
     declaration_semantics::IntegerConstantValue source, SourceRange range,
     ScalarType type, bool require_target_range,
@@ -63,7 +63,7 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> convert_integer_value(
   using base::ScalarKind;
   const ScalarKind kind = scalar_kind(type);
   if (kind != ScalarKind::Unsigned && kind != ScalarKind::Signed &&
-      kind != ScalarKind::Bit && !is_raw32_fp8x4_type(type)) {
+      kind != ScalarKind::Bit) {
     return std::unexpected(ResolveDiagnostic{
         .range = range,
         .message = fmt::format(

@@ -3837,7 +3837,7 @@ CheckResult check_tcgen_mma_sources(
         return cvt_rule_violation(
             context,
             "TCGEN MMA output-lane mask requires scalar General "
-            "b32/u32/s32/f32 register entries.",
+            "b32/u32/s32/f32/f16x2 register entries.",
             CheckDiagnosticKind::OperandTypeMismatch);
     }
   }

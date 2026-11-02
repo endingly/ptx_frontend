@@ -1474,3 +1474,5 @@ current evidence. Distinct actual-diff final acceptance remains pending.
 命名矩阵片段在当前分支实现精确角色 permission/Element 元数据及私有声明形状选择，
 复用现有完整 provenance、声明类型与 128-bit 普通向量边界；公共 syntax-only 歧义契约保持不变。
 本条记录实现范围，独立最终验收仍待完成，不代表完整 PTX 或 GPU 行为闭包。
+
+TCGEN named-mask 本次变更限于24个必需 mask layout 的 named admission 与 native F16x2 common-carrier parity；继承已独立提交的 Matrix named 与 shared-component 契约，按当前 parent 完成 Debug／fresh installed consumer 验证后仍须独立最终验收。不得恢复省略 mask layout 或更改 target／CTA-group 契约。

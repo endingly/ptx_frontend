@@ -504,7 +504,7 @@ def _validate_tcgen_mma_variant_base(variant: VariantSpec) -> None:
                       if item.name == "disable_output_lane")
         if (vector.vector_arities != tuple(range(1, 9)) or
                 vector.vector_allowed_register_types !=
-                ("b32", "u32", "s32", "f32")):
+                ("b32", "u32", "s32", "f32", "f16x2")):
             raise ValueError("dense MMA mask carrier domain changed")
 
 

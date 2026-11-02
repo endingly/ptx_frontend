@@ -40,8 +40,8 @@ class TcgenRequiredMaskTests(unittest.TestCase):
                 names = tuple(o.name for o in layout.operands)
                 self.assertLess(names.index('disable_output_lane'), names.index('enable_input_d'))
                 vector = next(o for o in layout.operands if o.name == 'disable_output_lane')
-                self.assertEqual(vector.vector_allowed_register_types, ('b32','u32','s32','f32'))
-                self.assertFalse(vector.vector_allow_named)
+                self.assertEqual(vector.vector_allowed_register_types, ('b32','u32','s32','f32','f16x2'))
+                self.assertTrue(vector.vector_allow_named)
             total += len(expected)
         self.assertEqual(total, 24)
 

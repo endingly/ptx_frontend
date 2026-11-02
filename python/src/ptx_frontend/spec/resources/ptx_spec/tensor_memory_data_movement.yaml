@@ -477,7 +477,7 @@ instructions:
               - {name: a, kind: reg, role: src, access: read, type: b64}
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: shared_mask_scale
             availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
@@ -486,7 +486,7 @@ instructions:
               - {name: a, kind: reg, role: src, access: read, type: b64}
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
               - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
           - name: tensor_mask_no_scale
@@ -495,7 +495,7 @@ instructions:
               - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: tensor_mask_scale
             availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
@@ -504,7 +504,7 @@ instructions:
               - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
               - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
 
@@ -537,7 +537,7 @@ instructions:
               - {name: a, kind: reg, role: src, access: read, type: b64}
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: shared_mask_scale
             availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
@@ -546,7 +546,7 @@ instructions:
               - {name: a, kind: reg, role: src, access: read, type: b64}
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
               - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
           - name: tensor_mask_no_scale
@@ -555,7 +555,7 @@ instructions:
               - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: tensor_mask_scale
             availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
@@ -564,7 +564,7 @@ instructions:
               - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
               - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
 
@@ -600,7 +600,7 @@ instructions:
               - {name: a, kind: reg, role: src, access: read, type: b64}
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: tensor_mask
             operands:
@@ -608,7 +608,7 @@ instructions:
               - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
 
       - name: tcgen05_mma_f8f6f4
@@ -638,7 +638,7 @@ instructions:
               - {name: a, kind: reg, role: src, access: read, type: b64}
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: tensor_mask
             operands:
@@ -646,7 +646,7 @@ instructions:
               - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
 
       - name: tcgen05_mma_mxf8f6f4
@@ -1514,7 +1514,7 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: shared_mask_scale
             availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
@@ -1524,7 +1524,7 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
               - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
           - name: tensor_mask_no_scale
@@ -1534,7 +1534,7 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: tensor_mask_scale
             availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
@@ -1544,7 +1544,7 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
               - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
       - name: tcgen05_mma_sp_tf32
@@ -1576,7 +1576,7 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: shared_mask_scale
             availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
@@ -1586,7 +1586,7 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
               - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
           - name: tensor_mask_no_scale
@@ -1596,7 +1596,7 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: tensor_mask_scale
             availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
@@ -1606,7 +1606,7 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
               - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
       - name: tcgen05_mma_sp_f8f6f4
@@ -1638,7 +1638,7 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: tensor_mask
             operands:
@@ -1647,7 +1647,7 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
       - name: tcgen05_mma_sp_i8
         section: "9.7.17.10.9.2"
@@ -1681,7 +1681,7 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: tensor_mask
             operands:
@@ -1690,7 +1690,7 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allow_named: true, allowed_register_types: [b32, u32, s32, f32, f16x2]}}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
 
       - name: tcgen05_shift

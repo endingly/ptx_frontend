@@ -458,6 +458,15 @@ CheckResult check_source_immediate_consistency(const OperandView& operand,
                         .range = diagnostic_range(operand.locations, context),
                         .message = "A scalar half immediate requires a "
                                    "canonical floating 16-bit word."}});
+  if ((*operand.immediate_type == ScalarType::E4m3 ||
+       *operand.immediate_type == ScalarType::E5m2) &&
+      (*operand.immediate_bits > 0xffU || operand.integer_source_bits ||
+       operand.immediate_is_negative.value_or(false)))
+    return std::unexpected(CheckDiagnostics{
+        CheckDiagnostic{.kind = CheckDiagnosticKind::ImmediateValueMismatch,
+                        .range = diagnostic_range(operand.locations, context),
+                        .message = "A scalar FP8 immediate requires a "
+                                   "canonical floating 8-bit word."}});
   const bool packed_raw32 =
       ::ptx_frontend::resolved_ir::detail::is_raw32_fp8x4_type(
           *operand.immediate_type);

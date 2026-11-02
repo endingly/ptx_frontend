@@ -9,7 +9,7 @@ This slice is the [PTX 9.3 §9.7.3.3/§9.7.3.4, §9.7.4.1/§9.7.4.2 and §9.7.5.
 | `add{.rnd}.f64 d, a, b` | PTX 1.0 / SM 13. Both sources admit a floating literal; no `.ftz` or `.sat`. |
 | `add{.rn}{.ftz}{.sat}.{f16,f16x2} d, a, b` | PTX 4.2 / SM 53. RN-only; `.f16` accepts `.f16` or `.b16`, `.f16x2` accepts `.f16x2` or `.b32`. |
 | `add{.rn}.{bf16,bf16x2} d, a, b` | PTX 7.8 / SM 90. RN-only, no `.ftz` and no `.sat`; binds the exact `.b16`/`.b32` bit containers. |
-| `add{.rnd}{.sat}.f32.{f16,bf16} d, a, c` | PTX 8.6 / SM 100. The **narrow source sits in the middle position** and accepts F16 numeric constants as well as registers; the FP32 addend is immediate-capable. |
+| `add{.rnd}{.sat}.f32.{f16,bf16} d, a, c` | PTX 8.6 / SM 100. The **narrow source sits in the middle position** and accepts F16/BF16 numeric constants as well as registers; the FP32 addend is immediate-capable. |
 
 `sub` carries the mirrored table.
 
@@ -49,4 +49,4 @@ The existing MUL and FMA regression, including mixed FMA, `.f32x2`, ReLU/OOB and
 
 The Issue 142 reconciliation now covers every cohort in §9.7.1 through §9.7.5 that this issue scoped. No operation here gains execution semantics.
 
-The narrow F16 source also accepts floating constants through binary16 RNE conversion; the destination remains a register and the wide addend/subtrahend keeps its F32 conversion. Shared F16/BF16 classes and modifier domains remain intact. A canonical owned BF16 16-bit word is valid in that shared source even though written BF16 numeric conversion remains a separate pending delivery; this producer boundary is not a normative literal ban.
+The narrow F16 source also accepts floating constants through binary16 RNE conversion; the destination remains a register and the wide addend/subtrahend keeps its F32 conversion. Shared F16/BF16 classes and modifier domains remain intact. The shared narrow BF16 source now accepts decimal, evaluated F64, exact F64 and bare unsigned exact F32 numeric inputs through direct binary64-to-BF16 RNE conversion. Its typed word `1.5 -> 0x3fc0` is independent of runtime rounding and saturation; the other input remains F32 (`1.5 -> 0x3fc00000`). No opcode source permissions or generated fields change.

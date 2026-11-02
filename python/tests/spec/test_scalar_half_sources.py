@@ -1,4 +1,4 @@
-"""Finite scalar-half source admission, independent of pending alternate converters."""
+"""Finite scalar-half source admission, with exact alternate scalar caller closure."""
 from collections import Counter
 import unittest
 
@@ -237,6 +237,37 @@ class ScalarHalfSourceTests(unittest.TestCase):
             variant = next(v for v in generated[opcode].variants if v.variant_id == opcode + "_mixed_f32")
             domain = {d.value for d in variant.modifier_value_domains if d.source_kind_id == "input_type"}
             self.assertEqual(domain, {"f16", "bf16"})
+
+    def test_exact_alternate_scalar_source_closure(self) -> None:
+        """Keep five admitted BF16 fields and zero scalar E4M3/E5M2 callers."""
+        spec = get_packaged_spec_database()
+        actual = set()
+        for instruction in spec.instructions:
+            for variant in instruction.variants:
+                domains = {
+                    modifier.name: ({modifier.value} if modifier.value is not None
+                                    else {item.value for item in modifier.values})
+                    for modifier in variant.modifiers
+                }
+                for layout in variant.operand_layouts:
+                    for operand in layout.operands:
+                        if operand.kind.value not in {"reg_or_imm", "cvt_scalar_src"}:
+                            continue
+                        expression = operand.type_expression
+                        if expression is None:
+                            continue
+                        domain = ({expression.scalar_type} if expression.scalar_type
+                                  else domains.get(expression.modifier_name, set()))
+                        for scalar in domain & {"bf16", "e4m3", "e5m2"}:
+                            actual.add((instruction.opcode, variant.name, layout.name,
+                                        operand.name, scalar))
+        self.assertEqual(actual, {
+            ("add", "add_mixed_f32", "default", "src", "bf16"),
+            ("sub", "sub_mixed_f32", "default", "src", "bf16"),
+            ("cvt", "cvt_f32_bf16", "default", "src", "bf16"),
+            ("cvt", "cvt_f32_bf16_ftz", "default", "src", "bf16"),
+            ("cvt", "cvt_non_f32_base_from_bf16", "default", "src", "bf16"),
+        })
 
 if __name__ == "__main__":
     unittest.main()

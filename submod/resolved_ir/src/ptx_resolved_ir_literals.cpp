@@ -23,7 +23,8 @@ std::expected<void, ResolveDiagnostic> require_integer_source(
 bool floating_destination_compatible(ScalarType destination,
                                      ScalarType source) {
   return destination == ScalarType::F16 || destination == ScalarType::F32 ||
-         destination == ScalarType::F64 ||
+         destination == ScalarType::F64 || destination == ScalarType::BF16 ||
+         destination == ScalarType::E4m3 || destination == ScalarType::E5m2 ||
          (scalar_kind(destination) == base::ScalarKind::Bit &&
           base::scalar_types_compatible(destination, source,
                                         base::ScalarTypeSizePolicy::SameWidth));
@@ -234,6 +235,100 @@ uint64_t widen_float_literal_bits(uint32_t bits) {
 }
 
 /**
+ * Round a normalized binary64 significand after discarding 45..53 low bits.
+ * The 53-bit significand and bounded shift make every operation representable;
+ * an exact halfway remainder increments only an odd retained integer.
+ */
+uint64_t round_scalar_significand(uint64_t significand, int shift) {
+  const uint64_t retained = significand >> shift;
+  const uint64_t remainder = significand & ((uint64_t{1} << shift) - 1);
+  const uint64_t halfway = uint64_t{1} << (shift - 1);
+  return retained +
+         (remainder > halfway || (remainder == halfway && (retained & 1)));
+}
+
+/** Quantize binary64 bits once to BF16, preserving sign and high NaN payload. */
+uint64_t narrow_bfloat_literal_bits(uint64_t bits) {
+  const uint64_t sign = (bits >> 48) & 0x8000;
+  const uint64_t exponent = (bits >> 52) & 0x7ff;
+  const uint64_t fraction = bits & 0x000fffffffffffffULL;
+  if (exponent == 0x7ff)
+    return sign | 0x7f80 | (fraction ? (fraction >> 45) | 0x40 : 0);
+  if (exponent == 0)
+    return sign;
+  const int unbiased = static_cast<int>(exponent) - 1023;
+  if (unbiased > 127)
+    return sign | 0x7f80;
+  if (unbiased < -134)
+    return sign;
+  const uint64_t rounded = round_scalar_significand(
+      (uint64_t{1} << 52) | fraction, unbiased >= -126 ? 45 : -81 - unbiased);
+  if (unbiased < -126)
+    return sign | rounded;
+  return sign | ((static_cast<uint64_t>(unbiased + 126) << 7) + rounded);
+}
+
+/**
+ * Quantize binary64 bits once to finite E4M3 or signed NaN.
+ * The adopted non-saturating boundary retains the even finite word at 464;
+ * every larger magnitude, infinity and NaN maps to the signed NaN encoding.
+ */
+uint64_t narrow_e4m3_literal_bits(uint64_t bits) {
+  const uint64_t sign = (bits >> 56) & 0x80;
+  const uint64_t exponent = (bits >> 52) & 0x7ff;
+  const uint64_t fraction = bits & 0x000fffffffffffffULL;
+  if (exponent == 0x7ff ||
+      (bits & 0x7fffffffffffffffULL) > 0x407d000000000000ULL)
+    return sign | 0x7f;
+  if (exponent == 0)
+    return sign;
+  const int unbiased = static_cast<int>(exponent) - 1023;
+  if (unbiased < -10)
+    return sign;
+  const uint64_t rounded = round_scalar_significand(
+      (uint64_t{1} << 52) | fraction, unbiased >= -6 ? 49 : 43 - unbiased);
+  if (unbiased < -6)
+    return sign | rounded;
+  return sign | ((static_cast<uint64_t>(unbiased + 6) << 3) + rounded);
+}
+
+/** Quantize binary64 bits once to E5M2 with signed infinity and quiet NaNs. */
+uint64_t narrow_e5m2_literal_bits(uint64_t bits) {
+  const uint64_t sign = (bits >> 56) & 0x80;
+  const uint64_t exponent = (bits >> 52) & 0x7ff;
+  const uint64_t fraction = bits & 0x000fffffffffffffULL;
+  if (exponent == 0x7ff)
+    return sign | 0x7c | (fraction ? (fraction >> 50) | 0x02 : 0);
+  if (exponent == 0)
+    return sign;
+  const int unbiased = static_cast<int>(exponent) - 1023;
+  if (unbiased > 15)
+    return sign | 0x7c;
+  if (unbiased < -17)
+    return sign;
+  const uint64_t rounded = round_scalar_significand(
+      (uint64_t{1} << 52) | fraction, unbiased >= -14 ? 50 : 36 - unbiased);
+  if (unbiased < -14)
+    return sign | rounded;
+  return sign | ((static_cast<uint64_t>(unbiased + 14) << 2) + rounded);
+}
+
+/** Dispatch only the three explicitly supported alternate scalar formats. */
+uint64_t narrow_alternate_literal_bits(uint64_t bits, ScalarType type) {
+  if (type == ScalarType::BF16)
+    return narrow_bfloat_literal_bits(bits);
+  if (type == ScalarType::E4m3)
+    return narrow_e4m3_literal_bits(bits);
+  return narrow_e5m2_literal_bits(bits);
+}
+
+/** Identify exactly the scalar alternate formats with a numeric converter. */
+bool is_alternate_literal_type(ScalarType type) {
+  return type == ScalarType::BF16 || type == ScalarType::E4m3 ||
+         type == ScalarType::E5m2;
+}
+
+/**
  * Decode a floating literal in its lexical precision, then convert to the
  * operand precision. Equal-width literals retain their exact payload bits.
  */
@@ -268,6 +363,14 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
     }
     return ResolvedImmediate{.bits = *bits, .type = type};
   }
+  if (is_alternate_literal_type(type))
+    return ResolvedImmediate{
+        .bits = narrow_alternate_literal_bits(
+            bit_width == 32
+                ? widen_float_literal_bits(static_cast<uint32_t>(*bits))
+                : *bits,
+            type),
+        .type = type};
   if (type == ScalarType::F16)
     return ResolvedImmediate{
         .bits = narrow_half_literal_bits(
@@ -318,6 +421,10 @@ resolve_decimal_float_literal(const syntax_ast::AstImmediate& immediate,
                                immediate.syntax.text)));
   }
 
+  if (is_alternate_literal_type(type))
+    return ResolvedImmediate{.bits = narrow_alternate_literal_bits(
+                                 std::bit_cast<uint64_t>(value), type),
+                             .type = type};
   if (type == ScalarType::F16)
     return ResolvedImmediate{
         .bits = narrow_half_literal_bits(std::bit_cast<uint64_t>(value)),
@@ -345,7 +452,9 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_value(
   const auto bits = std::bit_cast<uint64_t>(
       std::get<declaration_semantics::FloatingConstantValue>(value).value);
   return ResolvedImmediate{
-      .bits = type == ScalarType::F16   ? narrow_half_literal_bits(bits)
+      .bits = is_alternate_literal_type(type)
+                  ? narrow_alternate_literal_bits(bits, type)
+              : type == ScalarType::F16 ? narrow_half_literal_bits(bits)
               : type == ScalarType::F32 ? narrow_float_literal_bits(bits)
                                         : bits,
       .type = type};

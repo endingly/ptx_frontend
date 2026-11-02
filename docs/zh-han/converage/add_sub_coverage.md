@@ -49,4 +49,6 @@ CUDA 13.3.73 `ptxas` 证据使用 `/usr/local/cuda/bin/ptxas -arch=<arch> <modul
 
 Issue 142 的对账现已覆盖该 issue 划定范围内的 §9.7.1 至 §9.7.5 全部 cohort。这里不添加任何 operation 的 execution semantics。
 
-窄 F16 source 也接受经 binary16 RNE 转换的浮点常量；destination 仍为 register，宽 addend/subtrahend 保留 F32 转换。共享 F16/BF16 class 与 modifier domain 不拆分。共享 source 中 canonical owned BF16 16-bit word 有效，即使 written BF16 numeric conversion 仍待独立 delivery；该 producer 边界不是规范 literal 禁令。
+窄 F16 source 也接受经 binary16 RNE 转换的浮点常量；destination 仍为 register，宽 addend/subtrahend 保留 F32 转换。共享 F16/BF16 class 与 modifier domain 不拆分。共享 source 中 canonical owned BF16 16-bit word 与已获准的 BF16 数值源均有效。
+
+窄 BF16 源现可通过直接 binary64 到 BF16 的最近偶数舍入接受十进制、已求值 F64、exact F64 及无符号裸 exact F32 数值输入。`1.5` 的 BF16 当前字为 `0x3fc0`，独立于运行时舍入和饱和；另一输入仍为 F32（`0x3fc00000`）。不改变 opcode 源权限或生成字段。

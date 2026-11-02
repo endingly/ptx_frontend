@@ -1297,7 +1297,7 @@ Report-value output 保留 frontend 带限定的 logical B8 model，并接受同
 | `SetHalfIntegerF16`, `SetHalfIntegerF16Boolean` | `src1`, `src2` 各自 |
 | `SetpF16`, `SetpF16Boolean` | `src1`, `src2` 各自 |
 
-Canonical 当前 F16/BF16 immediate 是低 16 位 word，没有 integer-source provenance 或 integer-negative flag。普通 instruction IR 保留当前 typed word，因此合法范围内的一致修改可以有效，无需恢复原 literal。Shared mixed BF16 字段即使 written BF16 numeric converter 尚待独立实现，也接受 canonical typed BF16 word。Call 保留原 lexical input 或转换前的 F64 expression value，并在 owned validation 中重算 half word。所有其余条件合法的标量 Reg/Param input 复用该转换；现代小宽度 Register-formal ABI 限制、vector no-splat 与 missing-context 要求仍独立。四个 scalar F16 SETP source 还需要单独 typed-policy delivery 实现 explicit raw Bit16 route；当前 numeric 路径不表示 raw integer 在规范上非法。Packed numeric 构造及 alternate-format converter 仍是独立范围。
+Canonical 当前 F16/BF16 immediate 是低 16 位 word，没有 integer-source provenance 或 integer-negative flag。普通 instruction IR 保留当前 typed word，因此合法范围内的一致修改可以有效，无需恢复原 literal。Shared mixed BF16 字段按下述标量转换契约接受 BF16 数值源及 canonical typed BF16 word。Call 保留原 lexical input 或转换前的 F64 expression value，并在 owned validation 中重算 half word。所有其余条件合法的标量 Reg/Param input 复用该转换；现代小宽度 Register-formal ABI 限制、vector no-splat 与 missing-context 要求仍独立。四个 scalar F16 SETP source 还需要单独 typed-policy delivery 实现 explicit raw Bit16 route；当前 numeric 路径不表示 raw integer 在规范上非法。Packed numeric 构造及新增源码权限仍是独立范围。
 
 普通 `cvt.pack.sat` 的 S32 input 除同宽 B32/S32/U32 register 外，也接受 integer constant 与 expression。既有 64-bit evaluator 将每个 input 窄化为低32位 S32 word，并保留原64位 integer bits／sign metadata；因此 `0x100000001U` 的 use word 为1，不要求 target-range。前端不把 input 预先饱和到 destination lane 宽度，也不预计算 packed result。Floating-valued input 仍不兼容 S32；最终 category 为 Integer 的 expression（包括 FP comparison）走 integer 路径。独立 B32 carry source 保留既有 literal／precision 契约，包括同宽 unsigned direct0f bit data；这不使 register-only stochastic `rbits` 接受 literal。Carry topology、destination width 与 target 边界不变。
 
@@ -1559,3 +1559,11 @@ inheritance，不模拟 pointer 执行，不插入 hidden move 或 synthetic sca
 满足当前规则的 coherent edit 仍合法；written source identity 独立检查。公共 CST/AST
 variant 和 owning call reference 要求 producer 与 consumer 一起 rebuild；instruction
 schema、generated layout 和 callback 不变。
+
+### 备用标量字面量转换
+
+标量 BF16、E4M3 和 E5M2 数值转换复用现有字面量 helper 与已求值 F64 路径，直接从 binary64 位模式以整数位运算完成一次最近偶数舍入。无符号裸 exact F32 字面量先精确扩宽。保留带符号零与渐进次正规数。BF16 在 `(2-2^-8)*2^127` 处溢出为带符号无穷，E5M2 的对应阈值为 61440；两者的 NaN 保留符号和高位 payload，并设置 quiet 位。E4M3 没有无穷编码：精确的 464 中点舍入到有限值 448，更大的有限绝对值及无穷输入均转为带符号 `0x7f` NaN，NaN 输入也转为该编码。这些是已采用的确定性前端字面量策略，独立于运行时舍入、FTZ 和饱和，不执行 GPU 转换。
+
+返回的 immediate 保留逻辑格式，BF16 仅使用低 16 位，FP8 仅使用低 8 位，且不携带整数来源或整数负号元数据。所有位宽内的当前字编码仍合法，包括 signaling NaN；转换器的 quiet 选择不要求之后的当前字重放字面量历史。整数来源、窄 Bit 容器和 packed 格式不会因此获得标量浮点转换。exact F32 原有的符号、括号及表达式限制不变。公共类型、签名及源码权限均不改变。
+
+当前源码模型恰有五个 BF16 数值输入字段：mixed ADD/SUB 的 `src`，以及 `CvtF32Bf16`、`CvtF32Bf16Ftz`、`CvtNonF32BaseFromBf16` 的源。mixed 结果和另一输入仍为 F32；所选舍入、位宽和可用性检查保持独立。E4M3/E5M2 在此没有获准的标量 opcode 源，helper 与通用 checker 覆盖不能证明源码或模块 clone 支持。其余 BF16 寄存器专用、向量、packed、call 和存储权限仍属独立范围。受支持的 F16 call 仍按保留的转换前来源重算。部分 target 上下文的指令延期策略不变。

@@ -287,8 +287,7 @@ TEST(ScalarHalfImmediates, RechecksCurrentWordsWithoutInventingLiteralHistory) {
   }));
 }
 
-TEST(ScalarHalfImmediates,
-     AcceptsCanonicalBfloatWordsBeforeItsSourceConverter) {
+TEST(ScalarHalfImmediates, AcceptsCanonicalBfloatWordsAndWrittenSources) {
   auto owned = owned_half(half_source({"add.f32.bf16 f0,$,f1;"}, "b"));
   ASSERT_TRUE(owned);
   auto& add =
@@ -308,11 +307,11 @@ TEST(ScalarHalfImmediates,
     EXPECT_FALSE(add.check(half_context()));
     EXPECT_FALSE(validateModule(*owned));
   }
-  // Written BF16 numeric source conversion remains a separate required delivery.
-  const auto pending =
+  // Shared source admission and the logical BF16 converter now agree.
+  const auto written =
       test_helpers::parseModule(half_source({"add.f32.bf16 f0,$,f1;"}, "1.5"));
-  ASSERT_MODULE_PARSE_SUCCEEDS(pending);
-  EXPECT_FALSE(resolveModuleOnly(*pending));
+  ASSERT_MODULE_PARSE_SUCCEEDS(written);
+  EXPECT_TRUE(resolveAndValidateModule(*written));
 }
 
 TEST(ScalarHalfImmediates, CallsRecomputeAgainstPreservedPrecastSources) {

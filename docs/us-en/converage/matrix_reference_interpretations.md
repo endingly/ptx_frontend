@@ -116,3 +116,40 @@ association, copies/clones after AST destruction, and qualified targets remain
 separate controls. Checking a container's type or a metadata register's identity
 does not authenticate live low-bit packing or ordered metadata contents. Those
 runtime obligations remain outside this spelling interpretation.
+
+## Dense integer WGMMA N boundary
+
+Dense integer WGMMA includes `m64n240k32` and `m64n256k32`. The integer Syntax
+list in the [instruction subsection](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#asynchronous-warpgroup-level-matrix-instructions-wgmma-mma)
+ends at N=224, while the [shape table](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#asynchronous-warpgroup-level-matrix-shape)
+explicitly includes N=240/256 and the [integer fragment contract](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#asynchronous-warpgroup-level-matrix-register-fragment-wgmma-64n32)
+consistently requires N/2 S32 D registers. We adopt the dedicated shape and
+fragment contract over this incomplete Syntax enumeration. This is a bounded
+engineering interpretation, not a vendor-issued erratum or a blanket table
+precedence rule. See also [WGMMA coverage](wgmma_coverage.md).
+
+The integer N grid is `8,16,24,32,48,64,...,256`, with step 16 after 32.
+N=240 uses 120 scalar S32 D registers and N=256 uses 128. Integer N=232 and
+248 are off-grid despite being multiples of eight; N=264 is outside the range.
+Dense integer K remains 32. Floating and sparse families retain separate grids
+and selector domains.
+
+The two boundary sizes retain all four S8/U8 A/B type pairs, both A placements
+(shared descriptor or four B32 register lanes), and plain/satfinite forms:
+32 distinct canonical identities. B is a B64 shared descriptor in both placements.
+D is read/write. The 128-lane accumulator is an explicit scalar brace pack;
+it grants no ordinary named-vector permission. Same-sign forms retain PTX 8.0,
+mixed-sign forms PTX 8.4, and all require exact `sm_90a`. Generic `sm_90` or
+higher numeric SM profiles do not inherit that target qualification.
+
+The canonical rules already include these identities. Focused C++ regressions in
+[`test_wgmma_coverage.cpp`](../../../submod/resolved_ir/test/test_wgmma_coverage.cpp)
+run all 32 source templates, inspect exact classes and static topology, and
+separately mutate real owned fragment counts, layout tags and descriptor carriers
+after parser/AST destruction. Source cardinalities 119/121 and 127/129 reject;
+the independent current 129-lane check remains within guarded view access.
+Copies/clones, supplied-source association and matched target/version controls
+remain separate evidence. The standard normalization harness independently checks
+the exact 32-key projection. Fence/commit/wait identities remain unchanged;
+these checks do not authenticate descriptor contents, physical fragment packing,
+dynamic protocol completion or GPU results.

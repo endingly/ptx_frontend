@@ -1086,6 +1086,11 @@ identity 与 source/owned/control 义务；本项仅新增测试与说明，生�
 义务。本项仅新增该局部拼写解释的测试与说明，生产规则未改；
 不改变上述整族状态。
 
+局部参考解释：dense integer WGMMA 既有 N=240/256、D120/128 标量寄存器及 32 个
+signedness/placement/satfinite identity 保留；[双语说明](../docs/zh-han/converage/matrix_reference_interpretations.md)
+记录 shape/fragment 契约相对不完整 Syntax 枚举的有界优先性与整数 N 网格。
+本项仅新增该局部工程解释的测试与说明，生产规则未改，不改变上述整族状态。
+
 
 
 ---

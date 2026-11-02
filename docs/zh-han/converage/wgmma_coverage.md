@@ -8,7 +8,7 @@ Dense 形式覆盖 `.f16`、`.bf16`、`.tf32`、FP8 `.e4m3`/`.e5m2`、可带 `.s
 
 `wgmma.wait_group` 接受非负整数常量，owned immediate 使用 `.u64`。PTX 9.3 没有给出数值上限，因此 frontend 不加入未记载的 0..7 或 32 位限制。源码符号和转换后位值都保留供 checker 核对。CUDA 13.3 `ptxas` 接受 wait count 为 2^32 的完整 module，并拒绝 `-1`；这只是抽样 assembler 证据，不构成新的 ISA 上限。
 
-归档 PTX 9.3 的 dense integer syntax 列表省略 N=240 和 N=256，但 WGMMA shape 表与 integer fragment 表包含两者。Frontend 纳入这两个尺寸，CUDA 13.3 `ptxas` 也能汇编对应代表性整数形式。此处遵循 shape 与 fragment 契约，并明确记录 syntax 列表的差异。
+采用的工程解释：针对结束于 N=224 的不完整 dense-integer Syntax 枚举，此处采用独立 WGMMA shape 表与 integer fragment 契约的优先性。Integer N 网格为 `8,16,24,32,48,64,...,256`（32 后步长 16）；N=240/256 使用 120/128 个标量 S32 D 寄存器。两种 A placement、全部 S8/U8 配对及 plain/satfinite 形式均保留；integer N=232/248 不在网格中，N=264 超出范围。局部依据与独立 target/count 控制见[参考解释](matrix_reference_interpretations.md#dense-integer-wgmma-n-boundary)。
 
 代码生成保留全部 2,151 个精确类 identity，并划分为有界的 64-form shard。Public catalogue getter 返回由静态存储支持的 span，不依赖 source AST 生命周期。[安装包 matrix consumer](../../../examples/matrix_consumer/README.md) 测试跨 shard 边界的 WGMMA 形式以及控制/MMA descriptor 的区别。
 

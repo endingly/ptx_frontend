@@ -103,3 +103,36 @@ Owned fragment 数量、物理标量宽度、metadata 绑定 identity、source �
 的 copy/clone 以及 qualified target 保持为独立控制。检查 container 类型或 metadata
 寄存器 identity 不等于认证运行时 low-bit packing 或 ordered metadata 内容；这些
 runtime 义务不在此次拼写解释范围内。
+
+## Dense integer WGMMA N boundary
+
+Dense integer WGMMA 包含 `m64n240k32` 与 `m64n256k32`。
+[指令小节](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#asynchronous-warpgroup-level-matrix-instructions-wgmma-mma)
+中的 integer Syntax 列表结束于 N=224，但
+[shape 表格](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#asynchronous-warpgroup-level-matrix-shape)
+明确包含 N=240/256，且 [integer fragment 契约](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#asynchronous-warpgroup-level-matrix-register-fragment-wgmma-64n32)
+一致要求 N/2 个 S32 D 寄存器。本项目针对这一不完整的 Syntax 枚举，采用独立的
+shape/fragment 契约。这是有界工程解释，并非厂商发布的勘误，也不建立表格普遍优先
+的规则。另见 [WGMMA coverage](wgmma_coverage.md)。
+
+Integer N 网格为 `8,16,24,32,48,64,...,256`，32 之后步长为 16。N=240 使用
+120 个标量 S32 D 寄存器，N=256 使用 128 个。Integer N=232、248 虽是八的倍数，
+仍不在网格中；N=264 超出范围。Dense integer K 保持为 32。Floating 与 sparse 家族
+保留各自独立的网格和 selector 域。
+
+两个边界尺寸保留四种 S8/U8 A/B 类型配对、两种 A placement（shared descriptor 或
+四个 B32 寄存器 lane）及 plain/satfinite 形式，共 32 个独立 canonical identity。
+两种 placement 中 B 都是 B64 shared descriptor。D 为 read/write。128-lane
+accumulator 使用显式标量 brace pack，不授予普通 named-vector 权限。同符号形式保留
+PTX 8.0 门槛，混合符号形式保留 PTX 8.4 门槛，全部要求精确 `sm_90a`。
+Generic `sm_90` 或数值更高的 SM profile 不继承这一 target 资格。
+
+Canonical 规则已包含这些 identity。
+[`test_wgmma_coverage.cpp`](../../../submod/resolved_ir/test/test_wgmma_coverage.cpp)
+中的定向 C++ 回归运行全部 32 个 source template，检查精确类和静态 topology，在
+parser/AST 销毁后独立修改实际 owned fragment 数量、layout tag 与 descriptor
+carrier。Source 数量 119/121、127/129 均被拒绝；独立的当前 129-lane 检查保留有界
+view 访问。Copy/clone、外部 source 关联和配对 target/version 控制分别保留证据。
+标准 normalization harness 独立检查精确的 32-key projection。Fence/commit/wait
+identity 保持不变；这些检查不认证 descriptor 内容、物理 fragment packing、动态
+protocol completion 或 GPU 结果。

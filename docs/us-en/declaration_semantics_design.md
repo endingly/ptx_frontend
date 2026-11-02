@@ -39,8 +39,13 @@ requires decimal digits on both sides of the point in `major.minor`.
 
 Binary `&`, `|`, and `^` retain the usual arithmetic conversions (two signed
 inputs give a signed result; any unsigned input gives an unsigned result).
-This follows PTX 9.3 §4.5.5 prose and bounded CUDA 13.3 assembler checks;
-Table 5's unsigned summary differs. Unary `~` gives unsigned, while remainder
+The detailed PTX 9.3 §4.5.5 binary-operator rule takes precedence over only the
+conflicting `&`/`|`/`^` row in Table 5. This is the frontend's adopted
+interpretation, not a NVIDIA-issued erratum. Historical assembler observations
+and their exact tool versions are recorded in the
+[bitwise policy](bitwise_constant_policy.md). Expression results retain their
+64-bit bits and signedness until use conversion; destination types and normalized
+source-sign caches do not retroactively supply an expression type. Unary `~` gives unsigned, while remainder
 interprets both inputs unsigned and produces signed. Shift counts outside
 0–63 remain explicit frontend errors. The assembler accepts some larger shifts,
 so this resource/domain boundary does not claim complete assembler parity.

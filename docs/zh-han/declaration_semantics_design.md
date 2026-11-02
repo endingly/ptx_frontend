@@ -19,7 +19,10 @@ conditional 两个分支及 logical 两个 operand 均检查，即使值未被�
 
 二元 `&`、`|`、`^` 保持 usual arithmetic conversions：两个 signed 输入产生
 signed 结果，任一 unsigned 输入产生 unsigned 结果。依据是 PTX 9.3 §4.5.5
-正文及有限 CUDA 13.3 assembler 交叉检查；Table 5 的 unsigned 摘要与之不同。
+正文：仅在 Table 5 的 `&`/`|`/`^` 行与详细二元操作规则冲突时，选择详细规则。
+这是前端采用的解释，不是 NVIDIA 发布的勘误。历史 assembler 观察及其确切工具
+版本见[位运算策略](bitwise_constant_policy.md)。表达式结果保留 64 位数据及符号性，
+直到使用位置转换；destination 类型和规范化源符号缓存不会反向提供表达式类型。
 一元 `~` 产生 unsigned，remainder 将两输入解释为 unsigned 并产生 signed。
 shift count 超出 0–63 仍显式报 frontend error；assembler 接受部分较大的 shift，
 因此该 domain 边界不表示与 assembler 完全一致。

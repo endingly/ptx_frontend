@@ -121,6 +121,107 @@ TEST(InstructionConstantExpressions,
   }
 }
 
+/** Expression type is observed before equal-width uses erase that distinction. */
+TEST(InstructionConstantExpressions,
+     BitwiseTypesAndBitsAcrossConsumersAfterSourceDestruction) {
+  /** Independent expression goldens, before instruction or storage conversion. */
+  struct Case {
+    /** Source expression parsed by the ordinary syntax entry point. */
+    std::string_view text;
+    /** Full 64-bit result, independent of destination type. */
+    uint64_t bits;
+    /** Expected expression type, not reconstructed from normalized caches. */
+    bool is_unsigned;
+  };
+  const Case cases[] = {
+      {"(-1) & (-1)", UINT64_MAX, false},
+      {"(-1) & (-1U)", UINT64_MAX, true},
+      {"(-1U) & (-1)", UINT64_MAX, true},
+      {"(-1U) & (-1U)", UINT64_MAX, true},
+      {"(-4 & -1) >> 1", UINT64_MAX - 1, false},
+      {"(-4U & -1) >> 1", UINT64_C(0x7ffffffffffffffe), true},
+      {"(-1) | (0)", UINT64_MAX, false},
+      {"(-1) | (0U)", UINT64_MAX, true},
+      {"(-1U) | (0)", UINT64_MAX, true},
+      {"(-1U) | (0U)", UINT64_MAX, true},
+      {"(-4 | 0) >> 1", UINT64_MAX - 1, false},
+      {"(-4U | 0) >> 1", UINT64_C(0x7ffffffffffffffe), true},
+      {"(-1) ^ (0)", UINT64_MAX, false},
+      {"(-1) ^ (0U)", UINT64_MAX, true},
+      {"(-1U) ^ (0)", UINT64_MAX, true},
+      {"(-1U) ^ (0U)", UINT64_MAX, true},
+      {"(-4 ^ 0) >> 1", UINT64_MAX - 1, false},
+      {"(-4U ^ 0) >> 1", UINT64_C(0x7ffffffffffffffe), true},
+      {"~0", UINT64_MAX, true},
+      {"~0U", UINT64_MAX, true},
+      {"~(-1)", 0, true},
+  };
+  for (const auto& fixture : cases) {
+    SCOPED_TRACE(fixture.text);
+    auto source_expression = expression(fixture.text);
+    ASSERT_TRUE(source_expression);
+    const auto evaluated = declaration_semantics::numericConstantValue(
+        *source_expression->expression);
+    ASSERT_TRUE(evaluated);
+    const auto* integer =
+        std::get_if<declaration_semantics::IntegerConstantValue>(&*evaluated);
+    ASSERT_NE(integer, nullptr);
+    EXPECT_EQ(integer->bits, fixture.bits);
+    EXPECT_EQ(integer->is_unsigned, fixture.is_unsigned);
+    source_expression.reset();
+    std::optional<ResolvedModule> owned;
+    {
+      const std::string source =
+          ".version 9.3\n.target sm_90\n.address_size 64\n"
+          ".global .u64 value = (" +
+          std::string(fixture.text) +
+          ");\n.entry kernel() { .reg .u64 d; mov.u64 d, (" +
+          std::string(fixture.text) + "); ret; }";
+      PtxSyntaxParser parser(source);
+      auto ast = parser.parseModule();
+      ASSERT_TRUE(ast);
+      ASSERT_TRUE(ast.diagnostics.empty());
+      auto resolved = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(resolved) << resolved.error().front().message;
+      EXPECT_TRUE(validateModule(*ast, *resolved));
+      owned = std::move(*resolved);
+    }
+    // Parser, text and module AST are dead before inspecting the owned records.
+    const auto& immediate = firstMov(*owned);
+    EXPECT_EQ(immediate.bits, fixture.bits);
+    EXPECT_EQ(immediate.type, ScalarType::U64);
+    EXPECT_EQ(immediate.integer_source_bits, fixture.bits);
+    EXPECT_EQ(immediate.is_negative,
+              !fixture.is_unsigned && (fixture.bits >> 63) != 0);
+    ASSERT_EQ(owned->storage_declarations.size(), 1u);
+    const auto& initializer = owned->storage_declarations.front().initializer;
+    ASSERT_EQ(initializer.size(), 1u);
+    const auto* storage =
+        std::get_if<StorageConstant>(&initializer.front().value);
+    ASSERT_NE(storage, nullptr);
+    EXPECT_EQ(storage->bits, fixture.bits);
+    EXPECT_EQ(storage->high_bits, 0u);
+    EXPECT_TRUE(validateModule(*owned));
+    ResolvedModule copied(*owned), assigned;
+    assigned = copied;
+    ResolvedFunction function(copied.functions.back()), function_assigned;
+    function_assigned = function;
+    assigned.functions.back() = function_assigned;
+    assigned.functions.back().body.front() = function.body.front()->clone();
+    EXPECT_NE(assigned.functions.back().body.front().get(),
+              owned->functions.back().body.front().get());
+    EXPECT_EQ(firstMov(copied).bits, fixture.bits);
+    EXPECT_EQ(firstMov(assigned).integer_source_bits, fixture.bits);
+    EXPECT_EQ(
+        std::get<StorageConstant>(
+            assigned.storage_declarations.front().initializer.front().value)
+            .bits,
+        fixture.bits);
+    EXPECT_TRUE(validateModule(copied));
+    EXPECT_TRUE(validateModule(assigned));
+  }
+}
+
 /** Floating arithmetic evaluates in f64 and comparisons yield signed integers. */
 TEST(InstructionConstantExpressions, FloatingDomainAndFinalNarrowing) {
   for (const auto text :

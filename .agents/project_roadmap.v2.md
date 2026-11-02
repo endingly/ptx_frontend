@@ -15,6 +15,13 @@
 > - M10 后续的 PTX ISA 9.3 §9.7 YAML taxonomy 规范化已经完成；
 > - M11～M14 的前端计划已按当前代码审计；M15～M19 的逐项状态尚未重新审计，不能由下方空框推断功能缺失。M14 的具体证据及不透明 descriptor 边界见第 12 节。
 >
+位运算常量表达式沿用详细正文的通常算术转换：二元 `&`、`|`、`^` 仅在两输入
+均为 signed 时产生 signed 结果，一元 `~` 独立地产生 unsigned 结果。回归分别
+断言表达式的 64 位数据与类型，并在 `.u64` storage、`mov.u64` 及源文本/AST
+销毁后的 owned IR 中核对转换结果；这项证据补全不修改 evaluator 或 opcode
+规则。规范冲突、历史 assembler 证据及其限制见
+[位运算策略](../docs/zh-han/bitwise_constant_policy.md)。
+
 > ISA 规划基线：
 >
 > - [NVIDIA PTX ISA 9.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/)；

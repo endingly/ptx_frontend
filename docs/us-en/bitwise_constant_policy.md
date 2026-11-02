@@ -15,6 +15,31 @@ supported by the offline assembler observations below, rather than the table.
 This is an explicit interpretation of inconsistent documentation, not a claim
 that NVIDIA has issued a specification correction.
 
+## Evaluation and use conversion
+
+The evaluator retains both the 64-bit result and its signedness until the
+consumer applies its existing destination conversion. Mixed inputs follow the
+same rule in either operand order. For example, `(-4 & -1) >> 1` is signed and
+produces `fffffffffffffffe`, while `(-4U & -1) >> 1` is unsigned and produces
+`7ffffffffffffffe`. Unary `~0` is unsigned even though `(-1 | 0)` is signed;
+both have the same all-ones payload.
+
+`constantIntegerValue` and `numericConstantValue` expose this expression type
+before use conversion. Equal-width `.u64` storage and `mov.u64` can preserve the
+same bits from either signed or unsigned expressions. Storage words alone do
+not recover the expression type. The normalized immediate's `is_negative` and
+`integer_source_bits` describe the evaluated source sign and bits; they are not
+a complete expression-type cache. No destination type changes how an earlier
+binary expression is evaluated. Opcode `and`, `or`, and `xor` operand rules are
+independent of this constant-expression policy.
+
+The semantic regression asserts exact bits and type for all signedness pairs,
+comparison, arithmetic and right-shift observers, casts, and unary complement.
+The resolved regression compares evaluator, instruction and storage values,
+then validates copies, assignments and cloned instructions after the module
+source and AST have been destroyed. Existing source-sign rejection tests remain
+separate controls. These frontend tests do not require a new assembler run.
+
 ## Reproduction
 
 Run from the repository root, choosing an output path outside the source tree:

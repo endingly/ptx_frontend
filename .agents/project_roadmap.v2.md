@@ -1080,6 +1080,13 @@ PTX 7.0/sm80 和邻接 m16n8 F64 的 PTX 7.8/sm90 独立门槛。定向回归绑
 identity 与 source/owned/control 义务；本项仅新增测试与说明，生产规则未改。
 本项不改变上述整族状态。
 
+局部参考解释：ordered sparse low-bit MMA 保留带前导点的 `.kind::f8f6f4` 与既有
+50 个类型组合；[双语说明](../docs/zh-han/converage/matrix_reference_interpretations.md)
+区分静态 identity、五组 source 代表、实际 owned selector/fragment 和 runtime packing
+义务。本项仅新增该局部拼写解释的测试与说明，生产规则未改；
+不改变上述整族状态。
+
+
 
 ---
 

@@ -195,6 +195,71 @@ class WarpMatrixMmaCoverageTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises((TypeError, ValueError)):
                 normalize_instruction_spec(specification)
 
+    def test_sparse_kind_exact_fifty_tuple_projection(self) -> None:
+        """Bind all low-bit ordered raw identities to exact normalized and IR roles."""
+        types = ("e4m3", "e5m2", "e3m2", "e2m3", "e2m1")
+        expected = {f"mma_sp_ordered_metadata_sync_aligned_m16n8k64_row_col_kind_f8f6f4_{dc}_{a}_{b}_{dc}"
+                    for a in types for b in types for dc in ("f16", "f32")}
+        forms = {name: v for name, v in self.variants.items()
+                 if v.matrix.family is MatrixFamily.MMA_SPARSE
+                 and v.matrix.kind is MatrixKind.F8F6F4}
+        self.assertEqual(set(forms), expected)
+        self.assertEqual(len(forms), 50)
+        mma = next(i for i in get_packaged_spec_database().instructions if i.opcode == "mma")
+        lowered = {v.variant_id: v for v in from_instruction_spec(mma).variants}
+        raw = next(i for i in load_yaml(SPEC_PATH)["instructions"] if i["opcode"] == "mma")
+        raw_forms = {v["name"]: v for v in raw["variants"]}
+        for name, form in forms.items():
+            with self.subTest(name=name):
+                matrix = form.matrix
+                self.assertEqual((matrix.shape.m, matrix.shape.n, matrix.shape.k), (16, 8, 64))
+                self.assertEqual(matrix.sparse_order.value, "ordered")
+                self.assertEqual((matrix.a_layout.value, matrix.b_layout.value), ("row", "col"))
+                elements = {role.value: element for role, element in matrix.elements}
+                self.assertEqual(elements["d"].value, elements["c"].value)
+                dc = elements["d"].value
+                count, carrier = (2, "f16x2") if dc == "f16" else (4, "f32")
+                self.assertEqual(tuple((f.role.value, f.register_count, f.register_type)
+                                      for f in matrix.fragments),
+                                 (("d", count, carrier), ("a", 4, "b32"),
+                                  ("b", 4, "b32"), ("c", count, carrier)))
+                self.assertEqual(tuple(f.element_type for f in matrix.fragments),
+                                 tuple(elements[r] for r in ("d", "a", "b", "c")))
+                modifiers = {m.name: m for m in form.modifiers}
+                self.assertEqual(modifiers["kind"].token, ".kind::f8f6f4")
+                self.assertEqual(modifiers["kind"].presence.value, "fixed")
+                self.assertEqual(modifiers["sparse"].token, ".sp::ordered_metadata")
+                operands = {o.name: o for o in form.operand_layouts[0].operands}
+                self.assertIs(operands["metadata"].kind, OperandKind.REGISTER)
+                self.assertEqual(operands["metadata"].type_expression.scalar_type, "b32")
+                self.assertEqual((form.immediate_ranges[0].operand,
+                                  form.immediate_ranges[0].minimum,
+                                  form.immediate_ranges[0].maximum), ("selector", 0, 0))
+                self.assertEqual(form.availability, {"any_of": [
+                    {"ptx": "8.7", "target": "sm_120a"},
+                    {"ptx": "8.8", "sm": 120, "family": "sm_120f"}]})
+                self.assertEqual(lowered[name].matrix, matrix)
+                self.assertEqual(raw_forms[name]["matrix"]["kind"], "f8f6f4")
+                self.assertEqual(raw_forms[name]["matrix"]["sparse_order"], "ordered")
+
+    def test_sparse_kind_fixed_token_and_order_drift_reject(self) -> None:
+        """Fixed kind/order tokens must agree with the declared matrix metadata."""
+        raw = next(i for i in load_yaml(SPEC_PATH)["instructions"] if i["opcode"] == "mma")
+        form = next(v for v in raw["variants"] if v["name"] ==
+                    "mma_sp_ordered_metadata_sync_aligned_m16n8k64_row_col_kind_f8f6f4_f32_e3m2_e2m3_f32")
+        for change in ("missing_dot", "unknown_kind", "order"):
+            changed = deepcopy(form)
+            if change == "order":
+                changed["matrix"]["sparse_order"] = "native"
+            else:
+                modifier = next(m for m in changed["modifiers"] if m["name"] == "kind")
+                modifier["token"] = ("kind::f8f6f4" if change == "missing_dot"
+                                     else ".kind::unknown")
+            specification = {"category": "test", "codegen_category": "matrix",
+                             "instructions": [{"opcode": "mma", "variants": [changed]}]}
+            with self.subTest(change=change), self.assertRaises((TypeError, ValueError)):
+                normalize_instruction_spec(specification)
+
     def test_rejects_topology_and_selector_drift(self) -> None:
         """Canonical metadata cannot misstate suffixes or selector operand type."""
 

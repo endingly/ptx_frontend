@@ -75,3 +75,44 @@ shape/suffix metadata is immutable. Separate tests mutate actual owned fragments
 layout tags and coherently bound F32 references, retaining diagnostic ranges,
 source association, AST-free copies/clones and independent target gates.
 These checks do not authenticate live register contents or physical fragment placement.
+
+## Ordered sparse low-bit kind separator
+
+The accepted low-bit suffix is `.kind::f8f6f4`, including its leading dot, in the
+`mma.sp::ordered_metadata.sync.aligned.m16n8k64` family. The missing dot in the
+kind-domain definition `{kind::f8f6f4}` in the [sparse MMA subsection](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-sparse-mma)
+is interpreted as damaged metalanguage, not an alternate source spelling.
+The suffix separator and the subsection's fully written examples agree on
+`.kind::f8f6f4`; the [shape table](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-shape)
+identifies the ordered low-bit shape/type family. This is a project engineering
+interpretation, not a vendor-issued erratum or a new modifier-order restriction.
+
+```ptx
+mma.sp::ordered_metadata.sync.aligned.m16n8k64.row.col.kind::f8f6f4.f32.e3m2.e2m3.f32
+  {d0,d1,d2,d3}, {a0,a1,a2,a3}, {b0,b1,b2,b3}, {c0,c1,c2,c3}, meta, 0;
+```
+
+The existing catalogue contains 50 identities: each A/B type independently ranges
+over `e4m3`, `e5m2`, `e3m2`, `e2m3`, `e2m1`, with equal F16/F16 or F32/F32
+D/C types. A/B each use four B32 containers. F16 D/C each use two F16x2
+registers; F32 D/C each use four F32 registers. Ordered metadata uses a B32
+register and selector zero. Existing availability remains PTX 8.7 / `sm_120a`
+or PTX 8.8 / the qualified `sm_120f` family; a generic `sm_120` profile does
+not provide that qualification.
+
+The canonical rules already express this interpretation. Focused tests in
+[`test_warp_matrix_mma_coverage.cpp`](../../../submod/resolved_ir/test/test_warp_matrix_mma_coverage.cpp)
+and [`test_warp_matrix_mma_coverage.py`](../../../python/tests/spec/test_warp_matrix_mma_coverage.py)
+check the 50 static identities separately from five representative source tuples.
+Missing separators and unknown kinds reach resolution and reject as unknown
+modifiers. Duplicate dots produce parser diagnostics even when recovery returns
+CST/AST values. Native `.sp`, unequal D/C types and a block-scaled kind without
+its separate syntax reject variant selection. Selector values 1–3 fail the range
+check independently in source and coherently mutated owned state. No accepted
+alias or mutable generated kind/order field is introduced.
+
+Owned fragment counts, physical scalar widths, metadata binding identity, source
+association, copies/clones after AST destruction, and qualified targets remain
+separate controls. Checking a container's type or a metadata register's identity
+does not authenticate live low-bit packing or ordered metadata contents. Those
+runtime obligations remain outside this spelling interpretation.

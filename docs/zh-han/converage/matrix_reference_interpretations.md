@@ -67,3 +67,39 @@ resolve：`.m8n84`、`.m8n8`、`.m8n8k`、`.m8n8k5` 可以被解析，但在 res
 不修改生成的 immutable shape/suffix 元数据。其他测试独立修改实际 owned fragment、
 layout tag 与绑定一致的真实 F32 引用，检查诊断范围、source 关联、AST 销毁后的
 copy/clone 以及独立的 target 门槛。这些检查不认证运行时寄存器内容或物理 fragment 分布。
+
+## Ordered sparse low-bit kind 分隔符
+
+`mma.sp::ordered_metadata.sync.aligned.m16n8k64` 家族接受的 low-bit suffix 为
+`.kind::f8f6f4`，包含开头的点。
+[sparse MMA 小节](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-sparse-mma)
+中 kind-domain 定义 `{kind::f8f6f4}` 遗漏的点被解释为元语言排版损坏，不是另一种 source 拼写。
+Suffix 分隔语法与该小节完整示例均使用 `.kind::f8f6f4`；
+[shape 表格](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-shape)
+标明对应的 ordered low-bit shape/type 家族。这是项目工程解释，不是厂商发布的勘误，
+也不引入新的 modifier 顺序限制。
+
+```ptx
+mma.sp::ordered_metadata.sync.aligned.m16n8k64.row.col.kind::f8f6f4.f32.e3m2.e2m3.f32
+  {d0,d1,d2,d3}, {a0,a1,a2,a3}, {b0,b1,b2,b3}, {c0,c1,c2,c3}, meta, 0;
+```
+
+现有 catalogue 包含 50 个 identity：A/B 类型各自从 `e4m3`、`e5m2`、`e3m2`、
+`e2m3`、`e2m1` 中独立选择，D/C 必须同为 F16/F16 或 F32/F32。A/B 各使用四个
+B32 container。F16 D/C 各使用两个 F16x2 寄存器，F32 D/C 各使用四个 F32 寄存器。
+Ordered metadata 使用 B32 寄存器与 selector 0。既有门槛保持为 PTX 8.7 / `sm_120a`
+或 PTX 8.8 / qualified `sm_120f` family；generic `sm_120` profile 不提供该资格。
+
+Canonical 规则已表达此解释。
+[`test_warp_matrix_mma_coverage.cpp`](../../../submod/resolved_ir/test/test_warp_matrix_mma_coverage.cpp)
+与 [`test_warp_matrix_mma_coverage.py`](../../../python/tests/spec/test_warp_matrix_mma_coverage.py)
+中的定向测试分别检查 50 个静态 identity 和五组 source 代表。缺少分隔符或未知 kind
+在 resolution 阶段作为未知 modifier 被拒绝。重复点产生 parser 诊断，即使恢复过程
+返回 CST/AST 值也不代表接受。Native `.sp`、不相等的 D/C 类型及缺少独立语法的
+block-scaled kind 不能选中 variant。Selector 1–3 在 source 与缓存一致的实际 owned
+修改中分别触发范围检查。不新增别名，也不增加可修改的生成 kind/order 字段。
+
+Owned fragment 数量、物理标量宽度、metadata 绑定 identity、source 关联、AST 销毁后
+的 copy/clone 以及 qualified target 保持为独立控制。检查 container 类型或 metadata
+寄存器 identity 不等于认证运行时 low-bit packing 或 ordered metadata 内容；这些
+runtime 义务不在此次拼写解释范围内。

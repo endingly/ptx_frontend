@@ -42,3 +42,36 @@ A/B pairs and C/D singletons/triples, and check independently mutated owned
 fragments after syntax owners die. Parser acceptance of a brace pack alone does
 not imply semantic acceptance. Owned copies/clones, supplied-source validation,
 alignment, scalar width, target and stride controls remain separate checks.
+
+## Standard F64 MMA shape spelling
+
+The accepted dense F64 shape is `.m8n8k4`. The `.m8n84` spelling in the F64
+[Syntax subsection](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-mma)
+is treated as an editorial typo and is not a compatibility alias. The
+[shape table](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-shape),
+dedicated [F64 fragment subsection](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-fragment-mma-884-f64),
+ISA notes and examples consistently identify the full M/N/K shape `m8n8k4`.
+The project retains this well-formed spelling without source rewriting or a lexer
+special case. This is a bounded engineering interpretation, not a vendor erratum.
+
+```ptx
+mma.sync.aligned.m8n8k4.row.col.f64.f64.f64.f64 {d0,d1}, {a}, {b}, {c0,c1};
+```
+
+This form has `MatrixShape{8,8,4}`, row/column A/B layouts, F64 scalar types,
+and D/A/B/C register counts 2/1/1/2. Its minimum is PTX 7.0 / `sm_80`, with
+default `.rn` and explicit `.rn/.rz/.rm/.rp` rounding. The separate F64
+`m16n8k4`, `m16n8k8` and `m16n8k16` forms retain PTX 7.8 / `sm_90` floors.
+They are adjacent controls, not aliases for this shape.
+
+The canonical rules already implement this interpretation. Focused tests in
+[`test_warp_matrix_mma_coverage.cpp`](../../../submod/resolved_ir/test/test_warp_matrix_mma_coverage.cpp)
+and [`test_warp_matrix_mma_coverage.py`](../../../python/tests/spec/test_warp_matrix_mma_coverage.py)
+join the exact raw/normalized/IR identity and distinguish generic CST/AST
+acceptance from semantic resolution: `.m8n84`, `.m8n8`, `.m8n8k` and `.m8n8k5`
+are parsed but rejected as unknown modifiers during resolution. No owned typo
+variant exists. Its absence is checked through source selection; generated
+shape/suffix metadata is immutable. Separate tests mutate actual owned fragments,
+layout tags and coherently bound F32 references, retaining diagnostic ranges,
+source association, AST-free copies/clones and independent target gates.
+These checks do not authenticate live register contents or physical fragment placement.

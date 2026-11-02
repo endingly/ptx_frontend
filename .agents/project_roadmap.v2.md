@@ -1074,6 +1074,12 @@ WGMMA 与 TCGEN05 milestone 不得再次用硬编码 tuple 数量表示 matrix f
 16 字节 C/D 对齐。定向回归分别核对精确的 36 个静态 identity 与独立 source/owned/control
 义务，生产规则未改。本项仅补充该局部工程解释的测试与说明，不改变上述整族状态。
 
+局部参考解释：标准 F64 MMA 沿用 `.m8n8k4`，不接受 `.m8n84` 笔误别名；
+[双语解释](../docs/zh-han/converage/matrix_reference_interpretations.md)记录冲突条款，以及
+PTX 7.0/sm80 和邻接 m16n8 F64 的 PTX 7.8/sm90 独立门槛。定向回归绑定单个静态
+identity 与 source/owned/control 义务；本项仅新增测试与说明，生产规则未改。
+本项不改变上述整族状态。
+
 
 ---
 

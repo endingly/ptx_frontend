@@ -4,6 +4,7 @@ from collections import Counter
 from copy import deepcopy
 import unittest
 
+from ptx_frontend.ir.resolved_ir import from_instruction_spec
 from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.load_yaml import load_yaml
 from ptx_frontend.spec.model import (MatrixBitOperation, MatrixFamily, MatrixKind,
@@ -135,6 +136,64 @@ class WarpMatrixMmaCoverageTests(unittest.TestCase):
             self.assertEqual(cohorts[(family, MatrixKind.MXF4, 2)], 4)
             self.assertEqual(cohorts[(family, MatrixKind.MXF4NVF4, 2)], 2)
             self.assertEqual(cohorts[(family, MatrixKind.MXF4NVF4, 4)], 4)
+
+    def test_f64_canonical_shape_and_distinct_adjacent_gates(self) -> None:
+        """Bind the single canonical shape to exact fragments, modifiers and IR."""
+        name = "mma_sync_aligned_m8n8k4_row_col_f64_f64_f64_f64"
+        form = self.variants[name]
+        self.assertIs(form.matrix.family, MatrixFamily.MMA)
+        self.assertEqual((form.matrix.shape.m, form.matrix.shape.n, form.matrix.shape.k),
+                         (8, 8, 4))
+        self.assertEqual((form.matrix.a_layout.value, form.matrix.b_layout.value),
+                         ("row", "col"))
+        self.assertEqual(tuple((f.role.value, f.register_count, f.register_type,
+                                f.element_type.value) for f in form.matrix.fragments),
+                         (("d", 2, "f64", "f64"), ("a", 1, "f64", "f64"),
+                          ("b", 1, "f64", "f64"), ("c", 2, "f64", "f64")))
+        self.assertEqual(form.availability, {"ptx": "7.0", "sm": 80})
+        modifiers = {m.name: m for m in form.modifiers}
+        self.assertEqual(modifiers["shape"].token, ".m8n8k4")
+        self.assertEqual(modifiers["shape"].presence.value, "fixed")
+        self.assertEqual(modifiers["rounding"].default, "rn")
+        self.assertEqual(tuple(v.value for v in modifiers["rounding"].values),
+                         ("rn", "rz", "rm", "rp"))
+        for role in ("a", "b", "c", "d"):
+            self.assertEqual(modifiers[f"{role}_type"].value, "f64")
+        mma = next(i for i in get_packaged_spec_database().instructions
+                   if i.opcode == "mma")
+        lowered = next(v for v in from_instruction_spec(mma).variants
+                       if v.variant_id == name)
+        self.assertEqual(lowered.matrix, form.matrix)
+        self.assertEqual(lowered.cpp_name, "SyncAlignedM8n8k4RowColF64F64F64F64")
+        for k in (4, 8, 16):
+            adjacent = self.variants[f"mma_sync_aligned_m16n8k{k}_row_col_f64_f64_f64_f64"]
+            self.assertEqual(adjacent.availability, {"ptx": "7.8", "sm": 90})
+        raw = next(i for i in load_yaml(SPEC_PATH)["instructions"] if i["opcode"] == "mma")
+        self.assertEqual([v["name"] for v in raw["variants"]
+                          if v["name"].startswith("mma_sync_aligned_m8n8k4_")
+                          and "_f64_" in v["name"]], [name])
+        self.assertFalse(any(m.get("token") == ".m8n84"
+                             for v in raw["variants"] for m in v["modifiers"]))
+
+    def test_f64_fixed_shape_and_suffix_drift_reject(self) -> None:
+        """The typo cannot replace the canonical token or its shape/type facts."""
+        raw = next(i for i in load_yaml(SPEC_PATH)["instructions"] if i["opcode"] == "mma")
+        form = next(v for v in raw["variants"] if v["name"] ==
+                    "mma_sync_aligned_m8n8k4_row_col_f64_f64_f64_f64")
+        for change in ("spelling", "shape", "type", "nonexact_count"):
+            changed = deepcopy(form)
+            if change == "spelling":
+                next(m for m in changed["modifiers"] if m["name"] == "shape")["token"] = ".m8n84"
+            elif change == "shape":
+                changed["matrix"]["k"] = 5
+            elif change == "type":
+                next(m for m in changed["modifiers"] if m["name"] == "a_type")["value"] = "f32"
+            else:
+                changed["operands"][0]["cardinality"] = {"min": 1, "max": 2}
+            specification = {"category": "test", "codegen_category": "matrix",
+                             "instructions": [{"opcode": "mma", "variants": [changed]}]}
+            with self.subTest(change=change), self.assertRaises((TypeError, ValueError)):
+                normalize_instruction_spec(specification)
 
     def test_rejects_topology_and_selector_drift(self) -> None:
         """Canonical metadata cannot misstate suffixes or selector operand type."""

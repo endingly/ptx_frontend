@@ -38,3 +38,32 @@ Canonical 规则已表达此解释。
 C/D 单/三寄存器，在 syntax owner 销毁后独立修改 owned fragment 并检查。
 Parser 接受 brace pack 本身不代表语义接受。Owned copy/clone、外部 source 验证、
 对齐、标量宽度、target 和 stride 保持为独立检查。
+
+## 标准 F64 MMA shape 拼写
+
+Dense F64 接受的 shape 为 `.m8n8k4`。F64
+[Syntax 小节](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-mma)
+中的 `.m8n84` 被视为编辑笔误，不是兼容别名。
+[shape 表格](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-shape)、
+独立的 [F64 fragment 小节](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-fragment-mma-884-f64)、
+ISA 注记与示例均使用完整的 M/N/K shape `m8n8k4`。本项目保留这一完整拼写，不增加
+source 重写或 lexer 特例。这是局部工程解释，不是厂商发布的勘误。
+
+```ptx
+mma.sync.aligned.m8n8k4.row.col.f64.f64.f64.f64 {d0,d1}, {a}, {b}, {c0,c1};
+```
+
+此形式的 `MatrixShape{8,8,4}`、A/B 的 row/col layout、F64 标量类型和 D/A/B/C
+寄存器数量 2/1/1/2 保持不变。最低要求为 PTX 7.0 / `sm_80`，默认 `.rn`，支持
+显式 `.rn/.rz/.rm/.rp` 舍入。独立的 F64 `m16n8k4`、`m16n8k8`、`m16n8k16`
+形式保留 PTX 7.8 / `sm_90` 门槛。这些是邻接控制，不是本 shape 的别名。
+
+Canonical 规则已实现此解释。
+[`test_warp_matrix_mma_coverage.cpp`](../../../submod/resolved_ir/test/test_warp_matrix_mma_coverage.cpp)
+与 [`test_warp_matrix_mma_coverage.py`](../../../python/tests/spec/test_warp_matrix_mma_coverage.py)
+中的定向测试关联精确的 raw/normalized/IR identity，并区分通用 CST/AST 接受与语义
+resolve：`.m8n84`、`.m8n8`、`.m8n8k`、`.m8n8k5` 可以被解析，但在 resolution 阶段
+因未知 modifier 被拒绝。不存在 owned 笔误 variant；其缺失通过 source selection 验证，
+不修改生成的 immutable shape/suffix 元数据。其他测试独立修改实际 owned fragment、
+layout tag 与绑定一致的真实 F32 引用，检查诊断范围、source 关联、AST 销毁后的
+copy/clone 以及独立的 target 门槛。这些检查不认证运行时寄存器内容或物理 fragment 分布。

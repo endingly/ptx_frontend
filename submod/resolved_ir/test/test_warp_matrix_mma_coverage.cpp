@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <variant>
 
+#include <ptx_frontend/cst/ptx_cst_parser.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
@@ -359,6 +360,277 @@ TEST(WarpMatrixMmaCoverage, InvalidOwnedLayoutReturnsModuleDiagnostics) {
                     true);
   expect_diagnostic(*without_target, ModuleValidationPolicy::AvailableContext,
                     false);
+}
+
+/** Build one complete scalar brace pack with distinct register spellings. */
+std::string denseF64Pack(char role, unsigned count) {
+  std::string text = "{";
+  for (unsigned lane = 0; lane < count; ++lane)
+    text += (lane ? ",%" : "%") + std::string(1, role) + std::to_string(lane);
+  return text + "}";
+}
+
+/** Spell the exact dense F64 form, permitting bounded adjacent shape controls. */
+std::string denseF64Instruction(std::string_view shape = "m8n8k4",
+                                std::string_view rounding = "") {
+  const bool small = shape == "m8n8k4" || !shape.starts_with("m16n8k");
+  const unsigned a_count = small                ? 1
+                           : shape == "m16n8k4" ? 2
+                           : shape == "m16n8k8" ? 4
+                                                : 8;
+  return "mma.sync.aligned." + std::string(shape) + ".row.col.f64.f64.f64.f64" +
+         std::string(rounding) + " " + denseF64Pack('d', small ? 2 : 4) + ", " +
+         denseF64Pack('a', a_count) + ", " +
+         denseF64Pack('b', small ? 1 : a_count / 2) + ", " +
+         denseF64Pack('c', small ? 2 : 4) + ";";
+}
+
+/** Initialize real same-function scalar donors without depending on producer history. */
+std::string denseF64Module(std::string_view instruction,
+                           std::string_view version = "9.3",
+                           std::string_view target = "sm_80") {
+  std::string text = ".version " + std::string(version) + "\n.target " +
+                     std::string(target) +
+                     "\n.address_size 64\n.entry kernel(){\n"
+                     ".reg .f64 %d<4>, %a<8>, %b<4>, %c<4>, %x;\n"
+                     ".reg .f32 %narrow;\nmov.b32 %narrow,0;\nmov.b64 %x,0;\n";
+  for (const char role : std::string_view("dabc"))
+    for (unsigned lane = 0; lane < (role == 'a' ? 8u : 4u); ++lane)
+      text +=
+          "mov.b64 %" + std::string(1, role) + std::to_string(lane) + ",0;\n";
+  return text + std::string(instruction) + "\n}";
+}
+
+/** Return checked owned state only after the actual parser/source/AST owners die. */
+std::expected<ResolvedModule, ModuleResolveDiagnostics> ownedDenseF64(
+    std::string text) {
+  const auto parsed = test_helpers::parseModule(text);
+  EXPECT_TRUE(parsed && parsed.diagnostics.empty());
+  if (!parsed || !parsed.diagnostics.empty())
+    return std::unexpected(ModuleResolveDiagnostics{});
+  return resolveModule(*parsed);
+}
+
+/** Keep the exact spelling, static topology and optional rounding provenance. */
+TEST(WarpMatrixMmaCoverage, F64CanonicalShapeAndRounding) {
+  using Exact = MmaSyncAlignedM8n8k4RowColF64F64F64F64;
+  static_assert(std::is_final_v<Exact>);
+  static_assert(
+      Exact::a_type == ScalarType::F64 && Exact::b_type == ScalarType::F64 &&
+      Exact::c_type == ScalarType::F64 && Exact::d_type == ScalarType::F64);
+  unsigned ordinal = 0;
+  for (const auto rounding : {"", ".rn", ".rz", ".rm", ".rp"}) {
+    const auto text = denseF64Module(denseF64Instruction("m8n8k4", rounding));
+    auto owned = ownedDenseF64(text);
+    ASSERT_TRUE(owned) << owned.error().front().message;
+    auto* exact =
+        dynamic_cast<Exact*>(owned->functions.front().body.back().get());
+    ASSERT_NE(exact, nullptr);
+    EXPECT_EQ(exact->instruction_kind(), Exact::kind);
+    EXPECT_EQ(exact->matrix_descriptor(), &Exact::matrix_topology);
+    EXPECT_EQ(exact->matrix_descriptor()->shape, (MatrixShape{8, 8, 4}));
+    EXPECT_EQ(exact->matrix_descriptor()->a_layout, MatrixLayout::ROW);
+    EXPECT_EQ(exact->matrix_descriptor()->b_layout, MatrixLayout::COL);
+    EXPECT_EQ(exact->dst.value.elements.size(), 2u);
+    EXPECT_EQ(exact->a.value.elements.size(), 1u);
+    EXPECT_EQ(exact->b.value.elements.size(), 1u);
+    EXPECT_EQ(exact->c.value.elements.size(), 2u);
+    const RoundingMode expected[] = {RoundingMode::Rn, RoundingMode::Rn,
+                                     RoundingMode::Rz, RoundingMode::Rm,
+                                     RoundingMode::Rp};
+    EXPECT_EQ(exact->rounding.value, expected[ordinal]);
+    EXPECT_EQ(exact->rounding.locs.empty(), ordinal == 0);
+    ++ordinal;
+    EXPECT_TRUE(
+        validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+    ResolvedModule copied = *owned;
+    ResolvedModule assigned;
+    assigned = copied;
+    ResolvedModule moved = std::move(assigned);
+    EXPECT_TRUE(
+        validateModule(moved, ModuleValidationPolicy::RequireCompleteContext));
+    const auto& copied_form =
+        dynamic_cast<const Exact&>(*moved.functions.front().body.back());
+    EXPECT_EQ(copied_form.matrix_descriptor(), &Exact::matrix_topology);
+    EXPECT_EQ(copied_form.rounding, exact->rounding);
+    EXPECT_EQ(copied_form.dst, exact->dst);
+    auto clone = copied_form.clone();
+    EXPECT_EQ(dynamic_cast<Exact&>(*clone).c, exact->c);
+    ResolvedFunction function_copy = owned->functions.front();
+    ResolvedFunction function_assigned;
+    function_assigned = function_copy;
+    EXPECT_EQ(dynamic_cast<Exact&>(*function_assigned.body.back()).a, exact->a);
+    const checker::Context supported{
+        .target = {.ptx_version = {9, 3}, .sm_version = 80}};
+    EXPECT_TRUE(clone->check(supported));
+    EXPECT_TRUE(function_assigned.body.back()->check(supported));
+  }
+}
+
+/** Generic CST modifiers do not invent a semantic alias for malformed shapes. */
+TEST(WarpMatrixMmaCoverage, F64RejectsMalformedShapeSpellings) {
+  auto canonical = ownedDenseF64(denseF64Module(denseF64Instruction()));
+  ASSERT_TRUE(canonical);
+  for (const auto shape : {"m8n84", "m8n8", "m8n8k", "m8n8k5"}) {
+    SCOPED_TRACE(shape);
+    const auto text = denseF64Module(denseF64Instruction(shape));
+    PtxCstParser parser(text);
+    const auto cst = parser.parseModule();
+    ASSERT_TRUE(cst && cst.diagnostics.empty());
+    const auto parsed = test_helpers::parseModule(text);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    const auto resolved = resolveModule(*parsed);
+    ASSERT_FALSE(resolved);
+    ASSERT_EQ(resolved.error().size(), 1u);
+    const auto& diagnostic = resolved.error().front();
+    EXPECT_EQ(diagnostic.stage(), ResolveDiagnosticStage::Resolution);
+    EXPECT_EQ(diagnostic.message,
+              "Unknown modifier '." + std::string(shape) + "'.");
+    const auto instruction = text.rfind("mma.sync.aligned.");
+    const auto line = static_cast<int32_t>(
+        std::ranges::count(text.substr(0, instruction), '\n') + 1);
+    EXPECT_EQ(diagnostic.range,
+              (SourceRange{{line, 17},
+                           {line, 18 + static_cast<int32_t>(
+                                           std::string_view(shape).size())}}));
+    const auto association = validateModule(
+        *parsed, *canonical, ModuleValidationPolicy::RequireCompleteContext);
+    ASSERT_FALSE(association);
+    EXPECT_TRUE(std::ranges::any_of(association.error(), [](const auto& item) {
+      return item.kind == checker::CheckDiagnosticKind::ModuleSourceMismatch;
+    }));
+  }
+  const auto valid =
+      test_helpers::parseModule(denseF64Module(denseF64Instruction()));
+  ASSERT_MODULE_PARSE_SUCCEEDS(valid);
+  EXPECT_TRUE(validateModule(*valid, *canonical,
+                             ModuleValidationPolicy::RequireCompleteContext));
+  auto mixed = denseF64Module(denseF64Instruction());
+  const auto suffix = mixed.rfind(".f64.f64.f64.f64");
+  ASSERT_NE(suffix, std::string::npos);
+  mixed.replace(suffix, 16, ".f64.f32.f64.f64");
+  const auto mixed_ast = test_helpers::parseModule(mixed);
+  ASSERT_MODULE_PARSE_SUCCEEDS(mixed_ast);
+  EXPECT_FALSE(resolveModule(*mixed_ast));
+}
+
+/** Reject genuine current payload defects independently of an original valid AST. */
+TEST(WarpMatrixMmaCoverage, F64OwnedFragmentsLayoutAndWidth) {
+  using Exact = MmaSyncAlignedM8n8k4RowColF64F64F64F64;
+  const auto text = denseF64Module(denseF64Instruction());
+  auto owned = ownedDenseF64(text);
+  ASSERT_TRUE(owned) << owned.error().front().message;
+  auto& body = owned->functions.front().body;
+  auto& exact = dynamic_cast<Exact&>(*body.back());
+  const auto spare = dynamic_cast<MovScalar&>(*body[1]).dst_register->value;
+  const auto narrow = dynamic_cast<MovScalar&>(*body[0]).dst_register->value;
+  ASSERT_EQ(narrow.declared_type, ScalarType::F32);
+  ASSERT_TRUE(narrow.symbol_id);
+  const checker::Context supported{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80}};
+  const auto supplied = test_helpers::parseModule(text);
+  ASSERT_MODULE_PARSE_SUCCEEDS(supplied);
+  for (auto* field : {&exact.dst, &exact.a, &exact.b, &exact.c}) {
+    const auto saved = *field;
+    const unsigned legal = saved.value.elements.size();
+    for (const unsigned count : {1u, 2u, 3u}) {
+      if (count == legal || (legal == 1 && count == 3))
+        continue;
+      if (count < legal) {
+        field->value.elements.resize(count);
+        field->locs.resize(count);
+      } else {
+        field->value.elements.push_back(spare);
+        field->locs.push_back(saved.locs.front());
+      }
+      ASSERT_TRUE(
+          valid_register_vector_source(field->value, field->locs, true));
+      const auto result = exact.check(supported);
+      ASSERT_FALSE(result);
+      EXPECT_TRUE(std::ranges::any_of(result.error(), [&](const auto& d) {
+        return d.kind == checker::CheckDiagnosticKind::InvalidVectorOperand &&
+               d.range == saved.locs.front() &&
+               d.message.find("element count") != std::string::npos;
+      }));
+      const auto module = validateModule(
+          *owned, ModuleValidationPolicy::RequireCompleteContext);
+      ASSERT_FALSE(module);
+      EXPECT_TRUE(std::ranges::any_of(module.error(), [](const auto& d) {
+        return d.kind == checker::CheckDiagnosticKind::InvalidVectorOperand;
+      }));
+      const auto joined = validateModule(
+          *supplied, *owned, ModuleValidationPolicy::RequireCompleteContext);
+      ASSERT_FALSE(joined);
+      EXPECT_TRUE(std::ranges::any_of(joined.error(), [](const auto& d) {
+        return d.kind == checker::CheckDiagnosticKind::InvalidVectorOperand;
+      }));
+      *field = saved;
+      EXPECT_TRUE(validateModule(
+          *owned, ModuleValidationPolicy::RequireCompleteContext));
+    }
+    field->value.elements.front() = narrow;
+    ASSERT_TRUE(valid_register_vector_source(field->value, field->locs, true));
+    const auto width = exact.check(supported);
+    ASSERT_FALSE(width);
+    EXPECT_TRUE(std::ranges::any_of(width.error(), [&](const auto& d) {
+      return d.kind == checker::CheckDiagnosticKind::OperandTypeMismatch &&
+             d.range == saved.locs.front();
+    }));
+    const auto narrow_join = validateModule(
+        *supplied, *owned, ModuleValidationPolicy::RequireCompleteContext);
+    ASSERT_FALSE(narrow_join);
+    EXPECT_TRUE(std::ranges::any_of(narrow_join.error(), [](const auto& d) {
+      return d.kind == checker::CheckDiagnosticKind::OperandTypeMismatch;
+    }));
+    *field = saved;
+    field->value.elements.front() = spare;
+    EXPECT_TRUE(exact.check(supported));
+    EXPECT_TRUE(validateModule(*supplied, *owned,
+                               ModuleValidationPolicy::RequireCompleteContext));
+    *field = saved;
+  }
+  const auto layout = exact.operand_layout;
+  exact.operand_layout.value = 9999;
+  const auto invalid = exact.check(supported);
+  ASSERT_FALSE(invalid);
+  EXPECT_EQ(invalid.error().back().kind,
+            checker::CheckDiagnosticKind::InvalidOperandLayoutTag);
+  EXPECT_FALSE(validateModule(*supplied, *owned,
+                              ModuleValidationPolicy::RequireCompleteContext));
+  exact.operand_layout = layout;
+  EXPECT_TRUE(validateModule(*supplied, *owned,
+                             ModuleValidationPolicy::RequireCompleteContext));
+}
+
+/** Preserve the distinct base and later dense F64 target/version gates. */
+TEST(WarpMatrixMmaCoverage, F64BaseAndAdjacentAvailability) {
+  auto owned = ownedDenseF64(denseF64Module(denseF64Instruction()));
+  ASSERT_TRUE(owned);
+  const auto& exact = *owned->functions.front().body.back();
+  for (const auto version :
+       {checker::PtxVersion{6, 5}, checker::PtxVersion{7, 0}}) {
+    const checker::Context context{
+        .target = {.ptx_version = version, .sm_version = 80}};
+    EXPECT_EQ(bool(exact.check(context)),
+              version == (checker::PtxVersion{7, 0}));
+  }
+  const checker::Context sm75{
+      .target = {.ptx_version = {9, 3}, .sm_version = 75}};
+  EXPECT_FALSE(exact.check(sm75));
+  for (const auto shape : {"m16n8k4", "m16n8k8", "m16n8k16"}) {
+    auto adjacent = ownedDenseF64(
+        denseF64Module(denseF64Instruction(shape), "7.8", "sm_90"));
+    ASSERT_TRUE(adjacent) << adjacent.error().front().message;
+    const auto& form = *adjacent->functions.front().body.back();
+    for (const auto version :
+         {checker::PtxVersion{7, 7}, checker::PtxVersion{7, 8}})
+      for (const auto sm : {80u, 90u}) {
+        const checker::Context context{
+            .target = {.ptx_version = version, .sm_version = sm}};
+        EXPECT_EQ(bool(form.check(context)),
+                  version == (checker::PtxVersion{7, 8}) && sm == 90);
+      }
+  }
 }
 
 }  // namespace

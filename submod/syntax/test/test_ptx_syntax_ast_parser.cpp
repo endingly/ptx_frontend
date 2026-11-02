@@ -236,7 +236,9 @@ TEST(PtxSyntaxParser, LowersDedicatedCallAndBranchOperands) {
   ASSERT_EQ(returns.parameters.size(), 1u);
   EXPECT_EQ(std::get<AstIdentifierRef>(returns.parameters[0]).syntax.text,
             "%result");
-  EXPECT_EQ(std::get<AstCallTarget>(call->operands[1]).name.syntax.text,
+  EXPECT_EQ(std::get<syntax_ast::AstIdentifierRef>(
+                std::get<AstCallTarget>(call->operands[1]).name)
+                .syntax.text,
             "%callee");
 
   const auto& inputs = std::get<AstCallParameterList>(call->operands[2]);

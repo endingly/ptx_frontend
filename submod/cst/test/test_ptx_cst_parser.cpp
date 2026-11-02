@@ -618,7 +618,10 @@ TEST(PtxCstParser, RetainsDedicatedCallOperandStructure) {
 
   const auto& target =
       std::get<CstCallTarget>(instruction->operands[1].operand);
-  EXPECT_EQ(result->token(target.name.token).text, "%callee");
+  EXPECT_EQ(
+      result->token(std::get<syntax_cst::CstIdentifier>(target.name).token)
+          .text,
+      "%callee");
 
   const auto& inputs =
       std::get<CstCallParameterList>(instruction->operands[2].operand);
@@ -2130,5 +2133,18 @@ TEST(PtxCstParser, RecoversLegacyDwarfAtStructuralBoundaries) {
   EXPECT_EQ(functions, 2u);
   EXPECT_EQ(body_records, 1u);
   EXPECT_EQ(blocks, 1u);
+}
+/** Call selections retain their existing member tokens inside dedicated groups. */
+TEST(PtxCstParser, CallComponentOperands) {
+  PtxCstParser parser("call (V.r), FP.x, (V.y), meta;");
+  const auto parsed = parser.parseInstruction();
+  ASSERT_TRUE(parsed);
+  const auto& call = *parsed->instruction();
+  const auto& returns =
+      std::get<syntax_cst::CstCallParameterList>(call.operands[0].operand);
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstVectorMember>(
+      returns.parameters.front()));
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstVectorMember>(
+      std::get<syntax_cst::CstCallTarget>(call.operands[1].operand).name));
 }
 }  // namespace ptx_frontend

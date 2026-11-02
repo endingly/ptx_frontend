@@ -663,6 +663,28 @@ resolve_call_parameter(const syntax_ast::AstIdentifierRef& identifier,
   return resolved;
 }
 
+/** Resolve an explicit call lane through the ordinary real register owner. */
+std::expected<ResolvedCallParameterRef, ResolveDiagnostic>
+resolve_call_parameter(const syntax_ast::AstVectorMember& member,
+                       const ResolveContext* context) {
+  auto reg = resolve_register(syntax_ast::AstOperand{member}, context);
+  if (!reg)
+    return std::unexpected(reg.error());
+  if (!reg->value.declared_type || !reg->value.component ||
+      base::scalar_size_of(*reg->value.declared_type) *
+              reg->value.component->declaration_width >
+          16)
+    return std::unexpected(ResolveDiagnostic{
+        member.range,
+        "Selected call register owner exceeds the physical vector width."});
+  auto value = resolve_call_parameter(member.base, context);
+  if (!value)
+    return std::unexpected(value.error());
+  value->spelling = reg->value.spelling;
+  value->component = std::move(reg->value.component);
+  return value;
+}
+
 std::expected<WithLocs<ResolvedFunctionRef>, ResolveDiagnostic>
 resolve_direct_call_target(const syntax_ast::AstOperand& operand,
                            const ResolveContext* context) {
@@ -674,15 +696,20 @@ resolve_direct_call_target(const syntax_ast::AstOperand& operand,
     });
   }
 
-  ResolvedFunctionRef resolved{.spelling = target->name.syntax.text};
+  const auto* name = std::get_if<syntax_ast::AstIdentifierRef>(&target->name);
+  if (!name)
+    return std::unexpected(ResolveDiagnostic{
+        target->range,
+        "A selected register target requires indirect call metadata."});
+  ResolvedFunctionRef resolved{.spelling = name->syntax.text};
   if (context != nullptr) {
     const auto lookup =
-        context->symbols.lookup(context->scope, target->name.syntax.text);
+        context->symbols.lookup(context->scope, name->syntax.text);
     if (!lookup) {
       return std::unexpected(ResolveDiagnostic{
           .range = target->range,
-          .message = fmt::format("Unresolved call target '{}'.",
-                                 target->name.syntax.text),
+          .message =
+              fmt::format("Unresolved call target '{}'.", name->syntax.text),
       });
     }
     const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
@@ -697,7 +724,7 @@ resolve_direct_call_target(const syntax_ast::AstOperand& operand,
                   ? "Indirect call register targets require a function-local "
                     ".callprototype or .calltargets metadata operand."
                   : fmt::format("Call target '{}' must name a function.",
-                                target->name.syntax.text),
+                                name->syntax.text),
       });
     }
     if (symbol.function_is_entry) {
@@ -705,7 +732,7 @@ resolve_direct_call_target(const syntax_ast::AstOperand& operand,
           .range = target->range,
           .message = fmt::format("Direct call target '{}' must name a device "
                                  ".func, not an .entry.",
-                                 target->name.syntax.text),
+                                 name->syntax.text),
       });
     }
     resolved.symbol_id = symbol.id;
@@ -718,8 +745,11 @@ std::expected<WithLocs<ResolvedIndirectCallee>, ResolveDiagnostic>
 resolve_indirect_callee(const syntax_ast::AstOperand& operand,
                         const ResolveContext* context) {
   if (const auto* target = std::get_if<syntax_ast::AstCallTarget>(&operand)) {
-    auto register_ref =
-        resolve_register(syntax_ast::AstOperand{target->name}, context);
+    auto register_ref = std::visit(
+        [context](const auto& name) {
+          return resolve_register(syntax_ast::AstOperand{name}, context);
+        },
+        target->name);
     if (!register_ref)
       return std::unexpected(register_ref.error());
     if ((register_ref->value.symbol_id && !register_ref->value.declared_type) ||
@@ -813,15 +843,27 @@ resolve_call_return_parameter(const syntax_ast::AstOperand& operand,
         .message = "Expected a single call return parameter.",
     });
   }
-  const auto* identifier =
-      std::get_if<syntax_ast::AstIdentifierRef>(&group->parameters.front());
-  if (identifier == nullptr) {
+  const auto& parameter = group->parameters.front();
+  if (!std::holds_alternative<syntax_ast::AstIdentifierRef>(parameter) &&
+      !std::holds_alternative<syntax_ast::AstVectorMember>(parameter)) {
     return std::unexpected(ResolveDiagnostic{
         .range = group->range,
         .message = "A call return parameter must be a .reg or .param variable.",
     });
   }
-  auto resolved = resolve_call_parameter(*identifier, context);
+  auto resolved = std::visit(
+      [context](const auto& leaf)
+          -> std::expected<ResolvedCallParameterRef, ResolveDiagnostic> {
+        using Leaf = std::remove_cvref_t<decltype(leaf)>;
+        if constexpr (std::same_as<Leaf, syntax_ast::AstIdentifierRef> ||
+                      std::same_as<Leaf, syntax_ast::AstVectorMember>)
+          return resolve_call_parameter(leaf, context);
+        else
+          return std::unexpected(ResolveDiagnostic{
+              syntax_ast::sourceRange(syntax_ast::AstOperand{leaf}),
+              "Expected a variable call return."});
+      },
+      parameter);
   if (!resolved)
     return std::unexpected(resolved.error());
   return WithLocs<ResolvedCallParameterRef>{std::move(*resolved), group->range};
@@ -849,6 +891,15 @@ resolve_call_arguments(const syntax_ast::AstOperand& operand,
         return std::unexpected(value.error());
       resolved.values.emplace_back(ResolvedCallArgument{std::move(*value)},
                                    identifier->syntax.range);
+      continue;
+    }
+    if (const auto* member =
+            std::get_if<syntax_ast::AstVectorMember>(&parameter)) {
+      auto value = resolve_call_parameter(*member, context);
+      if (!value)
+        return std::unexpected(value.error());
+      resolved.values.emplace_back(ResolvedCallArgument{std::move(*value)},
+                                   member->range);
       continue;
     }
     if (const auto* expression =

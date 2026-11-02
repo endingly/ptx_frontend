@@ -49,13 +49,17 @@ TEST(CallTargetOrder, RejectsAmbiguousUseAndDeclarationEvents) {
       std::get<syntax_ast::AstInstruction>(function.body[0]).operands[0]);
   auto& second = std::get<syntax_ast::AstCallTarget>(
       std::get<syntax_ast::AstInstruction>(function.body[1]).operands[0]);
-  second.name.syntax.range = first.name.syntax.range;
+  std::get<syntax_ast::AstIdentifierRef>(second.name).syntax.range =
+      std::get<syntax_ast::AstIdentifierRef>(first.name).syntax.range;
   second.range = first.range;
   const auto bound = binding::bindSymbols(*ast);
   const auto symbol = bound.table.lookup(bound.table.moduleScope(), "f");
   ASSERT_TRUE(symbol);
   EXPECT_FALSE(
-      bound.table.hasPriorDeclaration(symbol->symbol, first.name.syntax.range)
+      bound.table
+          .hasPriorDeclaration(
+              symbol->symbol,
+              std::get<syntax_ast::AstIdentifierRef>(first.name).syntax.range)
           .has_value());
   PtxSyntaxParser declarations(
       ".func f(); .func f(); .entry kernel() { call f; }");
@@ -73,7 +77,10 @@ TEST(CallTargetOrder, RejectsAmbiguousUseAndDeclarationEvents) {
   const auto& use = std::get<syntax_ast::AstCallTarget>(
       std::get<syntax_ast::AstInstruction>(caller.body[0]).operands[0]);
   EXPECT_FALSE(
-      ambiguous.table.hasPriorDeclaration(target->symbol, use.name.syntax.range)
+      ambiguous.table
+          .hasPriorDeclaration(
+              target->symbol,
+              std::get<syntax_ast::AstIdentifierRef>(use.name).syntax.range)
           .has_value());
 }
 /** The whole target range is authoritative even when malformed name syntax differs. */
@@ -85,14 +92,18 @@ TEST(CallTargetOrder, IndexesTheRangeRetainedByResolvedCallTargets) {
   auto& target = std::get<syntax_ast::AstCallTarget>(
       std::get<syntax_ast::AstInstruction>(function.body.front())
           .operands.front());
-  target.name.syntax.range = {{900, 1}, {900, 2}};
+  std::get<syntax_ast::AstIdentifierRef>(target.name).syntax.range = {{900, 1},
+                                                                      {900, 2}};
   const auto bound = binding::bindSymbols(*ast);
   const auto symbol = bound.table.lookup(bound.table.moduleScope(), "f");
   ASSERT_TRUE(symbol);
   EXPECT_EQ(bound.table.hasPriorDeclaration(symbol->symbol, target.range),
             true);
   EXPECT_FALSE(
-      bound.table.hasPriorDeclaration(symbol->symbol, target.name.syntax.range)
+      bound.table
+          .hasPriorDeclaration(
+              symbol->symbol,
+              std::get<syntax_ast::AstIdentifierRef>(target.name).syntax.range)
           .has_value());
 }
 

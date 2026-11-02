@@ -183,8 +183,8 @@ enum class CstCallParameterListKind : uint8_t {
   Input,
 };
 
-using CstCallParameter =
-    std::variant<CstIdentifier, CstImmediate, CstConstantOperand>;
+using CstCallParameter = std::variant<CstIdentifier, CstImmediate,
+                                      CstConstantOperand, CstVectorMember>;
 
 struct CstCallParameterList {
   CstCallParameterListKind kind{};
@@ -196,7 +196,8 @@ struct CstCallParameterList {
 };
 
 struct CstCallTarget {
-  CstIdentifier name;
+  /** Written direct name or explicit ordinary register selection. */
+  std::variant<CstIdentifier, CstVectorMember> name;
   CstTokenRange token_range;
 };
 

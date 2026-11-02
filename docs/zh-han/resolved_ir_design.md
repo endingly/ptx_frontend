@@ -619,7 +619,7 @@ source identity。满足当前规则的 owned alias/lane 修改不认证 produce
 supplied AST 不能掩盖非法 current metadata。即使 target check 延后，component leaf
 range 也必须位于 address 与 instruction 内，选中 physical owner 的 128-bit 上限也仍须满足。
 缺少 target context 时，`AvailableContext` 仍按既有规则延后完整 instruction role 检查，
-不构成 complete validation。call 仍排除 component 语法。共享 address
+不构成 complete validation。call 支持显式普通 scalar component 输入、返回和间接 register target。共享 address
 child parsing 不会改变 Fabric、opaque-resource 与 tensor-map role 的独立语义排除。
 `NamedProjection` 不能冒充显式 scalar selector。Hardware component 仍是独立注册表
 domain，只保留既有 selector。
@@ -1513,8 +1513,7 @@ context control。
 fundamental signed、unsigned 或 bit 的 8、16、32、64 位类型。floating、packed/alternate
 instruction-only type、`.b128`、predicate、special register 和 whole vector 不满足此 role。
 普通 selected component 使用同一 element-type 规则，并保留真实 owner identity、selector
-range 及 vector declaration 的 128 位上限。源码中 call component 仍不属于当前 call grammar；
-此 invariant 也检查已构造的 public register-component value，不新增 call syntax 或 parameter field。
+range 及 vector declaration 的 128 位上限。源码 call component 与已构造的 public register-component value 使用同一 invariant。
 
 这是从 [PTX §6.4.1](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#addresses-as-operands)
 与 [§9.7.13.5](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-instructions-call)
@@ -1529,3 +1528,27 @@ source resolution、direct typed check 与两种 module validation API 都在缺
 RegRef alternative，不把 metadata/table alternative 重新解释为 register。完全未知的
 standalone fact 保持原有 unknown/context 行为。formal input/return ABI 与普通 floating
 call input 的规则继续独立。
+
+
+### call 的 selected scalar operand
+
+call 输入及唯一的括号内返回值支持普通 `.xyzw/.rgba` register selection。
+target 支持 identifier 或显式选中的 indirect register；末尾 prototype/target-set/table
+metadata 仍仅接受 identifier。匿名 brace actual 与 direct function projection 仍不支持。
+`ResolvedCallParameterRef::component` 是默认 disengaged 的 owning optional；null
+保留 whole-variable 合同及旧 aggregate construction。
+
+源码及两种 owned-module validation 都先核对真实 General `.reg` v2/v4 声明、
+SymbolId、parameterized member、element type/state、physical owner 的 128 位上限
+以及显式 selector provenance，然后才向既有 call ABI comparison 提供 effective scalar。
+array、pointer、size 与 alignment 约束不会被抹去。删除或伪造 cache 不能掩盖已知声明。
+返回值的 `WithLocs` 保留外层括号 range；selected leaf 必须位于 group 和 instruction 内。
+observer 的值拷贝、module copy 和 instruction clone 都拥有自己的 selection。
+
+modern register formal 的最小宽度仍是 formal ABI 规则，不是全局 component 下限；
+合法且匹配的 subword `.param` formal 沿用既有 scalar actual 策略。whole named-vector
+actual、constant 与 parameter-memory staging 保持原规则。这是 derived scalar-element
+inheritance，不模拟 pointer 执行，不插入 hidden move 或 synthetic scalar declaration。
+满足当前规则的 coherent edit 仍合法；written source identity 独立检查。公共 CST/AST
+variant 和 owning call reference 要求 producer 与 consumer 一起 rebuild；instruction
+schema、generated layout 和 callback 不变。

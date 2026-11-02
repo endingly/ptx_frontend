@@ -314,6 +314,10 @@ syntax_ast::AstCallParameter lowerCallParameter(
         using Value = std::remove_cvref_t<decltype(value)>;
         if constexpr (std::same_as<Value, syntax_cst::CstIdentifier>)
           return lowerIdentifier(cst, value);
+        else if constexpr (std::same_as<Value, syntax_cst::CstVectorMember>)
+          return syntax_ast::AstVectorMember{
+              lowerIdentifier(cst, value.base), leafSyntax(cst, value.selector),
+              cst.sourceRange(value.token_range)};
         else
           return lowerImmediate(cst, value);
       },
@@ -493,8 +497,21 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
               .range = cst.sourceRange(value.token_range),
           };
         } else if constexpr (std::same_as<Value, syntax_cst::CstCallTarget>) {
-          return syntax_ast::AstCallTarget{lowerIdentifier(cst, value.name),
-                                           cst.sourceRange(value.token_range)};
+          return syntax_ast::AstCallTarget{
+              std::visit(
+                  [&cst](const auto& leaf)
+                      -> decltype(syntax_ast::AstCallTarget{}.name) {
+                    using Leaf = std::remove_cvref_t<decltype(leaf)>;
+                    if constexpr (std::same_as<Leaf, syntax_cst::CstIdentifier>)
+                      return lowerIdentifier(cst, leaf);
+                    else
+                      return syntax_ast::AstVectorMember{
+                          lowerIdentifier(cst, leaf.base),
+                          leafSyntax(cst, leaf.selector),
+                          cst.sourceRange(leaf.token_range)};
+                  },
+                  value.name),
+              cst.sourceRange(value.token_range)};
         } else if constexpr (std::same_as<Value,
                                           syntax_cst::CstCallTargetSet>) {
           return syntax_ast::AstCallTargetSet{

@@ -9,6 +9,11 @@
 
 namespace ptx_frontend::resolved_ir::detail {
 
+/** Resolve a real ordinary register owner before any call ABI projection. */
+std::expected<WithLocs<ResolvedRegisterRef>, ResolveDiagnostic>
+resolve_register(const syntax_ast::AstOperand& operand,
+                 const ResolveContext* context);
+
 /** Require retained integer result provenance before an integer-only coercion. */
 std::expected<void, ResolveDiagnostic> require_integer_source(
     const ResolvedImmediate& value, SourceRange range);

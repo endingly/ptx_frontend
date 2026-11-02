@@ -773,7 +773,7 @@ remain inside their address and instruction, and the selected physical owner
 keeps its 128-bit cap, even when target checks defer. `AvailableContext` retains
 the existing deferral of full instruction role checks when target context is
 missing; it is not complete validation.
-Calls still exclude component syntax. Fabric, opaque-resource and tensor-map
+Calls admit explicit ordinary selected scalar inputs, returns and indirect register targets. Fabric, opaque-resource and tensor-map
 roles retain their separate semantic exclusions despite shared address-child
 parsing. `NamedProjection` does not impersonate an explicit scalar selector.
 Hardware components remain a distinct registry-backed domain with only its
@@ -1875,9 +1875,7 @@ fundamental signed, unsigned or bit type of 8, 16, 32 or 64 bits. Floating types
 packed/alternate instruction-only types, `.b128`, predicates, special registers
 and whole vectors do not satisfy this role. A selected ordinary component uses
 the same element-type rule and retains its real owner identity, selector ranges
-and the 128-bit vector-declaration limit. Written call components remain outside
-the current call grammar; this invariant also checks already typed public
-register-component values without adding call syntax or a parameter field.
+and the 128-bit vector-declaration limit. Written call components use the same invariant as typed public register-component values.
 
 This is a **derived** address-carrier interpretation of
 [PTX §6.4.1](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#addresses-as-operands)
@@ -1896,3 +1894,31 @@ source cannot mask bad current data. Generated views borrow the active RegRef
 alternative without reinterpreting metadata/table alternatives. Completely
 unknown standalone facts retain their existing unknown/context behavior.
 Formal input/return ABI rules and ordinary floating call inputs remain separate.
+
+
+### Selected scalar call operands
+
+Call inputs and the single parenthesized return accept ordinary `.xyzw/.rgba`
+register selections. The target accepts an identifier or an explicitly selected
+indirect register; final prototype/target-set/table metadata stays identifier-only.
+Anonymous brace actuals and direct function projections remain unsupported.
+`ResolvedCallParameterRef::component` is a default-disengaged owning optional;
+null preserves the whole-variable contract and old aggregate construction.
+
+Source and both owned-module validation routes first join the real General
+`.reg` v2/v4 declaration, SymbolId, parameterized member, element type/state,
+physical 128-bit owner bound and explicit selector provenance. Only then does
+the existing call ABI comparison see an effective scalar. Arrays, pointer,
+size and alignment constraints are retained. Deleting or contradicting a cache
+cannot hide a known declaration. The return's outer parenthesized range stays
+in `WithLocs`; its selected leaf remains contained inside the group and instruction.
+Copied observer values, module copies and instruction clones own the selection.
+
+Modern register-formal minimum width remains a formal ABI rule, not a global
+component minimum: matching legal subword `.param` formals use the existing
+scalar actual policy. Whole named-vector actuals, constants and parameter-memory
+staging retain their existing rules. This is derived scalar-element inheritance,
+not pointer execution, hidden moves or synthetic scalar declarations. Coherent
+current edits remain legal; written source identity is checked independently.
+Public CST/AST variants and the owning call reference require matching producer
+and consumer rebuilds. No instruction schema, generated layout or callback changes.

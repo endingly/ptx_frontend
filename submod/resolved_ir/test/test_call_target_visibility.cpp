@@ -174,9 +174,13 @@ TEST(CallTargetVisibility, RejectsNonpositiveRangeEndpointsInIndexedContext) {
     auto& target =
         std::get<syntax_ast::AstCallTarget>(instruction.operands.front());
     if (use_end) {
-      target.name.syntax.range.end = {target.name.syntax.range.start.line + 1,
-                                      0};
-      target.range = target.name.syntax.range;
+      std::get<syntax_ast::AstIdentifierRef>(target.name).syntax.range.end = {
+          std::get<syntax_ast::AstIdentifierRef>(target.name)
+                  .syntax.range.start.line +
+              1,
+          0};
+      target.range =
+          std::get<syntax_ast::AstIdentifierRef>(target.name).syntax.range;
     }
     instruction.range.end = {instruction.range.end.line + 2, use_end ? 1 : 0};
     const auto bound = binding::bindSymbols(*parsed);
@@ -454,8 +458,21 @@ TEST(IndirectFunctionCarrier, RealComponentsUseTheSameDomainAfterSourceDeath) {
                        ".reg .v2 ." + std::string(type) + " V;\n");
     component_source.replace(component_source.rfind("call pointer"), 12,
                              "call V.x");
-    EXPECT_FALSE(
-        test_helpers::parseModule(component_source).diagnostics.empty());
+    const auto selected_ast = test_helpers::parseModule(component_source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(selected_ast);
+    const auto selected_module = resolveAndValidateModule(*selected_ast);
+    if (std::string_view(type) == "f32") {
+      ASSERT_FALSE(selected_module);
+      EXPECT_TRUE(
+          std::ranges::any_of(selected_module.error(), [](const auto& d) {
+            return d.message.find("Indirect function address requires") !=
+                   std::string::npos;
+          }));
+    } else {
+      ASSERT_TRUE(selected_module) << selected_module.error().front().message;
+      EXPECT_TRUE(validateModule(*selected_module));
+      EXPECT_TRUE(validateModule(*selected_ast, *selected_module));
+    }
   }
 }
 

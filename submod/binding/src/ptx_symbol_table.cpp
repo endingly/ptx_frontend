@@ -1332,6 +1332,9 @@ struct SymbolTableBuilder {
             for (const auto& parameter : value.parameters) {
               const auto* identifier =
                   std::get_if<syntax_ast::AstIdentifierRef>(&parameter);
+              if (const auto* member =
+                      std::get_if<syntax_ast::AstVectorMember>(&parameter))
+                identifier = &member->base;
               if (identifier == nullptr)
                 continue;
               const SymbolReference& reference =
@@ -1347,20 +1350,32 @@ struct SymbolTableBuilder {
               }
             }
           } else if constexpr (std::same_as<Value, syntax_ast::AstCallTarget>) {
+            const bool selected =
+                std::holds_alternative<syntax_ast::AstVectorMember>(value.name);
+            const auto& name = std::visit(
+                [](const auto& leaf) -> const syntax_ast::AstIdentifierRef& {
+                  using Leaf = std::remove_cvref_t<decltype(leaf)>;
+                  if constexpr (std::same_as<Leaf,
+                                             syntax_ast::AstIdentifierRef>)
+                    return leaf;
+                  else
+                    return leaf.base;
+                },
+                value.name);
             const SymbolReference& reference =
-                addReference(scope, ReferenceKind::CallTarget, value.name);
+                addReference(scope, ReferenceKind::CallTarget, name);
             if (reference.target) {
               const Symbol& symbol =
                   result.table.symbol(reference.target->symbol);
               diagnoseInvalidTarget(
                   reference,
-                  symbol.kind == SymbolKind::Function ||
+                  (!selected && symbol.kind == SymbolKind::Function) ||
                       (isRegisterOrParameter(symbol) &&
                        symbol.state_space ==
                            syntax_ast::AstStateSpace::Register),
                   fmt::format("Call target '{}' must name a function or a "
                               ".reg function pointer.",
-                              value.name.syntax.text));
+                              name.syntax.text));
             }
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstCallTargetSet>) {

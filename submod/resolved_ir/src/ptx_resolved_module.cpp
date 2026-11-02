@@ -3,6 +3,7 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include "ptx_call_parameter_transfers.hpp"
 #include "ptx_call_target_visibility.hpp"
+#include "ptx_resolved_ir_private.hpp"
 
 #include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
@@ -714,7 +715,11 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
   } else {
     if (target == nullptr)
       return;
-    const auto lookup = symbols.lookup(scope, target->name.syntax.text);
+    const auto* target_name =
+        std::get_if<syntax_ast::AstIdentifierRef>(&target->name);
+    if (!target_name)
+      return;
+    const auto lookup = symbols.lookup(scope, target_name->syntax.text);
     if (!lookup ||
         symbols.symbol(lookup->symbol).kind != binding::SymbolKind::Function)
       return;
@@ -725,7 +730,7 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
     if (found == signatures.end())
       return;
     signature = &found->second;
-    callee_name = target->name.syntax.text;
+    callee_name = target_name->syntax.text;
     call_subject = fmt::format("Direct call to '{}'", callee_name);
     target_range = target->range;
   }
@@ -770,7 +775,8 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
       const auto formal_properties =
           declaration_semantics::call_argument_properties(formals[index]);
       CallArgumentProperties actual_properties;
-      if (!std::holds_alternative<syntax_ast::AstIdentifierRef>(actual)) {
+      if (!std::holds_alternative<syntax_ast::AstIdentifierRef>(actual) &&
+          !std::holds_alternative<syntax_ast::AstVectorMember>(actual)) {
         ResolvedCallLiteral source;
         if (const auto* immediate =
                 std::get_if<syntax_ast::AstImmediate>(&actual)) {
@@ -812,7 +818,10 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
           retained->value = literal->value;
         }
       } else {
-        const auto& identifier = std::get<syntax_ast::AstIdentifierRef>(actual);
+        const auto* member = std::get_if<syntax_ast::AstVectorMember>(&actual);
+        const auto& identifier =
+            member ? member->base
+                   : std::get<syntax_ast::AstIdentifierRef>(actual);
         const auto actual_lookup =
             symbols.lookup(scope, identifier.syntax.text);
         if (!actual_lookup) {
@@ -827,6 +836,25 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
                           identifier.syntax.text));
         }
         actual_properties = properties_it->second;
+        if (member) {
+          ResolveContext selected_context{.symbols = symbols, .scope = scope};
+          auto selected = detail::resolve_register(
+              syntax_ast::AstOperand{*member}, &selected_context);
+          if (!selected) {
+            diagnostics.push_back(selected.error());
+            continue;
+          }
+          if (!selected->value.declared_type || !selected->value.component ||
+              base::scalar_size_of(*selected->value.declared_type) *
+                      selected->value.component->declaration_width >
+                  16) {
+            diagnostics.push_back({range,
+                                   "Selected call register owner exceeds the "
+                                   "physical vector width."});
+            continue;
+          }
+          actual_properties.vector_shape = CallArgumentVectorShape::Scalar;
+        }
       }
       const auto compatibility =
           call_argument_compatibility::checkCallArgumentCompatibility(

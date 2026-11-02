@@ -218,10 +218,15 @@ PtxCstParser::parseCallParameterList(
   std::vector<syntax_cst::CstCallParameter> parameters;
   std::vector<TokenId> commas;
   if (kind == CstCallParameterListKind::Return) {
-    auto parameter = expect(TokenKind::Ident, "call return parameter");
+    auto parameter = parseIdentifierOrMember("call return parameter");
     if (!parameter)
       return std::unexpected(parameter.error());
-    parameters.emplace_back(syntax_cst::CstIdentifier{*parameter});
+    if (const auto* identifier =
+            std::get_if<syntax_cst::CstIdentifier>(&*parameter))
+      parameters.emplace_back(*identifier);
+    else
+      parameters.emplace_back(
+          std::get<syntax_cst::CstVectorMember>(*parameter));
     if (token(peek()).kind == TokenKind::Comma) {
       return std::unexpected(CstParseDiagnostic{
           token(peek()).range,
@@ -230,7 +235,15 @@ PtxCstParser::parseCallParameterList(
   } else {
     while (token(peek()).kind != TokenKind::RParen) {
       if (token(peek()).kind == TokenKind::Ident) {
-        parameters.emplace_back(syntax_cst::CstIdentifier{consume()});
+        auto parameter = parseIdentifierOrMember("call input parameter");
+        if (!parameter)
+          return std::unexpected(parameter.error());
+        if (const auto* identifier =
+                std::get_if<syntax_cst::CstIdentifier>(&*parameter))
+          parameters.emplace_back(*identifier);
+        else
+          parameters.emplace_back(
+              std::get<syntax_cst::CstVectorMember>(*parameter));
       } else if (atNumericStart()) {
         auto parameter = parseNumericOperand();
         if (!parameter)
@@ -286,13 +299,20 @@ PtxCstParser::parseCallOperands() {
     operands.back().trailing_comma = *comma;
   }
 
-  auto target = expect(TokenKind::Ident, "call target");
+  auto target = parseIdentifierOrMember("call target");
   if (!target)
     return std::unexpected(target.error());
-  operands.push_back(
-      {syntax_cst::CstCallTarget{syntax_cst::CstIdentifier{*target},
-                                 {*target, *target + 1}},
-       std::nullopt});
+  syntax_cst::CstCallTarget call_target;
+  if (const auto* identifier =
+          std::get_if<syntax_cst::CstIdentifier>(&*target)) {
+    call_target.name = *identifier;
+    call_target.token_range = {identifier->token, identifier->token + 1};
+  } else {
+    const auto& member = std::get<syntax_cst::CstVectorMember>(*target);
+    call_target.name = member;
+    call_target.token_range = member.token_range;
+  }
+  operands.push_back({std::move(call_target), std::nullopt});
 
   if (token(peek()).kind != TokenKind::Comma) {
     if (has_return_parameters) {

@@ -335,7 +335,15 @@ inline void operand(std::string& output, const syntax_ast::AstOperand& value) {
                        parameter);
         } else if constexpr (std::same_as<Node, syntax_ast::AstCallTarget>) {
           tag(output, "operand-call-target");
-          identifier(output, node.name);
+          std::visit(
+              [&output](const auto& name) {
+                using Name = std::remove_cvref_t<decltype(name)>;
+                if constexpr (std::same_as<Name, syntax_ast::AstIdentifierRef>)
+                  identifier(output, name);
+                else
+                  operand(output, name);
+              },
+              node.name);
         } else if constexpr (std::same_as<Node, syntax_ast::AstCallTargetSet>) {
           tag(output, "operand-call-target-set");
           identifier(output, node.name);

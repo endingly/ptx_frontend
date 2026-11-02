@@ -1875,6 +1875,7 @@ struct ResolvedCallTableRef {
 using ResolvedIndirectCallee =
     std::variant<ResolvedRegisterRef, ResolvedIndirectMetadataRef,
                  ResolvedCallTableRef>;
+/** An owning call actual whose optional selection retains its real vector owner. */
 struct ResolvedCallParameterRef {
   std::string spelling;
   std::optional<binding::SymbolId> symbol_id;
@@ -1882,6 +1883,8 @@ struct ResolvedCallParameterRef {
   /** Semantic declaration state space; the base alias needs no syntax AST. */
   std::optional<base::DeclarationStateSpace> state_space;
   std::optional<ScalarType> declared_type;
+  /** Explicit scalar lane; absence retains the whole-variable ABI contract. */
+  std::optional<ResolvedRegisterComponent> component{};
   bool operator==(const ResolvedCallParameterRef&) const = default;
 };
 /**

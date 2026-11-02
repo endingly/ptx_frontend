@@ -186,8 +186,8 @@ enum class AstCallParameterListKind : uint8_t {
   Input,
 };
 
-using AstCallParameter =
-    std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand>;
+using AstCallParameter = std::variant<AstIdentifierRef, AstImmediate,
+                                      AstConstantOperand, AstVectorMember>;
 
 struct AstCallParameterList {
   AstCallParameterListKind kind{};
@@ -196,7 +196,8 @@ struct AstCallParameterList {
 };
 
 struct AstCallTarget {
-  AstIdentifierRef name;
+  /** Owned direct name or explicit ordinary register selection. */
+  std::variant<AstIdentifierRef, AstVectorMember> name;
   SourceRange range;
 };
 

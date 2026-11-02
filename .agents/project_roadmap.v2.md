@@ -32,7 +32,7 @@ opcode 规则；0–63 是前端采用的表达式策略，不是硬件 clamp �
 间接 function-address carrier 采用共享的 private role 检查：General effective scalar，
 fundamental integer/bit 8/16/32/64；floating、B128、wrong class 与 whole vector 拒绝。
 source/direct/current 两种 API 使用一致规则，已知 declaration 不因 context 缺失而 defer；
-source call component 语法及后续 call parameter component field 仍未开放。该资格不计算
+source call input/return/indirect-target 支持普通 scalar component，call parameter 仅追加默认 null 的 owning component field；先核对真实 owner 再做 scalar ABI 投影。该资格不计算
 函数地址值或模拟链接/执行。详细 derived 解释见
 [control-flow contract](../docs/zh-han/control_flow_syntax_design.md)。
 

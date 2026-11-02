@@ -6,6 +6,7 @@
 
 #include <ptx_frontend/cst/ptx_cst_parser.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/cp.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/ld.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
@@ -444,11 +445,12 @@ TEST(VectorComponents, FabricHandleRejectsBothComponentOrigins) {
     }
 }
 
-/** Calls and stale transplanted named-index ranges remain independently checked. */
+/** Delivered call selections and stale named-index ranges remain independently checked. */
 TEST(VectorComponents, PreservesCallAndStaleIndexRangeFences) {
   for (const auto operation : {"call take, (V.x);"}) {
     const auto parsed = test_helpers::parseModule(component_module(operation));
-    EXPECT_TRUE(!parsed || !parsed.diagnostics.empty());
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    EXPECT_TRUE(resolveAndValidateModule(*parsed));
   }
   const auto parsed = test_helpers::parseModule(
       component_module("mov.u32 V.x, V.y; mov.u64 %rd, A[%r0];"));
@@ -570,6 +572,351 @@ TEST(VectorComponents, AddressComponentsRetainCurrentOwnedAuthority) {
     base.component->lane = 3;
     EXPECT_FALSE(validateModule(*current));
     EXPECT_FALSE(validateModule(*provided, *current));
+  }
+}
+
+/** Build matched scalar call signatures without changing declaration ownership. */
+std::string selected_call_source(std::string_view type, unsigned width,
+                                 std::string_view mode, bool returns,
+                                 std::string_view selected) {
+  const auto result = returns ? ".reg ." + std::string(type) + " result" : "";
+  const auto input = returns ? "" : ".reg ." + std::string(type) + " arg";
+  std::string source = ".version 9.3\n.target sm_90\n.address_size 64\n.func ";
+  if (returns)
+    source += "(" + result + ") ";
+  source += "callee(" + input + ");\n.entry kernel(){.reg .v" +
+            std::to_string(width) + " ." + std::string(type) + " V; .reg ." +
+            std::string(type) + " scalar; .reg .u64 fp;\n";
+  if (mode == "callprototype") {
+    source += "meta: .callprototype ";
+    if (returns)
+      source += "(" + result + ") ";
+    source += "_ (" + input + ");\n";
+  } else if (mode == "calltargets")
+    source += "meta: .calltargets callee;\n";
+  source += "call ";
+  if (returns)
+    source += "(" + std::string(selected) + "), ";
+  source += mode == "direct" ? "callee" : "fp";
+  source += returns ? ", ()" : ", (" + std::string(selected) + ")";
+  if (mode != "direct")
+    source += ", meta";
+  return source + ";ret;}";
+}
+
+/** Every scalar ABI combination keeps its actual v2/v4 owner and written alias. */
+TEST(CallComponents, ScalarInputReturnGrid) {
+  size_t cases = 0;
+  for (const auto type :
+       {"b32", "s32", "u32", "f32", "b64", "s64", "u64", "f64"})
+    for (const unsigned width : {2u, 4u}) {
+      if (std::string_view(type).ends_with("64") && width == 4)
+        continue;
+      for (const auto mode : {"direct", "callprototype", "calltargets"})
+        for (const bool returns : {false, true}) {
+          ++cases;
+          for (const auto selector : {"x", "r", "y", "g", "z", "b", "w", "a"}) {
+            if (width == 2 && std::string_view("zbwa").find(selector) !=
+                                  std::string_view::npos)
+              continue;
+            const std::string selected = "V." + std::string(selector);
+            const auto source =
+                selected_call_source(type, width, mode, returns, selected);
+            SCOPED_TRACE(source);
+            const auto parsed = test_helpers::parseModule(source);
+            ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+            const auto module = resolveAndValidateModule(*parsed);
+            ASSERT_TRUE(module) << module.error().front().message;
+            EXPECT_TRUE(validateModule(*module));
+            EXPECT_TRUE(validateModule(*parsed, *module));
+            const auto& call = dynamic_cast<const CallDirect&>(
+                *module->functions.back().body.front());
+            const auto& value =
+                returns ? call.return_value->value
+                        : std::get<ResolvedCallParameterRef>(
+                              call.arguments->value.values.front().value);
+            ASSERT_TRUE(value.component);
+            EXPECT_EQ(value.component->declaration_width, width);
+            EXPECT_EQ(value.spelling, selected);
+            EXPECT_EQ(module->symbols.symbol(*value.symbol_id).vector_width,
+                      width);
+            if (returns)
+              EXPECT_NE(call.return_value->locs.front(),
+                        value.component->range);
+          }
+        }
+    }
+  EXPECT_EQ(cases, 72u);
+}
+
+/** Indirect selected targets reuse the universal integer/bit carrier guard. */
+TEST(CallComponents, SelectedFunctionAddressTransport) {
+  for (const auto type : {"b32", "s32", "u32", "b64", "s64", "u64"})
+    for (const unsigned width : {2u, 4u}) {
+      if (std::string_view(type).ends_with("64") && width == 4)
+        continue;
+      for (const auto mode : {"callprototype", "calltargets"})
+        for (const auto selector : {"x", "r", "y", "g", "z", "b", "w", "a"}) {
+          if (width == 2 &&
+              std::string_view("zbwa").find(selector) != std::string_view::npos)
+            continue;
+          const std::string source =
+              ".version 9.3\n.target sm_90\n.address_size 64\n.func callee(); "
+              ".entry kernel(){.reg .v" +
+              std::to_string(width) + " ." + type + " FP; meta: ." + mode +
+              (std::string_view(mode) == "callprototype" ? " _ ();"
+                                                         : " callee;") +
+              "call FP." + selector + ", meta;ret;}";
+          SCOPED_TRACE(source);
+          const auto parsed = test_helpers::parseModule(source);
+          ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+          auto module = resolveAndValidateModule(*parsed);
+          ASSERT_TRUE(module) << module.error().front().message;
+          EXPECT_TRUE(validateModule(*module));
+          EXPECT_TRUE(validateModule(*parsed, *module));
+        }
+    }
+  for (const auto type : {"f32", "u16", "b16"})
+    for (const bool selected : {false, true}) {
+      const std::string source =
+          ".version 9.3\n.target sm_90\n.address_size 64\n.entry "
+          "kernel(){.reg " +
+          std::string(selected ? ".v2 " : "") + "." + type +
+          " FP; meta: .callprototype _ ();call FP" + (selected ? ".x" : "") +
+          ", meta;ret;}";
+      const auto parsed = test_helpers::parseModule(source);
+      ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+      EXPECT_EQ(bool(resolveAndValidateModule(*parsed)),
+                std::string_view(type) != "f32");
+    }
+}
+
+/** Borrow a real selected input/return only while its owning call remains alive. */
+ResolvedCallParameterRef& selected_call_actual(ResolvedModule& module,
+                                               bool returns) {
+  auto& call = dynamic_cast<CallDirect&>(*module.functions.back().body.front());
+  return returns ? call.return_value->value
+                 : std::get<ResolvedCallParameterRef>(
+                       call.arguments->value.values.front().value);
+}
+
+/** Mutated caches never replace actual base facts; coherent aliases remain legal. */
+TEST(CallComponents, CurrentOwnersAndCachesPrecedeScalarABI) {
+  for (const bool returns : {false, true}) {
+    const auto source =
+        selected_call_source("u32", 2, "direct", returns, "V.x");
+    const auto parsed = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    const auto original = resolveAndValidateModule(*parsed);
+    ASSERT_TRUE(original) << original.error().front().message;
+    for (unsigned mutation = 0; mutation < 17; ++mutation) {
+      SCOPED_TRACE(mutation);
+      auto current = *original;
+      auto& value = selected_call_actual(current, returns);
+      ASSERT_TRUE(value.component);
+      auto& part = *value.component;
+      auto& symbol = const_cast<binding::Symbol&>(
+          current.symbols.symbol(*value.symbol_id));
+      switch (mutation) {
+        case 0:
+          value.symbol_id = binding::SymbolId{0};
+          break;
+        case 1:
+          value.parameterized_index = 8;
+          break;
+        case 2:
+          part.declaration_width = 4;
+          break;
+        case 3:
+          part.lane = 2;
+          break;
+        case 4:
+          part.selector->spelling = ".y";
+          break;
+        case 5:
+          part.origin = RegisterComponentOrigin::NamedProjection;
+          break;
+        case 6:
+          part.base_spelling = "scalar";
+          break;
+        case 7:
+          part.range.end.column += 1000;
+          break;
+        case 8:
+          value.declared_type = ScalarType::F32;
+          break;
+        case 9:
+          value.state_space = base::DeclarationStateSpace::Parameter;
+          break;
+        case 10:
+          symbol.state_space = base::DeclarationStateSpace::Global;
+          break;
+        case 11:
+          symbol.type = ".bf16x2";
+          value.declared_type = ScalarType::BF16x2;
+          break;
+        case 12:
+          value.component.reset();
+          break;
+        case 13:
+          value.declared_type.reset();
+          break;
+        case 14:
+          value.state_space.reset();
+          break;
+        case 15:
+          part.selector->spelling = ".r";
+          value.spelling = "V.r";
+          break;
+        case 16:
+          part.selector->spelling = ".y";
+          part.lane = 1;
+          value.spelling = "V.y";
+          break;
+      }
+      const bool coherent = mutation >= 15;
+      EXPECT_EQ(bool(validateModule(current)), coherent);
+      EXPECT_EQ(bool(validateModule(*parsed, current)), coherent);
+      if (!coherent) {
+        current = *original;
+        EXPECT_TRUE(validateModule(current));
+      }
+    }
+  }
+}
+
+/** Source destruction and every owning copy retain components and group provenance. */
+TEST(CallComponents, OwnsReturnInputsAndSelectedTarget) {
+  constexpr std::string_view source =
+      ".version 9.3\n.target sm_90\n.address_size 64\n.entry kernel(){"
+      ".reg .v2 .u32 %T<2>; .reg .v2 .u64 FP;"
+      "meta: .callprototype (.reg .u32 result) _ (.reg .u32 arg);"
+      "call (%T0.r), FP.x, (%T1.g), meta;ret;}";
+  auto original = [source] {
+    const auto ast = test_helpers::parseModule(source);
+    EXPECT_TRUE(ast);
+    return resolveAndValidateModule(*ast);
+  }();
+  ASSERT_TRUE(original) << original.error().front().message;
+  auto copied = *original;
+  auto moved = std::move(copied);
+  ResolvedModule assigned;
+  assigned = *original;
+  ResolvedModule move_assigned;
+  move_assigned = std::move(assigned);
+  for (auto* module : {&moved, &move_assigned}) {
+    module->functions.back().body.front() =
+        module->functions.back().body.front()->clone();
+    EXPECT_TRUE(validateModule(*module));
+    auto& call =
+        dynamic_cast<CallDirect&>(*module->functions.back().body.front());
+    EXPECT_EQ(call.return_value->value.parameterized_index, 0u);
+    EXPECT_EQ(call.return_value->value.component->lane, 0u);
+    const auto& input = std::get<ResolvedCallParameterRef>(
+        call.arguments->value.values.front().value);
+    EXPECT_EQ(input.parameterized_index, 1u);
+    EXPECT_EQ(input.component->lane, 1u);
+    EXPECT_TRUE(
+        std::get<ResolvedRegisterRef>(call.target_indirect_callee->value)
+            .component);
+    const auto ast = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    EXPECT_TRUE(validateModule(*ast, *module));
+    const auto different =
+        test_helpers::parseModule(std::string(source).replace(
+            std::string(source).find("%T1.g"), 5, "%T1.y"));
+    ASSERT_MODULE_PARSE_SUCCEEDS(different);
+    EXPECT_FALSE(validateModule(*different, *module));
+  }
+  ResolvedCallParameterRef old{.spelling = "value"};
+  EXPECT_FALSE(old.component);
+  EXPECT_EQ(old, ResolvedCallParameterRef{.spelling = "value"});
+}
+
+/** Invalid syntax, declaration domains and ABI shapes fail independently of selection. */
+TEST(CallComponents, SourceBoundariesAndWholeVectorControls) {
+  const std::string header = ".version 9.3\n.target sm_90\n.address_size 64\n";
+  for (const auto body :
+       {".func callee(.reg .v2 .u32 arg); .entry kernel(){.reg .v2 .u32 V;call "
+        "callee,(V.x);}",
+        ".func callee(.reg .u32 arg); .entry kernel(){.reg .v2 .u64 V;call "
+        "callee,(V.x);}",
+        ".func callee(.reg .u32 arg); .entry kernel(){.reg .v2 .f32 V;call "
+        "callee,(V.x);}",
+        ".func callee(.reg .u32 arg); .entry kernel(){.param .v2 .u32 V;call "
+        "callee,(V.x);}",
+        ".func callee(.reg .u32 arg); .entry kernel(.param .u32 V){call "
+        "callee,(V);}",
+        ".func callee(.reg .u32 arg); .entry kernel(){.reg .u32 a,b;call "
+        "callee,({a,b});}",
+        ".func (.reg .u32 r) callee(); .entry kernel(){.reg .u32 a,b;call "
+        "({a,b}),callee,();}",
+        ".func (.reg .u32 r) callee(); .entry kernel(){.reg .v2 .u32 V;call "
+        "(V.x,V.y),callee,();}",
+        ".func (.reg .u32 r) callee(); .entry kernel(){call (1),callee,();}",
+        ".func callee(.reg .u32 arg); .entry kernel(){.reg .v2 .u32 V;call "
+        "callee,(V.z);}",
+        ".func callee(.reg .u32 arg); .entry kernel(){.reg .v2 .u32 V;call "
+        "callee,(V.q);}",
+        ".func callee(); .entry kernel(){call callee.x;}",
+        ".entry kernel(){.reg .v2 .u32 V;meta:.callprototype _ ();call "
+        "V.x,meta.x;}",
+        ".entry kernel(){.reg .v2 .u32 V;call V.x;}",
+        ".entry kernel(){.reg .v2 .u32 V;.reg .u32 meta;call V.x,meta;}",
+        ".func callee(.reg .u64 arg); .entry kernel(){.reg .v4 .u64 V;call "
+        "callee,(V.x);}",
+        ".func callee(.reg .u16 arg); .entry kernel(){.reg .v2 .u16 V;call "
+        "callee,(V.x);}",
+        ".func callee(.reg .u32 arg); .entry kernel(){.reg .v2 .u32 V;call "
+        "callee,(V);}"}) {
+    SCOPED_TRACE(body);
+    const auto ast = test_helpers::parseModule(header + body);
+    EXPECT_TRUE(!ast || !ast.diagnostics.empty() ||
+                !resolveAndValidateModule(*ast));
+  }
+  for (const auto body :
+       {".func callee(.reg .v2 .u32 arg); .entry kernel(){.reg .v2 .u32 V;call "
+        "callee,(V);}",
+        ".func (.param .u16 r) callee(.param .u16 arg); .entry kernel(){.reg "
+        ".v2 .u16 V;call (V.y),callee,(V.x);}",
+        ".func callee(.reg .u32 a,.reg .u32 b); .entry kernel(){.reg .v2 .u32 "
+        "V;call callee,(V.x,V.r);}",
+        ".func callee(.reg .u32 arg); .entry kernel(){.reg .v2 .u32 V;{.reg "
+        ".v2 .u32 V;call callee,(V.y);}}"}) {
+    SCOPED_TRACE(body);
+    const auto ast = test_helpers::parseModule(header + body);
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    const auto owned = resolveAndValidateModule(*ast);
+    ASSERT_TRUE(owned) << owned.error().front().message;
+    EXPECT_TRUE(validateModule(*owned));
+    EXPECT_TRUE(validateModule(*ast, *owned));
+  }
+  PtxSyntaxParser parser("call callee,(V.x);");
+  const auto fragment = parser.parseInstruction();
+  ASSERT_TRUE(fragment);
+  EXPECT_FALSE(resolveCall(*fragment));
+}
+
+/** Known cache and ABI failures remain intrinsic while availability context defers. */
+TEST(CallComponents, PartialContextKeepsKnownOwnerFacts) {
+  for (const bool returns : {false, true}) {
+    auto source = selected_call_source("u32", 2, "direct", returns, "V.x");
+    source.erase(0, source.find(".func"));
+    const auto ast = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    auto owned = resolveModuleOnly(*ast);
+    ASSERT_TRUE(owned) << owned.error().front().message;
+    EXPECT_TRUE(
+        validateModule(*owned, ModuleValidationPolicy::AvailableContext));
+    EXPECT_TRUE(
+        validateModule(*ast, *owned, ModuleValidationPolicy::AvailableContext));
+    EXPECT_FALSE(validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+    auto& value = selected_call_actual(*owned, returns);
+    value.declared_type.reset();
+    EXPECT_FALSE(
+        validateModule(*owned, ModuleValidationPolicy::AvailableContext));
+    EXPECT_FALSE(
+        validateModule(*ast, *owned, ModuleValidationPolicy::AvailableContext));
   }
 }
 

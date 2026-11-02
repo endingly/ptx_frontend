@@ -717,6 +717,17 @@ struct ParameterAddressOperandFacts {
   size_t instruction_index;
 };
 
+/** Copy an explicit call selection into the ordinary register validation domain. */
+ResolvedRegisterRef call_parameter_register(
+    const ResolvedCallParameterRef& value) {
+  return {.spelling = value.spelling,
+          .register_class = ResolvedRegisterClass::General,
+          .symbol_id = value.symbol_id,
+          .parameterized_index = value.parameterized_index,
+          .declared_type = value.declared_type,
+          .component = value.component};
+}
+
 /** One binding identity projected from a generated resolved operand payload. */
 struct ModuleReferenceUse {
   std::optional<binding::SymbolId> symbol_id;
@@ -724,6 +735,8 @@ struct ModuleReferenceUse {
   std::optional<binding::SymbolKind> expected_kind;
   /** Owned snapshot of a register carrier's cached declaration metadata. */
   std::optional<ResolvedRegisterRef> register_ref;
+  /** Copied call actual metadata; no adapter or callback reference escapes. */
+  std::optional<ResolvedCallParameterRef> call_parameter;
   /** Copied address-symbol metadata; no visitor borrow escapes its callback. */
   std::optional<ResolvedSymbolRef> address_symbol;
   /** Owned named-index metadata rejoined to declaration shape without an AST. */
@@ -898,8 +911,15 @@ void collect_operand_references(
     append_reference(uses, value.symbol_id, std::nullopt,
                      binding::SymbolKind::Function, false, locations, fallback);
   } else if constexpr (std::same_as<Value, ResolvedCallParameterRef>) {
-    append_reference(uses, value.symbol_id, value.parameterized_index,
-                     std::nullopt, true, locations, fallback);
+    if (value.component) {
+      const std::array<SourceRange, 1> leaf{value.component->range};
+      collect_operand_references(call_parameter_register(value), leaf, fallback,
+                                 uses, address_resolution_policy);
+    } else {
+      append_reference(uses, value.symbol_id, value.parameterized_index,
+                       std::nullopt, true, locations, fallback);
+    }
+    uses.back().call_parameter = value;
   } else if constexpr (std::same_as<Value, ResolvedSymbolRef>) {
     append_reference(uses, value.symbol_id, value.parameterized_index,
                      value.declaration_kind, false, locations, fallback, false,
@@ -1250,10 +1270,40 @@ class ReferenceCollector final : public detail::IReferenceObserver {
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
+  /** Check selection provenance inside its owned operand and instruction ranges. */
+  void check_call_selection(const ResolvedCallParameterRef& value,
+                            std::span<const SourceRange> locations) {
+    if (!value.component)
+      return;
+    const auto inside = [](SourceRange leaf, SourceRange outer) {
+      const auto key = [](SourcePos p) {
+        return std::pair{p.line, p.column};
+      };
+      return valid_instruction_range(leaf) && valid_instruction_range(outer) &&
+             key(outer.start) <= key(leaf.start) &&
+             key(leaf.end) <= key(outer.end);
+    };
+    const auto& part = *value.component;
+    if (locations.size() != 1 || !inside(part.range, locations.front()) ||
+        !inside(locations.front(), fallback_))
+      append_model_mismatch(
+          diagnostics_, part.range,
+          "Selected call register range disagrees with its owned operand.");
+    if (!value.declared_type ||
+        base::scalar_size_of(*value.declared_type) * part.declaration_width >
+            16)
+      append_model_mismatch(
+          diagnostics_, part.range,
+          "Selected call register owner exceeds the physical vector width.");
+  }
   /** Collect declaration identities from a borrowed ResolvedCallArguments. */
   void call_arguments(const ResolvedCallArguments& value,
                       std::span<const SourceRange> locations,
                       checker::AddressSymbolResolutionPolicy policy) override {
+    for (const auto& argument : value.values)
+      if (const auto* parameter =
+              std::get_if<ResolvedCallParameterRef>(&argument.value))
+        check_call_selection(*parameter, argument.locs);
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedCallParameterRef. */
@@ -1261,6 +1311,7 @@ class ReferenceCollector final : public detail::IReferenceObserver {
       const ResolvedCallParameterRef& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
+    check_call_selection(value, locations);
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedCpAsyncSourceControl. */
@@ -1819,6 +1870,30 @@ void check_module_references(
           diagnostics, use.range,
           "Resolved module operand has an incompatible declaration identity.");
       continue;
+    }
+    if (use.call_parameter) {
+      const auto& cached = *use.call_parameter;
+      const auto declared =
+          symbol->type ? detail::scalar_type_from_ptx_name(*symbol->type)
+                       : std::nullopt;
+      const auto lookup = module.symbols.lookup(
+          symbol->scope,
+          cached.component ? cached.component->base_spelling : cached.spelling);
+      const bool parameter_or_variable =
+          symbol->kind == binding::SymbolKind::Variable ||
+          symbol->kind == binding::SymbolKind::InputParameter ||
+          symbol->kind == binding::SymbolKind::ReturnParameter ||
+          symbol->kind == binding::SymbolKind::CallParameter;
+      if (!parameter_or_variable || !declared ||
+          cached.declared_type != declared ||
+          cached.state_space != symbol->state_space ||
+          (symbol->state_space != base::DeclarationStateSpace::Register &&
+           symbol->state_space != base::DeclarationStateSpace::Parameter) ||
+          !lookup || lookup->symbol != symbol->id ||
+          lookup->parameterized_index != cached.parameterized_index)
+        append_model_mismatch(diagnostics, use.range,
+                              "Resolved call parameter metadata disagrees with "
+                              "its owned declaration.");
     }
     if (use.register_ref) {
       const auto declared =
@@ -3599,11 +3674,12 @@ void check_storage_declarations(const ResolvedModule& module,
         if (value && value->high_bits != 0 &&
             (value->high_bits != std::numeric_limits<uint64_t>::max() ||
              (value->bits & (uint64_t{1} << 63)) == 0))
-          append_model_mismatch(
-              diagnostics,
-              valid_instruction_range(leaf.range) ? leaf.range
-                                                  : declaration.range,
-              "B128 storage constant is outside the normalized two-word image.");
+          append_model_mismatch(diagnostics,
+                                valid_instruction_range(leaf.range)
+                                    ? leaf.range
+                                    : declaration.range,
+                                "B128 storage constant is outside the "
+                                "normalized two-word image.");
       }
     }
     const bool valid_initialization =
@@ -4096,6 +4172,18 @@ CallArgumentProperties call_argument_properties(
   }
   properties.state_space = call_state_space(*reference.state_space);
   properties.scalar_type = *reference.declared_type;
+  if (reference.component) {
+    if (reference.state_space != base::DeclarationStateSpace::Register ||
+        !valid_register_component(call_parameter_register(reference)) ||
+        base::scalar_size_of(*reference.declared_type) *
+                reference.component->declaration_width >
+            16) {
+      properties.state_space = CallArgumentStateSpace::Invalid;
+      properties.scalar_type = base::ScalarType::Invalid;
+      return properties;
+    }
+    properties.vector_shape = CallArgumentVectorShape::Scalar;
+  }
   return properties;
 }
 

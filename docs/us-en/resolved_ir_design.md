@@ -741,7 +741,12 @@ the integer path.
 declaration `SymbolId`, optional parameterized-member index, and declared
 `ScalarType`, giving named registers such as `%tmp` and `name<count>` members a
 stable identity. A numbered-register index remains an optional convenience,
-not an identity. An ordinary `.xyzw/.rgba` selection retains this same base
+not an identity. A known bound register family requires its semantic member;
+current spelling must resolve in the actual declaration scope to that same
+`SymbolId` and member. A plain nonfamily reference needs no member. Clearing a
+numbered convenience index does not change identity, and coherent current
+spelling/member retargeting does not require rewriting retained source identity
+or the supplied original AST. An ordinary `.xyzw/.rgba` selection retains this same base
 identity and parameterized member, with owned `ResolvedRegisterComponent`
 metadata: canonical lane, actual declaration width, base spelling/range, full
 component range and written selector spelling/range. Its effective shape is

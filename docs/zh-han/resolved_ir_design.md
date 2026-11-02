@@ -594,7 +594,11 @@ source kind 与 spelling。integer-only control 和 register-only slot 仍遵循
 `ResolvedRegisterRef` 拥有完整源码拼写与 `ResolvedRegisterClass`。在 module resolution
 中，它还保存 declaration `SymbolId`、可选 parameterized member index 和声明
 `ScalarType`；因此 named register（如 `%tmp`）与 `name<count>` member 都有稳定身份。
-numbered-register index 仍只是可选便捷属性，不能单独充当身份。普通 `.xyzw/.rgba`
+numbered-register index 仍只是可选便捷属性，不能单独充当身份。已知 bound register
+family 必须保留 semantic member；当前 spelling 在实际 declaration scope 的 lookup
+必须得到同一 `SymbolId` 与 member。普通非 family reference 不要求 member。清除
+numbered 便捷 index 不改变身份；一致修改当前 spelling/member 不要求重写已保留的
+source identity 或 supplied original AST。普通 `.xyzw/.rgba`
 选择保留相同 base 身份与 parameterized member，并拥有 `ResolvedRegisterComponent`：
 canonical lane、实际声明宽度、base spelling/range、完整 component range，以及书写的
 selector spelling/range。有效 shape 是 scalar，因此 `vector_width` 为空；

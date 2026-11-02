@@ -1914,6 +1914,14 @@ void check_module_references(
           symbol->type ? detail::scalar_type_from_ptx_name(*symbol->type)
                        : std::nullopt;
       const auto& cached = *use.register_ref;
+      const auto lookup = module.symbols.lookup(
+          symbol->scope,
+          cached.component ? cached.component->base_spelling : cached.spelling);
+      const bool register_binding_valid =
+          lookup && lookup->symbol == symbol->id &&
+          lookup->parameterized_index == cached.parameterized_index &&
+          (!symbol->parameterized_count ||
+           cached.parameterized_index.has_value());
       const auto declaration_width =
           cached.component ? std::optional{cached.component->declaration_width}
                            : cached.vector_width;
@@ -1921,8 +1929,6 @@ void check_module_references(
           (valid_register_component(cached) || use.named_vector_projection) &&
           !(use.excludes_register_component && cached.component);
       if (cached.component) {
-        const auto lookup = module.symbols.lookup(
-            symbol->scope, cached.component->base_spelling);
         component_binding_valid =
             component_binding_valid && lookup && lookup->symbol == symbol->id &&
             lookup->parameterized_index == cached.parameterized_index &&
@@ -1930,7 +1936,7 @@ void check_module_references(
       }
       if (!declared || cached.declared_type != declared ||
           declaration_width != symbol->vector_width ||
-          !component_binding_valid ||
+          !register_binding_valid || !component_binding_valid ||
           cached.register_class != (*declared == ScalarType::Pred
                                         ? ResolvedRegisterClass::Predicate
                                         : ResolvedRegisterClass::General)) {

@@ -262,6 +262,12 @@ class ScalarHalfSourceTests(unittest.TestCase):
                             actual.add((instruction.opcode, variant.name, layout.name,
                                         operand.name, scalar))
         self.assertEqual(actual, {
+            ('fma', 'fma_mixed_f32_bf16', 'default', 'src1', 'bf16'),
+            ('fma', 'fma_mixed_f32_bf16', 'default', 'src2', 'bf16'),
+            ('set', 'set_half_integer_bf16', 'default', 'src1', 'bf16'),
+            ('set', 'set_half_integer_bf16', 'default', 'src2', 'bf16'),
+            ('set', 'set_half_integer_bf16_boolean', 'default', 'src1', 'bf16'),
+            ('set', 'set_half_integer_bf16_boolean', 'default', 'src2', 'bf16'),
             ("setp", "setp_bf16", "default", "src1", "bf16"),
             ("setp", "setp_bf16", "default", "src2", "bf16"),
             ("setp", "setp_bf16_boolean", "default", "src1", "bf16"),

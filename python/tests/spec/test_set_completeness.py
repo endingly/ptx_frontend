@@ -141,7 +141,7 @@ class SetCompletenessTests(unittest.TestCase):
                     self.assertEqual(len(operands), 4 if name.endswith("_boolean") else 3)
                     if name.endswith("_boolean"):
                         self.assertIs(operands[3].kind, OperandKind.PREDICATE_SOURCE)
-                    if stypes & {"bf16", "f16x2", "bf16x2"}:
+                    if stypes & {"f16x2", "bf16x2"}:
                         self.assertIs(operands[1].kind, OperandKind.REGISTER)
                         self.assertIs(operands[2].kind, OperandKind.REGISTER)
                     else:
@@ -157,7 +157,7 @@ class SetCompletenessTests(unittest.TestCase):
             ("set_half_f16_f16", "f16", same, "f16", same),
             ("set_half_bf16_f16", "b16", exact, "f16", same),
             ("set_half_integer_f16", None, same, "f16", same),
-            ("set_half_integer_bf16", None, same, "b16", exact),
+            ("set_half_integer_bf16", None, same, "bf16", same),
             ("set_half_native_f16x2", "f16x2", same, "f16x2", same),
             ("set_half_integer_f16x2", None, same, "f16x2", same),
             ("set_half_native_bf16x2", "b32", exact, "b32", exact),

@@ -32,12 +32,40 @@ The half/bfloat forms use the same comparison and optional Boolean-source fields
 
 Bit-source comparison permits `.eq/.ne`; signed and unsigned integer sources permit `.eq/.ne/.lt/.le/.gt/.ge`; floating and packed sources permit those six plus `.equ/.neu/.ltu/.leu/.gtu/.geu/.num/.nan`. The ordinary unsigned aliases `.lo/.ls/.hi/.hs` do not apply here. The specific §9.7.7.1 F16-result syntax permits optional `.ftz` for the entire listed source domain, including Bit, integer and F64 sources. Ordinary §9.7.6.1 SET keeps its F32-source-only FTZ condition; BF16/BF16x2 productions still exclude FTZ. Earlier supplemental `ptxas` 13.3 samples rejected some of these F16-result forms; this is tool divergence, not the permission oracle. The frontend records the requested flag without evaluating comparisons or flushing values.
 
-For scalar `.f16` sources, the frontend accepts `.f16` or compatible `.b16` registers and numeric floating constants; scalar `.bf16` sources require exact `.b16` registers. Packed `.f16x2` sources accept `.f16x2` or compatible `.b32` registers, while `.bf16x2` sources require exact `.b32`. Native `.f16x2` results accept `.f16x2` or `.b32`; native `.bf16x2` results require `.b32`. Integer results use width-compatible bit or integer register containers. For packed-source integer results, the written logical `.dtype` remains `.u32` or `.s32`: both admit exactly `.b32/.s32/.u32` destination declarations, with a fixed 32-bit packed result width. `.f32`, native `.f16x2`, narrower/wider registers, predicates, and whole vectors cannot serve as that scalar integer-result destination. This contract is separate from native floating-result SET and from the source-format carrier requirements. Scalar F16 numeric floating immediates are supported; other half/bfloat producer boundaries remain separate; the ordinary bit, integer, `.f32`, and `.f64` source cohorts retain register-or-immediate operands where valid.
+For scalar `.f16` sources, the frontend accepts `.f16` or compatible `.b16` registers and numeric floating constants; scalar `.bf16` sources for integer results accept the existing `.b16` registers or numeric BF16 floating constants. Packed `.f16x2` sources accept `.f16x2` or compatible `.b32` registers, while `.bf16x2` sources require exact `.b32`. Native `.f16x2` results accept `.f16x2` or `.b32`; native `.bf16x2` results require `.b32`. Integer results use width-compatible bit or integer register containers. For packed-source integer results, the written logical `.dtype` remains `.u32` or `.s32`: both admit exactly `.b32/.s32/.u32` destination declarations, with a fixed 32-bit packed result width. `.f32`, native `.f16x2`, narrower/wider registers, predicates, and whole vectors cannot serve as that scalar integer-result destination. This contract is separate from native floating-result SET and from the source-format carrier requirements. Scalar F16 numeric floating immediates are supported; other half/bfloat producer boundaries remain separate; the ordinary bit, integer, `.f32`, and `.f64` source cohorts retain register-or-immediate operands where valid.
 
 The [half/bfloat C++ tests](../../../submod/resolved_ir/test/test_set_half_completeness.cpp) cover every generated alternative, target boundaries, invalid controls and containers, numeric immediates, owned IR, and mutated typed fields. The [Python spec test](../../../python/tests/spec/test_set_completeness.py) checks both ordinary and half/bfloat descriptor domains. The installed [consumer](../../../examples/conversion_consumer/main.cpp) exercises the public generated representation.
 
 The C++ package version 0.2.0 replaces the former generated `Set::EqU32U32` and `Set::LtAndF32S32` alternatives with the typed ordinary families `Bit`, `Signed`, `Unsigned`, `Float`, `FloatF64` and their `Boolean` counterparts. Consumers should select the new alternatives and read `dtype`/`stype` fields to determine the exact type. This is a source and binary API change; rebuild installed C++ consumers with the new headers and library.
 
-Scalar F16 source fields accept numeric floating constants converted to binary16 as well as their existing F16/B16 registers. Boolean predicate sources and all result carriers retain their contracts; scalar BF16 and packed conversion boundaries remain separate. Integer-origin constants are not numeric F16 sources.
+Scalar F16 source fields accept numeric floating constants converted to binary16 as well as their existing F16/B16 registers. Boolean predicate sources and all result carriers retain their contracts; scalar BF16 integer-result sources also accept numeric floating constants; packed conversion boundaries remain separate. Integer-origin constants are not numeric F16 sources.
 
 The six existing `SetHalfF16Bit`, `SetHalfF16BitBoolean`, `SetHalfF16Integer`, `SetHalfF16IntegerBoolean`, `SetHalfF16F64`, and `SetHalfF16F64Boolean` classes now expose an instance `WithLocs<bool> ftz` in the existing modifier position. Omission stores false with empty locations; written `.ftz` stores true with its token range. A true flag without locations or a false flag with token locations is inconsistent. Copies and clones own the flag and locations after AST destruction, and coherent current typed flag edits remain independent of retained lexical history. These six generated object layouts change source/binary ABI: rebuild consumers against matching headers and libraries. Operands, comparator/Boolean domains, modifier order and PTX4.2/SM53 minimum remain unchanged.
+
+### Ordinary BF16 FMA/SET source members
+
+`FmaMixedF32Bf16`, `SetHalfIntegerBf16`, and
+`SetHalfIntegerBf16Boolean` expose `src1` and `src2` as
+`WithLocs<RegOrImm>`. Existing class names, identities and field order remain;
+C++ consumers must rebuild against matching headers and libraries and use
+`std::get_if<ResolvedRegisterRef>` or `std::get_if<ResolvedImmediate>` on `.value`.
+
+These six sources accept numeric Float literals and Float-result expressions.
+The existing logical BF16 converter maps `1.5`, `1.0+0.5`,
+`0d3ff8000000000000` and `0f3fc00000` to type BF16 and word `0x3fc0`.
+FMA uses its fixed `input_type` modifier; SET uses fixed logical BF16.
+Integer literals and Integer-result expressions remain excluded, including an
+optional integer-origin value of zero. This grant has no integer-immediate policy.
+The accepted actual register declaration remains the ordinary scalar `.b16`
+carrier; SameWidth does not admit `.f16/.u16/.s16`, special registers, whole
+vectors or standalone instruction-only `.bf16` declarations.
+
+Owned validation reads current logical type, low sixteen bits and flags. It
+requires no floating lexical history; coherent canonical current-word edits can
+validate after source/AST destruction, copying, assignment or cloning. Retained
+bad type, high bits, integer origin or negative metadata remain errors. Source
+association still checks the provided AST against retained syntax identity.
+This scalar numeric conversion adds no packed pair/splat or truncation rule;
+packed exact-word and constructor policies remain separate. Instruction rounding,
+saturation, comparison, predicate combination and execution are not evaluated.
+Targets, destinations, other sources and all packed SET forms keep their contracts.

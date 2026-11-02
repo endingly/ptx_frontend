@@ -26,7 +26,7 @@ checking. None has simulator execution semantics.
 | `fma_half_oob`, `fma_half_oob_relu` | 8.1 / `sm_90` | optional `.rn` (default RN); `.oob` required; the latter requires `.relu`; neither permits `.ftz` or `.sat` | register-only `.f16`/`.b16`, or `.f16x2`/`.b32` packed values |
 | `fma_bf16`, `fma_bf16x2` | 7.0 / `sm_80` | optional `.rn` (default RN); `.relu` optional; `.ftz` and `.sat` are not allowed | exact `.b16` scalar or `.b32` packed registers only |
 | `fma_bf16_oob`, `fma_bf16x2_oob` | 8.1 / `sm_90` | optional `.rn` (default RN); `.oob` required; `.relu` optional; `.ftz` and `.sat` are not allowed | exact `.b16` scalar or `.b32` packed registers only |
-| `fma_mixed_f32_f16`, `fma_mixed_f32_bf16` | 8.6 / `sm_100` | one of all four rounding modes required; `.sat` optional | destination and accumulator `c` are `.f32` or `.b32`; F16 multiplicands `a`/`b` accept `.f16`/`.b16` registers or numeric half constants; the current bf16 form retains exact `.b16` registers; `c` may be a floating immediate |
+| `fma_mixed_f32_f16`, `fma_mixed_f32_bf16` | 8.6 / `sm_100` | one of all four rounding modes required; `.sat` optional | destination and accumulator `c` are `.f32` or `.b32`; F16 multiplicands `a`/`b` accept `.f16`/`.b16` registers or numeric half constants; BF16 multiplicands accept their existing `.b16` registers or numeric BF16 constants; `c` may be a floating immediate |
 
 ## Deliberate compatibility boundaries
 
@@ -94,4 +94,32 @@ and the implementation/tests above, not a manual coverage ledger. The older
 common-kernel corpus and actual opcode coverage are distinct: corpus presence
 is not used as evidence of this closure.
 
-Mixed F32/F16 multiplicands now use RegOrImm and accept numeric floating constants converted once to binary16. The F32 accumulator keeps its existing numeric path. Explicit half-arithmetic register-only forms and the current BF16 mixed-source representation remain separate; literal conversion does not execute the FMA rounding/saturation result.
+Mixed F32/F16 multiplicands now use RegOrImm and accept numeric floating constants converted once to binary16. The F32 accumulator keeps its existing numeric path. Explicit half-arithmetic register-only forms retain their separate contracts; literal conversion does not execute the FMA rounding/saturation result.
+
+### Ordinary BF16 FMA/SET source members
+
+`FmaMixedF32Bf16`, `SetHalfIntegerBf16`, and
+`SetHalfIntegerBf16Boolean` expose `src1` and `src2` as
+`WithLocs<RegOrImm>`. Existing class names, identities and field order remain;
+C++ consumers must rebuild against matching headers and libraries and use
+`std::get_if<ResolvedRegisterRef>` or `std::get_if<ResolvedImmediate>` on `.value`.
+
+These six sources accept numeric Float literals and Float-result expressions.
+The existing logical BF16 converter maps `1.5`, `1.0+0.5`,
+`0d3ff8000000000000` and `0f3fc00000` to type BF16 and word `0x3fc0`.
+FMA uses its fixed `input_type` modifier; SET uses fixed logical BF16.
+Integer literals and Integer-result expressions remain excluded, including an
+optional integer-origin value of zero. This grant has no integer-immediate policy.
+The accepted actual register declaration remains the ordinary scalar `.b16`
+carrier; SameWidth does not admit `.f16/.u16/.s16`, special registers, whole
+vectors or standalone instruction-only `.bf16` declarations.
+
+Owned validation reads current logical type, low sixteen bits and flags. It
+requires no floating lexical history; coherent canonical current-word edits can
+validate after source/AST destruction, copying, assignment or cloning. Retained
+bad type, high bits, integer origin or negative metadata remain errors. Source
+association still checks the provided AST against retained syntax identity.
+This scalar numeric conversion adds no packed pair/splat or truncation rule;
+packed exact-word and constructor policies remain separate. Instruction rounding,
+saturation, comparison, predicate combination and execution are not evaluated.
+Targets, destinations, other sources and all packed SET forms keep their contracts.

@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -37,9 +38,8 @@ std::string family_source(const RegisterFamilyCase& item,
          operation + " }";
 }
 
-/** Borrow the old register carrier only while its complete module owns it. */
-WithLocs<ResolvedRegisterRef>& family_field(Instruction& instruction,
-                                            unsigned position) {
+/** Borrow the current register-or-immediate field only while its complete module owns it. */
+WithLocs<RegOrImm>& family_field(Instruction& instruction, unsigned position) {
   if (auto* value = dynamic_cast<FmaMixedF32Bf16*>(&instruction))
     return position == 1 ? value->src1 : value->src2;
   if (auto* value = dynamic_cast<SetHalfIntegerBf16*>(&instruction))
@@ -103,7 +103,7 @@ TEST(OwnedRegisterFamilyIdentity,
           family_field(*current.functions.front().body.front(), item.position);
       ASSERT_EQ(field.locs.size(), 1u);
       const auto range = field.locs.front();
-      auto& ref = field.value;
+      auto& ref = std::get<ResolvedRegisterRef>(field.value);
       ASSERT_TRUE(ref.symbol_id);
       ASSERT_EQ(ref.parameterized_index, 0u);
       ASSERT_EQ(ref.index, 0u);
@@ -138,9 +138,9 @@ TEST(OwnedRegisterFamilyIdentity,
     const auto plain = own_family(family_source(item, "b1"));
     for (unsigned mutation = 0; mutation < 4; ++mutation) {
       auto current = baseline;
-      auto& ref =
+      auto& ref = std::get<ResolvedRegisterRef>(
           family_field(*current.functions.front().body.front(), item.position)
-              .value;
+              .value);
       if (mutation < 2) {
         ref.spelling = "%r1";
         ref.parameterized_index = 1;
@@ -149,8 +149,9 @@ TEST(OwnedRegisterFamilyIdentity,
       if (mutation == 1 || mutation == 2)
         ref.index.reset();
       if (mutation == 3) {
-        ref = family_field(*plain.functions.front().body.front(), item.position)
-                  .value;
+        ref = std::get<ResolvedRegisterRef>(
+            family_field(*plain.functions.front().body.front(), item.position)
+                .value);
         ASSERT_FALSE(ref.parameterized_index);
       }
       EXPECT_EQ(current.source_identity, baseline.source_identity);
@@ -197,9 +198,10 @@ TEST(OwnedRegisterFamilyIdentity, ChecksCurrentFactsWithMissingHeaderOrTarget) {
                                    item.position);
         ASSERT_EQ(field.locs.size(), 1u);
         if (erase)
-          field.value.parameterized_index.reset();
+          std::get<ResolvedRegisterRef>(field.value)
+              .parameterized_index.reset();
         else
-          field.value.spelling = "%r1";
+          std::get<ResolvedRegisterRef>(field.value).spelling = "%r1";
         expect_family_rejection(validateModule(current, available),
                                 field.locs.front(), false);
         expect_family_rejection(validateModule(*ast, current, available),

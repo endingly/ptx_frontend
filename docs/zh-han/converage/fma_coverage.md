@@ -24,7 +24,7 @@ simulator execution semantics。
 | `fma_half_oob`、`fma_half_oob_relu` | 8.1 / `sm_90` | `.rn` 可省略（默认 RN）；`.oob` 必需；后者必须有 `.relu`；两者都不允许 `.ftz` 或 `.sat` | 仅 register 的 `.f16`/`.b16`，或 `.f16x2`/`.b32` packed value |
 | `fma_bf16`、`fma_bf16x2` | 7.0 / `sm_80` | `.rn` 可省略（默认 RN）；`.relu` 可选；不允许 `.ftz`、`.sat` | 仅 exact `.b16` scalar 或 `.b32` packed register |
 | `fma_bf16_oob`、`fma_bf16x2_oob` | 8.1 / `sm_90` | `.rn` 可省略（默认 RN）；`.oob` 必需；`.relu` 可选；不允许 `.ftz`、`.sat` | 仅 exact `.b16` scalar 或 `.b32` packed register |
-| `fma_mixed_f32_f16`、`fma_mixed_f32_bf16` | 8.6 / `sm_100` | 四种 rounding mode 之一必需；`.sat` 可选 | destination 和 accumulator `c` 为 `.f32` 或 `.b32`；F16 multiplicand `a`/`b` 接受 `.f16`/`.b16` register 或 numeric half constant；当前 bf16 form 保留 exact `.b16` register；`c` 可为 floating immediate |
+| `fma_mixed_f32_f16`、`fma_mixed_f32_bf16` | 8.6 / `sm_100` | 四种 rounding mode 之一必需；`.sat` 可选 | destination 和 accumulator `c` 为 `.f32` 或 `.b32`；F16 multiplicand `a`/`b` 接受 `.f16`/`.b16` register 或 numeric half constant；BF16 multiplicand 接受既有 `.b16` register 或 numeric BF16 constant；`c` 可为 floating immediate |
 
 ## 有意保留的兼容性边界
 
@@ -85,4 +85,29 @@ mixed-precision operand type。
 coverage ledger。较早的 common-kernel corpus 与实际 opcode coverage 不同；不会以
 corpus presence 作为完成闭环的证据。
 
-Mixed F32/F16 multiplicand 现使用 RegOrImm，接受只舍入一次为 binary16 的 numeric floating constant。F32 accumulator 保留既有 numeric 路径。显式 half-arithmetic register-only form 与当前 BF16 mixed-source representation 保持独立；literal 转换不执行 FMA rounding/saturation 的运行结果。
+Mixed F32/F16 multiplicand 现使用 RegOrImm，接受只舍入一次为 binary16 的 numeric floating constant。F32 accumulator 保留既有 numeric 路径。显式 half-arithmetic register-only form 保持其独立契约；literal 转换不执行 FMA rounding/saturation 的运行结果。
+
+### 普通 BF16 FMA/SET 源成员
+
+`FmaMixedF32Bf16`、`SetHalfIntegerBf16` 与
+`SetHalfIntegerBf16Boolean` 的 `src1`、`src2` 现为
+`WithLocs<RegOrImm>`。既有类名、identity 与字段顺序保持不变；C++ consumer
+须以匹配的 header/library 重建，并对 `.value` 使用
+`std::get_if<ResolvedRegisterRef>` 或 `std::get_if<ResolvedImmediate>`。
+
+这六个源接受 numeric Float literal 与 Float-result expression。既有逻辑 BF16
+converter 将 `1.5`、`1.0+0.5`、`0d3ff8000000000000` 与 `0f3fc00000`
+转换为 BF16 类型及 `0x3fc0` word。FMA 使用已固定的 `input_type` modifier，
+SET 使用固定逻辑 BF16。Integer literal 与 Integer-result expression 仍被排除，
+包括值为零的 optional integer-origin；此授权不增加 integer-immediate policy。
+实际寄存器声明仍仅接受普通标量 `.b16` carrier；SameWidth 不授权
+`.f16/.u16/.s16`、special register、整体向量或 instruction-only `.bf16` 独立声明。
+
+Owned validation 检查当前逻辑类型、低十六位与 flags，不要求 Float lexical
+history。释放源码/AST、copy、assignment 或 clone 后，一致的 canonical 当前
+word 编辑仍可合法。保留的错误类型、高位、integer origin 或 negative metadata
+仍为错误。Source association 独立核对 supplied AST 与 retained syntax identity。
+此标量 numeric conversion 不增加 packed pair/splat 或截断规则；packed exact-word
+与 constructor policy 仍相互独立。不执行指令 rounding、saturation、comparison、
+predicate combination 或运行语义；target、destination、其他 source 及全部 packed
+SET form 的契约保持不变。

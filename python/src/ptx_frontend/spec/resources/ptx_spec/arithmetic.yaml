@@ -205,8 +205,8 @@ operand_patterns:
 
   ternary_mixed_bf16:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(result_type)"}}
-    - {name: src1, kind: reg, role: src1, access: read, type: b16, register_width: exact}
-    - {name: src2, kind: reg, role: src2, access: read, type: b16, register_width: exact}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(input_type)"}, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(input_type)"}, register_width: same_width}
     - {name: src3, kind: reg_or_imm, role: src3, access: read, type: {expr: "modifier(result_type)"}}
 
   ternary_wide_u32:

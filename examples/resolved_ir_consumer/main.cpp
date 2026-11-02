@@ -1751,8 +1751,103 @@ bool checkInstalledExplicitBit16Setp() {
   return true;
 }
 
+/** Borrow both changed members from an actual installed exact-class object. */
+std::array<const ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>*, 2>
+installedOrdinaryBf16Sources(const ptx_frontend::resolved_ir::Instruction& instruction) {
+  namespace ir = ptx_frontend::resolved_ir;
+  if (const auto* form = dynamic_cast<const ir::FmaMixedF32Bf16*>(&instruction))
+    return {&form->src1, &form->src2};
+  if (const auto* form = dynamic_cast<const ir::SetHalfIntegerBf16*>(&instruction))
+    return {&form->src1, &form->src2};
+  const auto& form = dynamic_cast<const ir::SetHalfIntegerBf16Boolean&>(instruction);
+  return {&form.src1, &form.src2};
+}
+
+/** Compare actual installed callback addresses only during synchronous traversal. */
+struct InstalledOrdinaryBf16Observer final : ptx_frontend::resolved_ir::detail::IReferenceObserver {
+  /** Borrowed fields; the inspected instruction outlives the traversal. */
+  std::array<const ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>*, 2> expected;
+  /** One synchronous callback for each exact source member. */
+  std::array<bool, 2> seen{};
+  /** Bind fields owned by the instruction being visited. */
+  explicit InstalledOrdinaryBf16Observer(decltype(expected) fields) : expected(fields) {}
+  /** Check real member and range addresses without retaining callback arguments. */
+  void reg_or_imm(const ptx_frontend::resolved_ir::RegOrImm& value,
+                 std::span<const ptx_frontend::SourceRange> ranges,
+                 ptx_frontend::resolved_ir::checker::AddressSymbolResolutionPolicy) override {
+    for (size_t index = 0; index < 2; ++index)
+      if (&value == &expected[index]->value && ranges.size() == expected[index]->locs.size()) {
+        bool equal = true;
+        for (size_t lane = 0; lane < ranges.size(); ++lane)
+          equal = equal && ranges[lane] == expected[index]->locs[lane];
+        seen[index] = equal;
+      }
+  }
+};
+
+/** Exercise all six migrated members through the existing installed resolver/class API. */
+bool checkInstalledOrdinaryBf16FmaSet() {
+  namespace ir = ptx_frontend::resolved_ir;
+  static_assert(std::same_as<decltype(ir::FmaMixedF32Bf16{}.src1.value), ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::FmaMixedF32Bf16{}.src2.value), ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::SetHalfIntegerBf16{}.src1.value), ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::SetHalfIntegerBf16{}.src2.value), ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::SetHalfIntegerBf16Boolean{}.src1.value), ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::SetHalfIntegerBf16Boolean{}.src2.value), ir::RegOrImm>);
+  static_assert(ir::FmaMixedF32Bf16::is_instruction && ir::SetHalfIntegerBf16::is_instruction &&
+                ir::SetHalfIntegerBf16Boolean::is_instruction);
+  static_assert(ir::FmaMixedF32Bf16::input_type == ir::ScalarType::BF16);
+  std::optional<ir::ResolvedModule> owned;
+  {
+    const std::string source = R"ptx(
+.version 9.3
+.target sm_100a
+.entry kernel(){
+ .reg .b16 a,b; .reg .f32 f; .reg .u32 u; .reg .pred p;
+ fma.rn.f32.bf16 f,1.5,b,f;
+ fma.rn.f32.bf16 f,a,1.5,f;
+ set.eq.u32.bf16 u,1.5,b;
+ set.eq.u32.bf16 u,a,1.5;
+ set.eq.and.u32.bf16 u,1.5,b,p;
+ set.eq.and.u32.bf16 u,a,1.5,p;
+}
+)ptx";
+    ptx_frontend::PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty()) return false;
+    auto result = ir::resolveAndValidateModule(*ast);
+    if (!result || !ir::validateModule(*ast, *result)) return false;
+    owned.emplace(std::move(*result));
+  }
+  if (owned->functions.front().body.size() != 6) return false;
+  for (size_t index = 0; index < 6; ++index) {
+    const auto& instruction = *owned->functions.front().body[index];
+    const auto fields = installedOrdinaryBf16Sources(instruction);
+    InstalledOrdinaryBf16Observer observer(fields);
+    instruction.visit_references(observer);
+    if (!observer.seen[0] || !observer.seen[1]) return false;
+    const auto* immediate = std::get_if<ir::ResolvedImmediate>(&fields[index % 2]->value);
+    const auto* reg = std::get_if<ir::ResolvedRegisterRef>(&fields[1 - index % 2]->value);
+    if (!immediate || immediate->type != ir::ScalarType::BF16 || immediate->bits != 0x3fc0 ||
+        immediate->integer_source_bits || immediate->is_negative || !reg || !reg->symbol_id ||
+        reg->declared_type != ir::ScalarType::B16 || fields[0]->locs.empty() || fields[1]->locs.empty())
+      return false;
+    const auto clone = instruction.clone();
+    if (clone->instruction_kind() != instruction.instruction_kind() ||
+        installedOrdinaryBf16Sources(*clone)[0]->value != fields[0]->value)
+      return false;
+  }
+  auto copied = *owned;
+  ir::ResolvedModule assigned;
+  assigned = copied;
+  owned.reset();
+  return ir::validateModule(copied).has_value() && ir::validateModule(assigned).has_value();
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledOrdinaryBf16FmaSet())
+    return 1;
   if (!checkInstalledExplicitBit16Setp())
     return 1;
   if (!checkInstalledPragmas())

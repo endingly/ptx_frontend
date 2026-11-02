@@ -2045,3 +2045,31 @@ Exactly24 existing ordinary unscaled, non-WS dense/sparse MMA mask layouts admit
 Named Element lowering uses the separately established actual-declaration-width inference: an ordinary General `.reg .v2/.v4` whole declaration, compatible physical type, <=128-bit extent, full source range and exact NamedProjection lanes. It does not guess4, select by opcode/target, add ordinary namedv8 or change fixed Element/Aggregate behavior. Existing CTA-group checking still requires exactly4 entries for group1 and8 for group2. Group1 `.v4` is legal; group1 `.v2` and group2 ordinary named `.v4` fail the full check. A lowering draft or missing-context deferral is not group legality. Group2 remains eight-brace-only for ordinary declaration syntax.
 
 Current actual payloads, whole-base SymbolId/type/class/width and all4/8 lane provenance/ranges remain authoritative; callbacks borrow synchronously and reacquire each copied/assigned/cloned owner. Coherent retargeting to another real compatible declaration may pass current validation while a different saved operand AST still has an independent source-identity mismatch. Special/predicate/array/component-as-whole/InstructionOnly/wrong-width declarations and null sink lanes gain no permission. Matrix named machinery is a separately accepted prerequisite; this mask facet does not introduce it. Other masks, WS/MX/collector/ashift/scaled roles, target DNF/profile windows and required-presence/cardinality logic remain unchanged. Actual current Debug and fresh unique installed-seven-library consumer evidence plus independent actual-diff acceptance are required before recording delivery completion.
+
+### Ordinary BF16 FMA/SET source members
+
+`FmaMixedF32Bf16`, `SetHalfIntegerBf16`, and
+`SetHalfIntegerBf16Boolean` expose `src1` and `src2` as
+`WithLocs<RegOrImm>`. Existing class names, identities and field order remain;
+C++ consumers must rebuild against matching headers and libraries and use
+`std::get_if<ResolvedRegisterRef>` or `std::get_if<ResolvedImmediate>` on `.value`.
+
+These six sources accept numeric Float literals and Float-result expressions.
+The existing logical BF16 converter maps `1.5`, `1.0+0.5`,
+`0d3ff8000000000000` and `0f3fc00000` to type BF16 and word `0x3fc0`.
+FMA uses its fixed `input_type` modifier; SET uses fixed logical BF16.
+Integer literals and Integer-result expressions remain excluded, including an
+optional integer-origin value of zero. This grant has no integer-immediate policy.
+The accepted actual register declaration remains the ordinary scalar `.b16`
+carrier; SameWidth does not admit `.f16/.u16/.s16`, special registers, whole
+vectors or standalone instruction-only `.bf16` declarations.
+
+Owned validation reads current logical type, low sixteen bits and flags. It
+requires no floating lexical history; coherent canonical current-word edits can
+validate after source/AST destruction, copying, assignment or cloning. Retained
+bad type, high bits, integer origin or negative metadata remain errors. Source
+association still checks the provided AST against retained syntax identity.
+This scalar numeric conversion adds no packed pair/splat or truncation rule;
+packed exact-word and constructor policies remain separate. Instruction rounding,
+saturation, comparison, predicate combination and execution are not evaluated.
+Targets, destinations, other sources and all packed SET forms keep their contracts.

@@ -13,6 +13,7 @@
 #include <variant>
 #include <vector>
 
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/resolved_ir/ptx_storage_declarations.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -99,7 +100,8 @@ TEST(ResolvedStorageDeclarations, BinaryExpressionsAndDimensions) {
 }
 
 /** Binary literal errors cannot disappear through conditional constant folding. */
-TEST(ResolvedStorageDeclarations, RejectsBinaryOverflowInConditionalExpressions) {
+TEST(ResolvedStorageDeclarations,
+     RejectsBinaryOverflowInConditionalExpressions) {
   const std::string overflow = "0b1" + std::string(64, '0');
   for (const std::string source :
        {".global .u32 result = (" + overflow + " ? 7 : 7);",
@@ -1064,6 +1066,7 @@ TEST(ResolvedStorageDeclarations, WidensB128IntegerResults) {
       Fixture{"1 << 63", uint64_t{1} << 63, all_bits},
       Fixture{"0xffffffffffffffffU + 1U", 0, 0},
       Fixture{"0xff00(0x1234)", 0x12, 0},
+      Fixture{"-9223372036854775808", uint64_t{1} << 63, 0},
   };
   for (const auto& fixture : fixtures) {
     SCOPED_TRACE(fixture.expression);
@@ -1124,6 +1127,13 @@ TEST(ResolvedStorageDeclarations, RejectsInvalidB128Initializers) {
     ASSERT_FALSE(rejected.error().empty());
     EXPECT_TRUE(rejected.error().front().declaration_kind.has_value());
   }
+}
+
+/** The expression grammar rejects a 128-bit cast before declaration normalization. */
+TEST(ResolvedStorageDeclarations, RejectsB128ExpressionCastDuringParsing) {
+  PtxSyntaxParser parser(".global .b128 wide = (.b128)1;");
+  const auto rejected = parser.parseModule();
+  EXPECT_TRUE(!rejected || !rejected.diagnostics.empty());
 }
 
 /** Storage resolution reports overflow and invalid alignment with declaration kinds. */
@@ -1210,6 +1220,242 @@ TEST(ResolvedStorageDeclarations,
                    UnsupportedStorageDeclaration;
       });
   EXPECT_EQ(unsupported_count, 4u);
+}
+
+/** Complete source context shared by current owned-storage validation fixtures. */
+constexpr std::string_view b128Header =
+    ".version 9.3\n.target sm_90\n.address_size 64\n";
+
+/** Resolve an actual module, destroying source, parser, and AST before returning. */
+std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveOwnedStorage(
+    std::string source) {
+  PtxSyntaxParser parser(source);
+  const auto ast = parser.parseModule();
+  if (!ast || !ast.diagnostics.empty())
+    return std::unexpected(ModuleResolveDiagnostics{{
+        .message = ast.diagnostics.empty() ? "PTX source did not parse."
+                                           : ast.diagnostics.front().message,
+    }});
+  return resolveModuleOnly(*ast);
+}
+
+/** Require the intrinsic B128 diagnostic at exactly the supplied owned range. */
+void expectB128ImageFailure(const checker::CheckResult& result,
+                            SourceRange range) {
+  ASSERT_FALSE(result);
+  EXPECT_TRUE(std::ranges::any_of(result.error(), [&](const auto& diagnostic) {
+    return diagnostic.kind ==
+               checker::CheckDiagnosticKind::ModuleSourceMismatch &&
+           diagnostic.range == range &&
+           diagnostic.message ==
+               "B128 storage constant is outside the normalized two-word "
+               "image.";
+  }));
+}
+
+/** Every possible highword class is checked without recovering source signedness. */
+TEST(ResolvedStorageDeclarations, ValidatesCurrentB128ImageThroughBothApis) {
+  const std::string source =
+      std::string{b128Header} + ".global .b128 unused=1;";
+  PtxSyntaxParser parser(source);
+  const auto ast = parser.parseModule();
+  ASSERT_TRUE(ast);
+  ASSERT_TRUE(ast.diagnostics.empty());
+  auto original = resolveModuleOnly(*ast);
+  ASSERT_TRUE(original);
+  ASSERT_TRUE(validateModule(*original));
+  ASSERT_TRUE(validateModule(*ast, *original));
+  constexpr uint64_t maximum = std::numeric_limits<uint64_t>::max();
+  constexpr std::array lows{uint64_t{0}, uint64_t{1}, (uint64_t{1} << 63) - 1,
+                            uint64_t{1} << 63, maximum};
+  constexpr std::array highs{uint64_t{0}, uint64_t{1}, maximum - 1, maximum};
+  for (const auto low : lows) {
+    for (const auto high : highs) {
+      SCOPED_TRACE(::testing::Message() << "low=" << low << ", high=" << high);
+      auto current = *original;
+      auto& leaf = current.storage_declarations[0].initializer[0];
+      auto& value = std::get<StorageConstant>(leaf.value);
+      value.bits = low;
+      value.high_bits = high;
+      const bool canonical = high == 0 || (high == maximum && (low >> 63) != 0);
+      if (canonical) {
+        EXPECT_TRUE(validateModule(current));
+        EXPECT_TRUE(validateModule(*ast, current));
+      } else {
+        expectB128ImageFailure(validateModule(current), leaf.range);
+        expectB128ImageFailure(validateModule(*ast, current), leaf.range);
+      }
+    }
+  }
+}
+
+/** All flattened leaves and every declarator remain checked even when unused. */
+TEST(ResolvedStorageDeclarations, ValidatesEveryB128StorageLeaf) {
+  constexpr std::array declarations{
+      ".global .b128 x=1;",
+      ".const .b128 x=1;",
+      ".global .b128 x[4]={1,-1,-1U};",
+      ".global .b128 x[][3]={{1,-1},{-1U}};",
+      ".global .b128 a=1,b=-1,c=-1U;",
+      ".global .b128 unused=1; .entry kernel(){ret;}",
+  };
+  for (const auto declaration : declarations) {
+    SCOPED_TRACE(declaration);
+    const std::string source = std::string{b128Header} + declaration;
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    ASSERT_TRUE(ast);
+    ASSERT_TRUE(ast.diagnostics.empty());
+    const auto original = resolveModuleOnly(*ast);
+    ASSERT_TRUE(original);
+    ASSERT_TRUE(validateModule(*original));
+    ASSERT_TRUE(validateModule(*ast, *original));
+    for (size_t record = 0; record < original->storage_declarations.size();
+         ++record) {
+      const auto& storage = original->storage_declarations[record];
+      for (size_t index = 0; index < storage.initializer.size(); ++index) {
+        for (const auto high :
+             {uint64_t{1}, std::numeric_limits<uint64_t>::max()}) {
+          SCOPED_TRACE(::testing::Message()
+                       << "record=" << record << ", leaf=" << index);
+          auto current = *original;
+          auto& leaf = current.storage_declarations[record].initializer[index];
+          auto& value = std::get<StorageConstant>(leaf.value);
+          value.bits = 1;
+          value.high_bits = high;
+          expectB128ImageFailure(validateModule(current), leaf.range);
+          expectB128ImageFailure(validateModule(*ast, current), leaf.range);
+        }
+      }
+    }
+    if (std::string_view{declaration}.find("[][3]") != std::string_view::npos)
+      EXPECT_EQ(original->storage_declarations[0].initializer[2].byte_offset,
+                48u);
+  }
+}
+
+/** Copy and move actual modules only after all parser and syntax ownership died. */
+TEST(ResolvedStorageDeclarations,
+     ValidatesB128AfterSourceDeathAndModuleCopies) {
+  auto original = resolveOwnedStorage(
+      std::string{b128Header} +
+      ".global .b128 x[][3]={{1,-1},{-1U}}; .entry kernel(){ret;}");
+  ASSERT_TRUE(original);
+  ASSERT_TRUE(validateModule(*original));
+  auto copied = *original;
+  auto moved = std::move(copied);
+  ResolvedModule assigned;
+  assigned = *original;
+  ResolvedModule move_assigned;
+  move_assigned = std::move(assigned);
+  for (auto* current : {&*original, &moved, &move_assigned}) {
+    ASSERT_TRUE(validateModule(*current));
+    const auto clone = current->functions[0].body[0]->clone();
+    ASSERT_NE(clone, nullptr);
+    auto& leaf = current->storage_declarations[0].initializer[2];
+    std::get<StorageConstant>(leaf.value).high_bits = 1;
+    expectB128ImageFailure(validateModule(*current), leaf.range);
+  }
+}
+
+/** Retained leaves cannot bypass the intrinsic domain via initialization flags. */
+TEST(ResolvedStorageDeclarations, B128ImageDoesNotDependOnInitializationMode) {
+  auto original =
+      resolveOwnedStorage(std::string{b128Header} + ".global .b128 x=1;");
+  ASSERT_TRUE(original);
+  ASSERT_TRUE(validateModule(*original));
+  for (const auto mode :
+       {StorageInitializationKind::Explicit, StorageInitializationKind::Zero,
+        StorageInitializationKind::Uninitialized,
+        StorageInitializationKind::External}) {
+    auto current = *original;
+    auto& declaration = current.storage_declarations[0];
+    declaration.initialization = mode;
+    auto& leaf = declaration.initializer[0];
+    std::get<StorageConstant>(leaf.value).high_bits = 1;
+    expectB128ImageFailure(validateModule(current), leaf.range);
+  }
+}
+
+/** Empty, implicit, external, and parameterized records never fabricate values. */
+TEST(ResolvedStorageDeclarations, PreservesB128StorageWithoutExplicitLeaves) {
+  auto original = resolveOwnedStorage(
+      std::string{b128Header} +
+      ".global .b128 zero; .const .b128 empty[2]={}; "
+      ".extern .global .b128 external; .global .b128 slots<2>;");
+  ASSERT_TRUE(original);
+  ASSERT_TRUE(validateModule(*original));
+  ASSERT_EQ(original->storage_declarations.size(), 4u);
+  for (const auto& declaration : original->storage_declarations)
+    EXPECT_TRUE(declaration.initializer.empty());
+  EXPECT_EQ(original->storage_declarations[3].parameterized_count, 2u);
+  // Source grammar does not provide initialized parameterized groups.
+  PtxSyntaxParser parser(std::string{b128Header} + ".global .b128 slots<2>=1;");
+  const auto rejected = parser.parseModule();
+  EXPECT_TRUE(!rejected || !rejected.diagnostics.empty());
+  // An actual retained leaf in a coherent group is still intrinsically checked.
+  auto& group = original->storage_declarations[3];
+  auto donor =
+      resolveOwnedStorage(std::string{b128Header} + ".global .b128 value=1;");
+  ASSERT_TRUE(donor);
+  group.initializer = donor->storage_declarations[0].initializer;
+  group.initializer[0].range = group.range;
+  group.initialization = StorageInitializationKind::Explicit;
+  ASSERT_TRUE(validateModule(*original));
+  std::get<StorageConstant>(group.initializer[0].value).high_bits = 1;
+  expectB128ImageFailure(validateModule(*original), group.range);
+}
+
+/** Intrinsic value failures survive missing target context and missing leaf ranges. */
+TEST(ResolvedStorageDeclarations, B128ImageUsesCurrentValueAndLocatedFallback) {
+  auto original =
+      resolveOwnedStorage(".global .b128 x=1; .entry kernel(){ret;}");
+  ASSERT_TRUE(original);
+  ASSERT_TRUE(
+      validateModule(*original, ModuleValidationPolicy::AvailableContext));
+  const auto strict = validateModule(*original);
+  ASSERT_FALSE(strict);
+  EXPECT_TRUE(std::ranges::any_of(strict.error(), [](const auto& diagnostic) {
+    return diagnostic.kind ==
+           checker::CheckDiagnosticKind::MissingValidationContext;
+  }));
+  auto& declaration = original->storage_declarations[0];
+  auto& leaf = declaration.initializer[0];
+  leaf.range = {};
+  std::get<StorageConstant>(leaf.value).high_bits = 1;
+  expectB128ImageFailure(
+      validateModule(*original, ModuleValidationPolicy::AvailableContext),
+      declaration.range);
+  expectB128ImageFailure(validateModule(*original), declaration.range);
+}
+
+/** Source correspondence remains independent of current storage value validation. */
+TEST(ResolvedStorageDeclarations, B128ImagePreservesSourceAssociationChecks) {
+  const std::string source = std::string{b128Header} + ".global .b128 x=1;";
+  PtxSyntaxParser original_parser(source);
+  const auto ast = original_parser.parseModule();
+  ASSERT_TRUE(ast);
+  auto owned = resolveModuleOnly(*ast);
+  ASSERT_TRUE(owned);
+  PtxSyntaxParser replacement_parser(std::string{b128Header} +
+                                     ".global .u64 x=1;");
+  const auto replacement = replacement_parser.parseModule();
+  ASSERT_TRUE(replacement);
+  EXPECT_FALSE(validateModule(*replacement, *owned));
+  EXPECT_TRUE(validateModule(*ast, *owned));
+}
+
+/** The private B128 guard does not change narrower constant representations. */
+TEST(ResolvedStorageDeclarations, B128ImageDoesNotAddNarrowHighwordValidation) {
+  auto original =
+      resolveOwnedStorage(std::string{b128Header} + ".global .u64 x=1;");
+  ASSERT_TRUE(original);
+  ASSERT_TRUE(validateModule(*original));
+  auto& value = std::get<StorageConstant>(
+      original->storage_declarations[0].initializer[0].value);
+  EXPECT_EQ(value.high_bits, 0u);
+  value.high_bits = 1;
+  EXPECT_TRUE(validateModule(*original));
 }
 
 }  // namespace

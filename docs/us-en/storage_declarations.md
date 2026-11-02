@@ -139,7 +139,20 @@ Integer literals and expressions still use PTX's `.s64`/`.u64` evaluation domain
 the wider destination does not enable 128-bit literals or expression arithmetic.
 For `.b128`, the frontend sign-extends a signed result and zero-extends an
 unsigned result only after evaluation. Thus `-1` fills both words with ones,
-whereas `-1U` fills only the low word. Sparse aggregate positions remain zero.
+whereas `-1U` fills only the low word. Precisely, after evaluating the whole
+expression, `lo = source.bits` and `hi = (!source.is_unsigned && lo.bit63) ?
+UINT64_MAX : 0`. Sparse aggregate positions remain zero.
+
+Owned `StorageConstant` records erase the source expression and signedness. Both
+module validator APIs check each retained constant leaf of actual `.b128`
+storage against `hi == 0 || (hi == UINT64_MAX && lo.bit63)`, including unused
+storage, comma declarators, and every flattened array leaf. Thus a low word with
+bit 63 set permits both high zero and high all-ones; current value edits between
+these forms do not recover source history. The check is independent of target
+context and initialization mode. Empty and implicit-zero storage do not gain
+synthetic leaves, and existing external and parameterized-group source
+initializer restrictions remain. Invalid values report the owned leaf range,
+falling back to the declaration range when the leaf has no usable range.
 
 This widening is an explicit frontend policy, not a GPU-verified conformance
 claim: PTX specifies conversion at initialization but does not explicitly state

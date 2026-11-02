@@ -116,7 +116,18 @@ packed/alternate format 必须使用对应 bit-container type。integer/bit init
 `.s64/.u64` 范围求值；更宽的 destination 不会启用 128-bit literal 或 expression 算术。
 对于 `.b128`，frontend 只在求值完成后对 signed result 做符号扩展，对 unsigned result
 做零扩展。因此 `-1` 的两个 word 均全为 1，而 `-1U` 只有低位 word 全为 1。
+准确地说，整个 expression 求值完成后，`lo = source.bits`，
+`hi = (!source.is_unsigned && lo.bit63) ? UINT64_MAX : 0`。
 稀疏 aggregate 中未列出的位置保持零初始化。
+
+Owned `StorageConstant` 不保留 source expression 与 signedness。两个 module validator
+API 都对实际 `.b128` storage 的每个 retained constant leaf 检查
+`hi == 0 || (hi == UINT64_MAX && lo.bit63)`，包括 unused storage、逗号 declarator
+以及每个 flattened array leaf。因此，当低位 word 的 bit 63 为 1 时，高位为零和
+全 1 均合法；在这些形式之间修改 current value 不会恢复 source history。该检查独立于
+target context 和 initialization mode。empty 与 implicit-zero storage 不会生成
+synthetic leaf，现有 external 与 parameterized-group 的 source initializer 限制保持不变。
+非法值的诊断定位于 owned leaf range；该 range 不可用时回退到 declaration range。
 
 这一扩展是明确的 frontend 策略，不表示已经通过 GPU conformance 验证：PTX 规定在
 初始化处转换宽度，但未明确说明 `.b128` 高半部分的规则。当前没有 GPU 验证条件，

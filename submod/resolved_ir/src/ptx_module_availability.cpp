@@ -3535,6 +3535,19 @@ void check_storage_declarations(const ResolvedModule& module,
       append_model_mismatch(
           diagnostics, declaration.range,
           "Scalar storage type, shape, extent, or alignment is inconsistent.");
+    if (*scalar == ScalarType::B128) {
+      for (const auto& leaf : declaration.initializer) {
+        const auto* value = std::get_if<StorageConstant>(&leaf.value);
+        if (value && value->high_bits != 0 &&
+            (value->high_bits != std::numeric_limits<uint64_t>::max() ||
+             (value->bits & (uint64_t{1} << 63)) == 0))
+          append_model_mismatch(
+              diagnostics,
+              valid_instruction_range(leaf.range) ? leaf.range
+                                                  : declaration.range,
+              "B128 storage constant is outside the normalized two-word image.");
+      }
+    }
     const bool valid_initialization =
         external ? declaration.initialization ==
                            StorageInitializationKind::External &&

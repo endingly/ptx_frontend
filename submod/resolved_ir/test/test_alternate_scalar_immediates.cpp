@@ -6,6 +6,7 @@
 #include <iostream>
 #include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/sub.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/setp.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/cvt.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
@@ -1792,13 +1793,128 @@ TEST(AlternateScalarImmediates, PreservesIndependentTypeAndContextBoundaries) {
   record_alternate("ALTSC-CONTROL-storage-alternates");
   record_alternate("ALTSC-CONTROL-call-alternates");
   for (const auto instruction :
-       {"add.bf16 b,1.5,b;", "set.eq.bf16.bf16 b,1.5,b;",
-        "setp.eq.bf16 p,1.5,b;"}) {
+       {"add.bf16 b,1.5,b;", "set.eq.bf16.bf16 b,1.5,b;"}) {
     const auto ast = test_helpers::parseModule(alternate_module(instruction));
     ASSERT_MODULE_PARSE_SUCCEEDS(ast);
     EXPECT_FALSE(resolveModuleOnly(*ast));
   }
   record_alternate("ALTSC-CONTROL-regonly");
+  for (const std::string_view instruction :
+       {"setp.eq.bf16 p,b,b;", "setp.eq.bf16 p,1.5,b;"}) {
+    const bool has_literal = instruction == "setp.eq.bf16 p,1.5,b;";
+    const std::string source = alternate_module(instruction);
+    const auto ast = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+
+    const syntax_ast::AstInstruction* parsed_instruction = nullptr;
+    std::size_t parsed_instruction_count = 0;
+    for (const auto& module_item : ast->items) {
+      const auto* function = std::get_if<syntax_ast::AstFunction>(&module_item);
+      if (function == nullptr)
+        continue;
+      for (const auto& body_item : function->body) {
+        const auto* candidate =
+            std::get_if<syntax_ast::AstInstruction>(&body_item);
+        if (candidate != nullptr) {
+          parsed_instruction = candidate;
+          ++parsed_instruction_count;
+        }
+      }
+    }
+    ASSERT_EQ(parsed_instruction_count, 1u);
+    ASSERT_NE(parsed_instruction, nullptr);
+    ASSERT_EQ(parsed_instruction->operands.size(), 3u);
+
+    std::optional<SourceRange> expected_literal_range;
+    if (has_literal) {
+      const auto literal_offset = source.find("1.5");
+      ASSERT_NE(literal_offset, std::string::npos);
+      ASSERT_EQ(source.find("1.5", literal_offset + 3), std::string::npos);
+      const auto previous_newline = source.rfind('\n', literal_offset);
+      const auto line_start = previous_newline == std::string::npos
+                                  ? 0
+                                  : previous_newline + 1;
+      const auto line = static_cast<int32_t>(
+          std::ranges::count(std::string_view(source).substr(0, literal_offset),
+                             '\n') +
+          1);
+      const auto column =
+          static_cast<int32_t>(literal_offset - line_start + 1);
+      expected_literal_range =
+          SourceRange{{line, column}, {line, column + 3}};
+      const auto* parsed_immediate =
+          std::get_if<syntax_ast::AstImmediate>(&parsed_instruction->operands[1]);
+      ASSERT_NE(parsed_immediate, nullptr);
+      EXPECT_EQ(parsed_immediate->syntax.range, *expected_literal_range);
+      EXPECT_EQ(syntax_ast::sourceRange(parsed_instruction->operands[1]),
+                *expected_literal_range);
+    } else {
+      EXPECT_TRUE(std::holds_alternative<syntax_ast::AstIdentifierRef>(
+          parsed_instruction->operands[1]));
+    }
+
+    auto module_only = resolveModuleOnly(*ast);
+    ASSERT_TRUE(module_only);
+    EXPECT_TRUE(validateModule(
+        *module_only, ModuleValidationPolicy::RequireCompleteContext));
+    EXPECT_TRUE(validateModule(*ast, *module_only,
+                               ModuleValidationPolicy::RequireCompleteContext));
+    auto fully_validated = resolveAndValidateModule(*ast);
+    ASSERT_TRUE(fully_validated);
+    EXPECT_TRUE(validateModule(
+        *fully_validated, ModuleValidationPolicy::RequireCompleteContext));
+    EXPECT_TRUE(validateModule(
+        *ast, *fully_validated,
+        ModuleValidationPolicy::RequireCompleteContext));
+
+    for (const auto* owner : {&*module_only, &*fully_validated}) {
+      ASSERT_EQ(owner->functions.size(), 1u);
+      const auto& function = owner->functions[0];
+      ASSERT_EQ(function.body.size(), 1u);
+      const auto* setp =
+          dynamic_cast<const SetpBf16*>(function.body[0].get());
+      ASSERT_NE(setp, nullptr);
+
+      const auto* source_register =
+          std::get_if<ResolvedRegisterRef>(&setp->src1.value);
+      const auto* destination_register =
+          std::get_if<ResolvedRegisterRef>(&setp->src2.value);
+      ASSERT_NE(destination_register, nullptr);
+      EXPECT_EQ(destination_register->spelling, "b");
+      ASSERT_TRUE(destination_register->symbol_id.has_value());
+      ASSERT_TRUE(destination_register->declared_type.has_value());
+      EXPECT_EQ(*destination_register->declared_type, ScalarType::B16);
+
+      if (has_literal) {
+        const auto* immediate =
+            std::get_if<ResolvedImmediate>(&setp->src1.value);
+        ASSERT_NE(immediate, nullptr);
+        const auto golden = std::ranges::find(
+            alternate_goldens,
+            std::string_view("ALTSC-GOLDEN-bf16_f64_one_point_five"),
+            &AlternateGolden::id);
+        ASSERT_NE(golden, alternate_goldens.end());
+        EXPECT_EQ(golden->type, ScalarType::BF16);
+        EXPECT_EQ(golden->bits, 0x3fc0u);
+        EXPECT_EQ(immediate->type, ScalarType::BF16);
+        EXPECT_EQ(immediate->bits, 0x3fc0u);
+        EXPECT_EQ(immediate->bits, golden->bits);
+        EXPECT_FALSE(immediate->integer_source_bits);
+        EXPECT_FALSE(immediate->is_negative);
+        ASSERT_EQ(setp->src1.locs.size(), 1u);
+        ASSERT_TRUE(expected_literal_range.has_value());
+        EXPECT_EQ(setp->src1.locs[0], *expected_literal_range);
+      } else {
+        ASSERT_NE(source_register, nullptr);
+        EXPECT_EQ(source_register->spelling, "b");
+        ASSERT_TRUE(source_register->symbol_id.has_value());
+        ASSERT_TRUE(source_register->declared_type.has_value());
+        EXPECT_EQ(*source_register->declared_type, ScalarType::B16);
+        EXPECT_EQ(*source_register->symbol_id,
+                  *destination_register->symbol_id);
+      }
+    }
+  }
   const std::string source = alternate_module("add.f32.bf16 f0,1.5,f1;");
   const auto ast = test_helpers::parseModule(source);
   ASSERT_MODULE_PARSE_SUCCEEDS(ast);

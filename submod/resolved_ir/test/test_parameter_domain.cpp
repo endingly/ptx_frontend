@@ -507,11 +507,14 @@ TEST(ParameterDomain, RejectsEntryPaddingAdditionOverflow) {
 
 /** Vector compact members share one declaration while retaining independent actual identities. */
 TEST(ParameterDomain, VectorCompactMembersRetainPerObjectCallIdentity) {
-  auto module = parameter_module(
+  const auto text =
       parameter_header() +
       ".extern .func (.param .v2 .f16x2 r) exchange(.param .v2 .f16x2 p); "
       ".entry kernel() { .param .v2 .f16x2 group<2>; call (group1), exchange, "
-      "(group0); }");
+      "(group0); }";
+  auto module = parameter_module(text);
+  const auto original_ast = test_helpers::parseModule(text);
+  ASSERT_MODULE_PARSE_SUCCEEDS(original_ast);
   ASSERT_TRUE(module) << module.error().front().message;
   const auto& record = module->functions.back().parameter_declarations.front();
   EXPECT_EQ(module->functions.back().parameter_declarations.size(), 1u);
@@ -523,14 +526,44 @@ TEST(ParameterDomain, VectorCompactMembersRetainPerObjectCallIdentity) {
   auto& input =
       std::get<ResolvedCallParameterRef>(call.arguments->value.values[0].value);
   ASSERT_TRUE(call.return_value);
+  ASSERT_EQ(call.arguments->value.values[0].locs.size(), 1u);
+  /** Saved real argument extent, independent of current spelling/index edits. */
+  const auto argument_range = call.arguments->value.values[0].locs.front();
   EXPECT_EQ(input.symbol_id, call.return_value->value.symbol_id);
   EXPECT_EQ(input.parameterized_index, 0u);
   EXPECT_EQ(call.return_value->value.parameterized_index, 1u);
   EXPECT_TRUE(validateModule(copy));
+  EXPECT_TRUE(validateModule(*original_ast, copy));
+  /** Match the current identity diagnostic without requiring an error count. */
+  const auto has_model_mismatch = [argument_range](
+                                      const checker::CheckResult& checked,
+                                      std::string_view message) {
+    return !checked &&
+           std::ranges::any_of(checked.error(),
+                               [&](const checker::CheckDiagnostic& diagnostic) {
+                                 return diagnostic.kind ==
+                                            checker::CheckDiagnosticKind::
+                                                ModuleSourceMismatch &&
+                                        diagnostic.range == argument_range &&
+                                        diagnostic.message == message;
+                               });
+  };
   input.parameterized_index = 1;
+  constexpr std::string_view identity_message =
+      "Resolved call parameter metadata disagrees with its owned declaration.";
+  EXPECT_TRUE(has_model_mismatch(validateModule(copy), identity_message));
+  EXPECT_TRUE(has_model_mismatch(validateModule(*original_ast, copy),
+                                 identity_message));
+  input.spelling = "group1";
   EXPECT_TRUE(validateModule(copy));
+  EXPECT_TRUE(validateModule(*original_ast, copy));
   input.parameterized_index = 2;
-  EXPECT_FALSE(validateModule(copy));
+  input.spelling = "group2";
+  constexpr std::string_view bounds_message =
+      "Resolved module operand has an invalid parameterized member index.";
+  EXPECT_TRUE(has_model_mismatch(validateModule(copy), bounds_message));
+  EXPECT_TRUE(
+      has_model_mismatch(validateModule(*original_ast, copy), bounds_message));
 }
 
 }  // namespace

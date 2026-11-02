@@ -110,6 +110,66 @@ class TcgenMmaMx4ContractTests(unittest.TestCase):
         self.assertIsNone(unknown.required_a_packing)
         self.assertNotIn("a_packing_fact", unknown.violations)
 
+    def test_k96_ids_layout_alignment_and_partial_roles(self) -> None:
+        """Keep encoded IDs independent from caller layout and byte guarantees."""
+        from ptx_frontend.spec import tcgen_descriptor_domains as domains
+        for role, first in (("a", 29), ("b", 4)):
+            field = domains.INSTRUCTION_47.field(f"scale_{role}")
+            self.assertEqual((field.first, field.width, field.mask),
+                             (first, 2, 3 << first))
+        self.assertEqual({k.name: k.scale_ids for k in domains.KINDS
+                          if k.name in ("MxF4", "MxF4NvF4")},
+                         {"MxF4": (0, 2), "MxF4NvF4": (0, 2)})
+        baseline = rules.Mx4KnownFacts(
+            group=2, m=256, n=32, k=96, d_type="F32", a_type="E2M1",
+            b_type="E2M1", sparse=False, a_shared=False,
+            scale_selector="block32", scale_type="UE8M0", scale_a_id=0,
+            scale_b_id=0, a_lane_half=0, d_lane_half=0,
+            scale_a_facts=rules.MxScaleRoleFacts(rules.MxScaleLayoutId.MX3, 4),
+            scale_b_facts=rules.MxScaleRoleFacts(rules.MxScaleLayoutId.THREE_X_N, 4),
+            a_packing=rules.MxInputPacking.TMEM_PAIRED_FOUR_BIT,
+            b_packing=rules.MxInputPacking.SHARED_PAIRED_FOUR_BIT)
+        for role in ("a", "b"):
+            for code in (0, 1, 2, 3):
+                for alignment in (4, 8):
+                    facts = replace(baseline, **{f"scale_{role}_id": code},
+                        scale_a_facts=rules.MxScaleRoleFacts(rules.MxScaleLayoutId.MX3, alignment),
+                        scale_b_facts=rules.MxScaleRoleFacts(rules.MxScaleLayoutId.THREE_X_N, alignment))
+                    report = rules.check_mx4_known_facts(facts)
+                    self.assertEqual(report.known_facts_ok, code in (0, 2))
+                    self.assertEqual(set(report.violations),
+                                     {f"scale_{role}_id"} if code in (1, 3) else set())
+                    self.assertEqual((report.scale_a_factor_count, report.scale_b_factor_count), (3, 3))
+                    self.assertIs(report.scale_a_layout.id_alignment_policy,
+                                  rules.ScaleIdAlignmentPolicy.LAYOUT_DEFINED_PLACEMENT)
+                    self.assertIn("a_live_packing_contents", report.obligations)
+                    self.assertIn("b_live_packing_contents", report.obligations)
+            good = getattr(baseline, f"scale_{role}_facts")
+            for alignment in (0, 2, 3):
+                facts = replace(baseline, scale_a_id=2, scale_b_id=2,
+                    **{f"scale_{role}_facts": replace(good, subcolumn_alignment_bytes=alignment)})
+                self.assertEqual(set(rules.check_mx4_known_facts(facts).violations),
+                                 {f"scale_{role}_alignment"})
+            wrong_layout = rules.MxScaleLayoutId.MX2 if role == "a" else rules.MxScaleLayoutId.TWO_X_N
+            wrong = replace(baseline, **{f"scale_{role}_facts": replace(good, layout_id=wrong_layout)})
+            self.assertEqual(set(rules.check_mx4_known_facts(wrong).violations), {f"scale_{role}_layout"})
+            for missing in (None, replace(good, layout_id=None),
+                            replace(good, subcolumn_alignment_bytes=None)):
+                partial = rules.check_mx4_known_facts(replace(baseline, **{f"scale_{role}_facts": missing}))
+                self.assertTrue(partial.known_facts_ok)
+                self.assertIn(f"scale_{role}_layout", partial.obligations)
+                self.assertNotIn(f"scale_{role}_alignment", partial.violations)
+        for alignment in (4, 8, 16):
+            both = rules.check_mx4_known_facts(replace(baseline, scale_a_id=2, scale_b_id=2,
+                scale_a_facts=rules.MxScaleRoleFacts(rules.MxScaleLayoutId.MX3, alignment),
+                scale_b_facts=rules.MxScaleRoleFacts(rules.MxScaleLayoutId.THREE_X_N, alignment)))
+            self.assertTrue(both.known_facts_ok)
+        unknown_vector = rules.check_mx4_known_facts(replace(baseline, scale_selector="scale_vec::2X"))
+        self.assertIsNone(unknown_vector.scale_a_layout)
+        self.assertIn("scale_a_layout_rule", unknown_vector.obligations)
+        self.assertIn("k96_exact_target", unknown_vector.obligations)
+        self.assertIn("mx4_shape", rules.check_mx4_known_facts(replace(baseline, k=128)).violations)
+
     def test_k64_full_path_lane_facts_use_mx4_shape(self) -> None:
         """K64 keeps its selected datapath despite the K32 base query."""
 

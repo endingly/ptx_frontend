@@ -237,5 +237,265 @@ TEST(TcgenMmaMxNv, KnownScaleRowsAndTargetIntersections) {
   EXPECT_TRUE(contains(unresolved.violations, TcgenMxNvViolation::Target));
 }
 
+/** Known NV K96 block32/block16 rows share field domains but not factor layouts. */
+TcgenMxNvKnownFacts mxnv_k96_facts(bool block16) {
+  const auto target = base::find_target_profile("sm_103a");
+  EXPECT_TRUE(target);
+  TcgenMxNvKnownFacts facts{
+      .group = TcgenCtaGroup::Two,
+      .a_in_tmem = true,
+      .scale_selector = block16 ? TcgenScaleVectorSize::Block16
+                                : TcgenScaleVectorSize::Block32,
+      .instruction = {(2U << 27) | (4U << 17) | (block16 ? 0U : 1U << 23) |
+                          (1U << 7) | (1U << 10) | (1U << 31),
+                      TcgenMmaKind::MxF4NvF4},
+      .scale_a_facts =
+          TcgenMxScaleRoleFacts{
+              block16 ? TcgenMxScaleLayoutId::Mx6 : TcgenMxScaleLayoutId::Mx3,
+              4},
+      .scale_b_facts =
+          TcgenMxScaleRoleFacts{block16 ? TcgenMxScaleLayoutId::SixXN
+                                        : TcgenMxScaleLayoutId::ThreeXN,
+                                4},
+      .a_packing = TcgenMxInputPacking::TmemPairedFourBit,
+      .b_packing = TcgenMxInputPacking::SharedPairedFourBit,
+      .a_lane_half = 0,
+      .d_lane_half = 0,
+      .ptx_version = checker::PtxVersion{9, 3}};
+  if (target)
+    facts.target = target->identity;
+  return facts;
+}
+
+/** Encoded IDs, role layouts, and byte guarantees are three independent facts. */
+TEST(TcgenMmaMxNv, K96EncodedIdsAndIndependentLayoutFacts) {
+  for (const bool block16 : {false, true}) {
+    const auto baseline = mxnv_k96_facts(block16);
+    constexpr uint32_t a_mask = 3U << 29;
+    constexpr uint32_t b_mask = 3U << 4;
+    for (const bool a : {true, false}) {
+      for (const uint32_t code : {0U, 1U, 2U, 3U})
+        for (const uint8_t alignment : {4, 8}) {
+          auto facts = baseline;
+          facts.instruction.bits =
+              (baseline.instruction.bits & ~(a_mask | b_mask)) |
+              (code << (a ? 29 : 4));
+          facts.scale_a_facts->subcolumn_alignment_bytes = alignment;
+          facts.scale_b_facts->subcolumn_alignment_bytes = alignment;
+          const auto report = check_tcgen_mxnv_known_operation(facts);
+          EXPECT_EQ(report.instruction_fields.defined_fields_ok(),
+                    code == 0 || code == 2);
+          EXPECT_EQ(report.supplied_facts_ok(), code == 0 || code == 2);
+          EXPECT_EQ(report.scale_a_factor_count, block16 ? 6 : 3);
+          EXPECT_EQ(report.scale_b_factor_count, block16 ? 6 : 3);
+          ASSERT_TRUE(report.scale_a_layout);
+          EXPECT_EQ(report.scale_a_layout->id_alignment_policy,
+                    TcgenScaleIdAlignmentPolicy::LayoutDefinedPlacement);
+          EXPECT_FALSE(
+              contains(report.violations, TcgenMxNvViolation::ScaleAAlignment));
+          EXPECT_FALSE(
+              contains(report.violations, TcgenMxNvViolation::ScaleBAlignment));
+          if (code == 1 || code == 3) {
+            ASSERT_EQ(report.instruction_fields.violations.size(), 1u);
+            EXPECT_EQ(report.instruction_fields.violations.front().kind,
+                      TcgenDescriptorViolation::ScaleId);
+            EXPECT_EQ(report.instruction_fields.violations.front().field_mask,
+                      a ? a_mask : b_mask);
+          }
+          EXPECT_TRUE(contains(report.missing,
+                               TcgenMxNvObligation::ALivePackingContents));
+          EXPECT_TRUE(contains(report.missing,
+                               TcgenMxNvObligation::BLivePackingContents));
+        }
+      for (const uint8_t alignment : {0, 2, 3}) {
+        auto facts = baseline;
+        facts.instruction.bits |= (2U << 29) | (2U << 4);
+        (a ? facts.scale_a_facts : facts.scale_b_facts)
+            ->subcolumn_alignment_bytes = alignment;
+        const auto report = check_tcgen_mxnv_known_operation(facts);
+        EXPECT_TRUE(report.instruction_fields.defined_fields_ok());
+        ASSERT_EQ(report.violations.size(), 1u);
+        EXPECT_EQ(report.violations.front(),
+                  a ? TcgenMxNvViolation::ScaleAAlignment
+                    : TcgenMxNvViolation::ScaleBAlignment);
+      }
+      auto wrong = baseline;
+      (a ? wrong.scale_a_facts : wrong.scale_b_facts)->layout_id =
+          a ? TcgenMxScaleLayoutId::Mx2 : TcgenMxScaleLayoutId::TwoXN;
+      const auto layout = check_tcgen_mxnv_known_operation(wrong);
+      EXPECT_TRUE(layout.instruction_fields.defined_fields_ok());
+      ASSERT_EQ(layout.violations.size(), 1u);
+      EXPECT_EQ(layout.violations.front(),
+                a ? TcgenMxNvViolation::ScaleALayout
+                  : TcgenMxNvViolation::ScaleBLayout);
+      for (unsigned missing = 0; missing < 3; ++missing) {
+        auto partial = baseline;
+        auto& role = a ? partial.scale_a_facts : partial.scale_b_facts;
+        if (missing == 0)
+          role.reset();
+        else if (missing == 1)
+          role->layout_id.reset();
+        else
+          role->subcolumn_alignment_bytes.reset();
+        const auto report = check_tcgen_mxnv_known_operation(partial);
+        EXPECT_TRUE(report.instruction_fields.defined_fields_ok());
+        EXPECT_TRUE(report.supplied_facts_ok());
+        EXPECT_TRUE(
+            contains(report.missing, a ? TcgenMxNvObligation::ScaleALayout
+                                       : TcgenMxNvObligation::ScaleBLayout));
+        EXPECT_FALSE(contains(report.violations,
+                              a ? TcgenMxNvViolation::ScaleAAlignment
+                                : TcgenMxNvViolation::ScaleBAlignment));
+      }
+    }
+    for (const uint8_t alignment : {4, 8, 16}) {
+      auto both = baseline;
+      both.instruction.bits |= (2U << 29) | (2U << 4);
+      both.scale_a_facts->subcolumn_alignment_bytes = alignment;
+      both.scale_b_facts->subcolumn_alignment_bytes = alignment;
+      EXPECT_TRUE(check_tcgen_mxnv_known_operation(both).supplied_facts_ok());
+    }
+    for (const auto selector :
+         {TcgenScaleVectorSize::Vec2X, TcgenScaleVectorSize::Vec4X}) {
+      auto vector = baseline;
+      vector.instruction.bits |= 1U << 23;
+      vector.scale_selector = selector;
+      const auto unresolved = check_tcgen_mxnv_known_operation(vector);
+      EXPECT_TRUE(unresolved.instruction_fields.defined_fields_ok());
+      EXPECT_TRUE(contains(unresolved.violations, TcgenMxNvViolation::Target));
+      EXPECT_FALSE(
+          contains(unresolved.violations, TcgenMxNvViolation::ScaleType));
+      EXPECT_TRUE(
+          contains(unresolved.missing, TcgenMxNvObligation::ScaleALayoutRule));
+      EXPECT_TRUE(
+          contains(unresolved.missing, TcgenMxNvObligation::ScaleBLayoutRule));
+      EXPECT_FALSE(unresolved.scale_a_layout);
+      EXPECT_EQ(unresolved.scale_a_factor_count,
+                selector == TcgenScaleVectorSize::Vec2X ? 2 : 4);
+    }
+    auto wrong_target = baseline;
+    wrong_target.target = base::find_target_profile("sm_100a")->identity;
+    EXPECT_TRUE(
+        contains(check_tcgen_mxnv_known_operation(wrong_target).violations,
+                 TcgenMxNvViolation::Target));
+    auto wrong_group = baseline;
+    wrong_group.group = TcgenCtaGroup::One;
+    EXPECT_TRUE(
+        contains(check_tcgen_mxnv_known_operation(wrong_group).violations,
+                 TcgenMxNvViolation::Shape));
+    auto wrong_m = baseline;
+    wrong_m.instruction.bits =
+        (baseline.instruction.bits & ~(3U << 27)) | (1U << 27);
+    EXPECT_TRUE(contains(check_tcgen_mxnv_known_operation(wrong_m).violations,
+                         TcgenMxNvViolation::Shape));
+    auto wrong_kind = baseline;
+    wrong_kind.instruction.kind = TcgenMmaKind::MxF8F6F4;
+    EXPECT_TRUE(
+        contains(check_tcgen_mxnv_known_operation(wrong_kind).violations,
+                 TcgenMxNvViolation::Kind));
+  }
+}
+
+/** Source idesc stays opaque while copied caller words are checked independently. */
+TEST(TcgenMmaMxNv, K96SourceAndCallerWordStayIndependent) {
+  for (const bool block16 : {false, true}) {
+    const std::string statement =
+        "tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale" +
+        std::string(block16 ? ".block16 " : ".block32 ") +
+        "[%d], [%a], %bd, %i, [%sa], [%sb], %p;";
+    const std::string initialize =
+        ".reg .b64 %wide; .reg .b32 %alt;"
+        "mov.b32 %d,0;mov.b32 %a,0;mov.b32 %i,0;mov.b32 %sa,0;mov.b32 %sb,0;"
+        "mov.b64 %ad,0;mov.b64 %bd,0;mov.pred %p,1;mov.b64 %wide,0;mov.b32 "
+        "%alt,0;";
+    std::optional<ResolvedModule> owned;
+    {
+      const auto source = mxnv_source(initialize + statement, "sm_103a");
+      auto ast = parse_mxnv(source);
+      ASSERT_TRUE(ast);
+      auto result = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(result) << result.error().front().message;
+      owned = std::move(*result);
+    }
+    auto& body = owned->functions.front().body;
+    auto* form = dynamic_cast<Tcgen05MmaMxf4nvf4*>(body[body.size() - 2].get());
+    ASSERT_NE(form, nullptr);
+    ASSERT_TRUE(tcgen_mma_mxnv_view(*form));
+    EXPECT_EQ(tcgen_mma_mxnv_view(*form)->instruction.source,
+              &form->idesc.value);
+    EXPECT_EQ(form->idesc.value.declared_type, ScalarType::B32);
+    EXPECT_EQ(form->cta_group.value, TcgenCtaGroup::Two);
+    auto facts = mxnv_k96_facts(block16);
+    EXPECT_TRUE(check_tcgen_mxnv_known_operation(facts).supplied_facts_ok());
+    facts.instruction.bits |= 1U << 29;
+    EXPECT_FALSE(check_tcgen_mxnv_known_operation(facts)
+                     .instruction_fields.defined_fields_ok());
+    EXPECT_TRUE(
+        validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+    facts = mxnv_k96_facts(block16);
+    auto copied_facts = facts;
+    copied_facts.instruction.bits |= (2U << 29) | (2U << 4);
+    EXPECT_TRUE(
+        check_tcgen_mxnv_known_operation(copied_facts).supplied_facts_ok());
+    const auto good_ast =
+        parse_mxnv(mxnv_source(initialize + statement, "sm_103a"));
+    ASSERT_TRUE(good_ast);
+    const auto saved = form->idesc;
+    form->idesc.value = dynamic_cast<MovScalar&>(*body[8]).dst_register->value;
+    const auto bad_role = validateModule(
+        *good_ast, *owned, ModuleValidationPolicy::RequireCompleteContext);
+    ASSERT_FALSE(bad_role);
+    EXPECT_TRUE(std::ranges::any_of(bad_role.error(), [](const auto& d) {
+      return d.kind == checker::CheckDiagnosticKind::OperandTypeMismatch;
+    }));
+    form->idesc = saved;
+    form->idesc.value = dynamic_cast<MovScalar&>(*body[9]).dst_register->value;
+    EXPECT_TRUE(validateModule(*good_ast, *owned,
+                               ModuleValidationPolicy::RequireCompleteContext));
+    form->idesc = saved;
+    form->idesc.value.symbol_id = binding::SymbolId{.value = 999999u};
+    const auto bad_identity =
+        validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
+    ASSERT_FALSE(bad_identity);
+    EXPECT_TRUE(std::ranges::any_of(bad_identity.error(), [](const auto& d) {
+      return d.kind == checker::CheckDiagnosticKind::ModuleSourceMismatch;
+    }));
+    form->idesc = saved;
+    auto changed = initialize + statement;
+    changed.replace(changed.find("cta_group::2"), 12, "cta_group::1");
+    const auto replacement = parse_mxnv(mxnv_source(changed, "sm_103a"));
+    ASSERT_TRUE(replacement);
+    const auto mismatch = validateModule(
+        *replacement, *owned, ModuleValidationPolicy::RequireCompleteContext);
+    ASSERT_FALSE(mismatch);
+    EXPECT_TRUE(std::ranges::any_of(mismatch.error(), [](const auto& d) {
+      return d.kind == checker::CheckDiagnosticKind::ModuleSourceMismatch;
+    }));
+    ResolvedModule copied = *owned;
+    ResolvedModule assigned;
+    assigned = copied;
+    ResolvedModule moved = std::move(assigned);
+    EXPECT_TRUE(
+        validateModule(moved, ModuleValidationPolicy::RequireCompleteContext));
+    auto& copied_form = dynamic_cast<Tcgen05MmaMxf4nvf4&>(
+        *moved.functions.front().body[body.size() - 2]);
+    const auto view = tcgen_mma_mxnv_view(copied_form);
+    ASSERT_TRUE(view);
+    EXPECT_EQ(view->instruction.source, &copied_form.idesc.value);
+    EXPECT_NE(view->instruction.source, &form->idesc.value);
+    auto clone = copied_form.clone();
+    EXPECT_EQ(dynamic_cast<Tcgen05MmaMxf4nvf4&>(*clone).idesc, form->idesc);
+    ResolvedFunction function_copy = owned->functions.front();
+    ResolvedFunction function_assigned;
+    function_assigned = function_copy;
+    EXPECT_EQ(dynamic_cast<Tcgen05MmaMxf4nvf4&>(
+                  *function_assigned.body[body.size() - 2])
+                  .scale_a,
+              form->scale_a);
+    EXPECT_TRUE(
+        check_tcgen_mxnv_known_operation(copied_facts).supplied_facts_ok());
+  }
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

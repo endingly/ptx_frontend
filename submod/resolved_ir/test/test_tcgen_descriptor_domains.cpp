@@ -366,5 +366,35 @@ TEST(TcgenDescriptorDomains, ZeroMaskPartitionsAndUnclassifiedBits) {
                     TcgenDescriptorViolation::FixedField));
 }
 
+/** Table 47 A/B masks remain independent of physical layout and byte alignment. */
+TEST(TcgenDescriptorDomains, K96ScaleIdMasksAreRoleSpecific) {
+  constexpr uint32_t a_mask = 3U << 29;
+  constexpr uint32_t b_mask = 3U << 4;
+  constexpr uint32_t k96 = (2U << 27) | (4U << 17) | (1U << 23) | (1U << 7) |
+                           (1U << 10) | (1U << 31);
+  for (const auto kind : {TcgenMmaKind::MxF4, TcgenMmaKind::MxF4NvF4})
+    for (const bool a : {true, false})
+      for (const uint32_t code : {0U, 1U, 2U, 3U}) {
+        const uint32_t shift = a ? 29 : 4;
+        const TcgenInstructionWord word{
+            (k96 & ~(a_mask | b_mask)) | (code << shift), kind};
+        const auto decoded = decode_tcgen_instruction(word);
+        EXPECT_EQ(decoded.scale_a_code, a ? code : 0U);
+        EXPECT_EQ(decoded.scale_b_code, a ? 0U : code);
+        EXPECT_EQ(decoded.k_choice_code, 1);
+        const auto fields = validate_tcgen_instruction_defined_fields(word);
+        EXPECT_EQ(fields.defined_fields_ok(), code == 0 || code == 2);
+        if (code == 1 || code == 3) {
+          ASSERT_EQ(fields.violations.size(), 1u);
+          EXPECT_EQ(fields.violations.front().kind,
+                    TcgenDescriptorViolation::ScaleId);
+          EXPECT_EQ(fields.violations.front().field_mask, a ? a_mask : b_mask);
+        }
+      }
+  const auto sparse = validate_tcgen_instruction_defined_fields(
+      {k96 | (1U << 2), TcgenMmaKind::MxF4NvF4});
+  EXPECT_TRUE(has_violation(sparse, TcgenDescriptorViolation::SparseKChoice));
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

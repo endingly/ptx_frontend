@@ -136,3 +136,43 @@ view 访问。Copy/clone、外部 source 关联和配对 target/version 控制�
 标准 normalization harness 独立检查精确的 32-key projection。Fence/commit/wait
 identity 保持不变；这些检查不认证 descriptor 内容、物理 fragment packing、动态
 protocol completion 或 GPU 结果。
+
+## K96 encoded scale IDs and physical layout facts
+
+Dense MX4 与 MX NV K96 采用的 Table 47 instruction-word scale A/B ID 域为
+**{0,2}**，拒绝 **1/3**。A 位于 bits 29–30，B 位于 bits 4–5，各为无量纲的两位
+selection code；bit 31 为 dense K choice。Deep K96 图以 `SFA_ID`/`SFB_ID` 标注
+0/1/2/3 位置，冲突的 1/3 标签不扩大序列化字段域。本项目对 encoding 采用独立
+instruction-descriptor 表的优先性，对物理布局事实则采用 deep 条款。这一工程解释
+保留原文差异，并非 NVIDIA 发布的勘误。另见 [MX4](tcgen_mma_mx4_coverage.md)、
+[MX NV](tcgen_mma_mxnv_coverage.md) 与 [family summary](tcgen_mma_family_coverage.md)。
+
+三个量保持独立：
+
+- **Encoded ID：** 无量纲 word-field code，独立检查为 0/2。
+- **图示物理 layout index：** 图中的位置标签，没有已建立的 encoded ID 数值转换。
+- **Alignment guarantee：** 调用方对所选 sub-column 作出的字节单位保证。
+
+K96 block32 有三个 factor，A 为 `Mx3`、B 为 `3xN`；NV block16 有六个 factor，
+A 为 `Mx6`、B 为 `6xN`。两者均要求四字节 sub-column alignment guarantee，保留
+`LAYOUT_DEFINED_PLACEMENT`。可接受更强的正二次幂保证，例如 8 或 16 字节。
+Encoded ID 2 配 alignment 4 或 8 有效：**不得**计算 `ID % alignment`、把 ID 乘成
+字节偏移、令 encoded index 等于 physical index，或将禁止的 1/3 归一化为 0/2。
+不引入新的 encoded-to-physical mapper 或 allocation 规则。
+
+提供 alignment 0、2、3 是已知无效保证；省略 role、layout identity 或 alignment
+则保留显式 missing obligation，不当作零，也不代表完整有效性。Report 可以接受所有
+已提供事实，同时保留 layout/live-content 缺失义务。正确字段与调用方 layout 事实不
+认证 opaque source `idesc` 内容、实际 packing、scale 内容、allocation 或 completion。
+Word/facts 的值拷贝与 owned-source 拷贝保持独立。
+
+已知 dense K96 保持 group 2、M256、PTX 8.8 起的精确 `sm_103a` 及既有 scale-type
+限制。已知 K96 搭配书写的 `.scale_vec::2X` 或 `.scale_vec::4X` 仍与这些 vector
+形式的精确 `sm_100a` 要求没有 target 交集，并保留未确定的物理 layout-rule 义务。
+Table 59 的 factor count 不产生缺失的物理 row。K 未知时 source vector 形式仍可在
+`sm_100a` 合法。本解释不增加 selector 拼写、target 权限、word authentication 或
+可选 Tensor solver。
+
+既有代码已表达此决策。定向 C++/Python 回归检查两组字段 mask、三个 block row、
+ID/alignment 组合、错误 layout、缺失事实与 source/known-word 边界。Live contents
+和 GPU execution 不在这些检查范围内。

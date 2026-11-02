@@ -1091,6 +1091,12 @@ signedness/placement/satfinite identity 保留；[双语说明](../docs/zh-han/c
 记录 shape/fragment 契约相对不完整 Syntax 枚举的有界优先性与整数 N 网格。
 本项仅新增该局部工程解释的测试与说明，生产规则未改，不改变上述整族状态。
 
+局部参考解释：K96 Table 47 encoded A/B ID 沿用 {0,2}，与三/六 factor 物理 layout
+及四字节 caller alignment guarantee 分离；[双语说明](../docs/zh-han/converage/matrix_reference_interpretations.md)
+明确不应用 ID%alignment 或推测 encoded-to-physical mapper，missing facts/live contents
+继续为独立义务。本项仅新增该局部 known-word/source 边界的测试与说明，生产规则未改，
+不改变上述整族状态。
+
 
 
 ---

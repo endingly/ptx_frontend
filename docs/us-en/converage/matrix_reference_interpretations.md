@@ -153,3 +153,50 @@ remain separate evidence. The standard normalization harness independently check
 the exact 32-key projection. Fence/commit/wait identities remain unchanged;
 these checks do not authenticate descriptor contents, physical fragment packing,
 dynamic protocol completion or GPU results.
+
+## K96 encoded scale IDs and physical layout facts
+
+For dense MX4 and MX NV K96, the adopted Table 47 instruction-word domain for
+scale A/B IDs is **{0,2}**, rejecting **1/3**. A occupies bits 29–30 and B bits
+4–5, each a two-bit dimensionless selection code; bit 31 is the dense K choice.
+Deep K96 figures label `SFA_ID`/`SFB_ID` positions 0/1/2/3. Their conflicting
+1/3 labels do not widen the serialized field domain. The project gives the
+instruction-descriptor table precedence for encodings and uses the deep clauses
+for physical layout facts. This engineering interpretation retains the reference
+discrepancy; it is not a NVIDIA-issued erratum. See [MX4](tcgen_mma_mx4_coverage.md),
+[MX NV](tcgen_mma_mxnv_coverage.md) and the [family summary](tcgen_mma_family_coverage.md).
+
+Three quantities remain distinct:
+
+- **Encoded ID:** a dimensionless word-field code, independently checked as 0/2.
+- **Illustrated physical layout index:** a figure's placement label, without an
+  established numeric conversion from the encoded ID.
+- **Alignment guarantee:** a caller claim in bytes about the selected sub-column.
+
+K96 block32 has three factors with A `Mx3` and B `3xN`. NV block16 has six
+factors with A `Mx6` and B `6xN`. Both require a four-byte sub-column alignment
+guarantee and retain `LAYOUT_DEFINED_PLACEMENT`. Stronger positive power-of-two
+guarantees, such as 8 or 16 bytes, are allowed. Encoded ID 2 with alignment 4 or
+8 is valid: do **not** compute `ID % alignment`, multiply the ID into a byte
+offset, equate encoded and physical indices, or normalize forbidden 1/3 into 0/2.
+No new encoded-to-physical mapper or allocation rule is introduced.
+
+Supplied alignment 0, 2 or 3 is a known invalid guarantee. Omitted role, layout
+identity or alignment remains an explicit missing obligation, not an implicit
+zero or complete validity. Reports may accept every supplied fact while retaining
+missing layout/live-content obligations. Correct bits and caller layout facts do
+not authenticate opaque source `idesc` contents, actual packing, scale contents,
+allocation or completion. Word/fact value copies and owned-source copies remain independent.
+
+Known dense K96 retains group 2, M256 and exact `sm_103a` from PTX 8.8, with
+existing scale-type restrictions. Known K96 plus written `.scale_vec::2X` or
+`.scale_vec::4X` retains the existing empty target intersection with those vector
+forms' exact `sm_100a` requirement and unresolved physical layout-rule obligations.
+Table 59 factor counts do not create missing physical rows. Source vector forms
+can remain legal on `sm_100a` while K is unknown. This interpretation adds no
+selector spelling, target permission, word authentication or optional Tensor solver.
+
+Existing code already expresses this decision. Focused C++/Python regressions
+check both field masks, all three block rows, ID/alignment combinations, wrong
+layouts, missing facts and source/known-word separation. Live contents and GPU
+execution remain outside these checks.

@@ -21,6 +21,26 @@ class EmptyModel:
 class RenderingTests(unittest.TestCase):
     """Verify resource, undefined-value, literal and per-render state contracts."""
 
+    def test_indirect_call_views_borrow_the_actual_register_alternative(self) -> None:
+        """All indirect layouts expose RegRef while preserving metadata/table shape."""
+        from ptx_frontend.code_gen.context import build_generation_context
+        from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
+        from ptx_frontend.code_gen.render_models.resolved_source import build_opcode_source
+        from ptx_frontend.spec.database import get_packaged_spec_database
+        from ptx_frontend.spec.resources import packaged_backend_spec
+
+        context = build_generation_context(
+            get_packaged_spec_database(), load_cpp_backend(packaged_backend_spec()))
+        text = render_template('resolved/opcode.cpp.j2', build_opcode_source(
+            context, category='control_flow', opcode='call'))
+        for member in ('target_indirect_callee', 'metadata'):
+            register = f'.register_ref = std::get_if<ResolvedRegisterRef>(&(*selected.{member}).value)'
+            table = f'.call_table_ref = std::get_if<ResolvedCallTableRef>(&(*selected.{member}).value)'
+            self.assertEqual(text.count(register), 3)
+            self.assertEqual(text.count(table), 3)
+        self.assertIn('.actual_shape = check_end::OperandShape::IndirectCallee', text)
+        self.assertNotIn('.register_type = ScalarType::U64', text)
+
     def test_missing_template_and_model_fields_fail_explicitly(self) -> None:
         with self.assertRaises(TemplateNotFound):
             render_template('absent-template.j2', EmptyModel())

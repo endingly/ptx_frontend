@@ -93,7 +93,7 @@ formal and reports literal-kind or overflow errors at that literal. The check
 belongs to module resolution, not the generated single-instruction checker.
 
 `ResolvedIndirectCallee` represents one indirect-call component: a
-non-predicate `.reg` target, a function-local metadata label, or a call-table
+scalar General integer/bit `.reg` target, a function-local metadata label, or a call-table
 reference described below. In a module, a metadata label retains its `SymbolId`
 and whether it names `.callprototype` or
 `.calltargets`; standalone resolution retains only its spelling. It carries no
@@ -278,3 +278,33 @@ global ceiling; no double axes/vector multiplication or invented256 legacy cap.
 `D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` remains qualified for exact historical
 physical launch packing. See the [parameter contract](parameter_declarations.md)
 for context windows, intrinsic guarantees and preserved limitations.
+
+
+### Indirect function-address carriers
+
+An indirect function address uses a General `.reg` effective scalar with a
+fundamental signed, unsigned or bit type of 8, 16, 32 or 64 bits. Floating types,
+packed/alternate instruction-only types, `.b128`, predicates, special registers
+and whole vectors do not satisfy this role. A selected ordinary component uses
+the same element-type rule and retains its real owner identity, selector ranges
+and the 128-bit vector-declaration limit. Written call components remain outside
+the current call grammar; this invariant also checks already typed public
+register-component values without adding call syntax or a parameter field.
+
+This is a **derived** address-carrier interpretation of
+[PTX §6.4.1](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#addresses-as-operands)
+and the function-address-register requirement in
+[§9.7.13.5](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-instructions-call),
+not a claim that `call` explicitly enumerates all twelve carrier types. Address
+value widths of 32/64 bits do not impose a 32-bit register minimum or require a
+64-bit register under `.address_size 64`. Eligibility does not prove that a
+narrow register actually contains a representable function address, a linked
+code address or a member of a runtime target set.
+
+Source resolution, direct typed checks and both module validation APIs apply
+the role before missing version/target can defer it. Owned checks rejoin actual
+symbol declarations and reject lying or erased type caches; valid supplied
+source cannot mask bad current data. Generated views borrow the active RegRef
+alternative without reinterpreting metadata/table alternatives. Completely
+unknown standalone facts retain their existing unknown/context behavior.
+Formal input/return ABI rules and ordinary floating call inputs remain separate.

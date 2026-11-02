@@ -29,6 +29,13 @@ count 的子树定位及 concrete/deferred 分类，以及真实使用位置和�
 opcode 规则；0–63 是前端采用的表达式策略，不是硬件 clamp 模拟。详见
 [declaration semantics](../docs/zh-han/declaration_semantics_design.md)。
 
+间接 function-address carrier 采用共享的 private role 检查：General effective scalar，
+fundamental integer/bit 8/16/32/64；floating、B128、wrong class 与 whole vector 拒绝。
+source/direct/current 两种 API 使用一致规则，已知 declaration 不因 context 缺失而 defer；
+source call component 语法及后续 call parameter component field 仍未开放。该资格不计算
+函数地址值或模拟链接/执行。详细 derived 解释见
+[control-flow contract](../docs/zh-han/control_flow_syntax_design.md)。
+
 > ISA 规划基线：
 >
 > - [NVIDIA PTX ISA 9.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/)；

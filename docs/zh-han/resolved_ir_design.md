@@ -127,7 +127,7 @@ legacy memory-vector payload 最多 128 bit：`.v2` 到 64-bit type，`.v4` 到
 静态 natural alignment 会检查已绑定 data symbol 的常量 byte offset 和 absolute immediate；
 register 与 standalone unresolved address 保持 unknown。其余 source form、其余 memory
 qualifier extension、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
-`ResolvedIndirectCallee` 为 non-predicate `.reg` indirect target 或已绑定的 function-local
+`ResolvedIndirectCallee` 为 scalar General integer/bit `.reg` indirect target 或已绑定的 function-local
 `.callprototype`/`.calltargets` label 提供 descriptor-independent identity；所属
 `ResolvedFunction` 另行拥有对应的有序 metadata payload 与 normalized ABI，operand 因而保持紧凑，
 但 metadata 不会丢失。final 类 `CallDirect` 现有三个额外的 `IndirectCall` layout
@@ -1505,3 +1505,27 @@ context control。
 
 依据：[历史 debug marker](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-atatdwarf)
 及[历史格式窗口](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives)。
+
+
+### 间接函数地址 carrier
+
+间接函数地址使用 General `.reg` 的 effective scalar，其 element type 必须是
+fundamental signed、unsigned 或 bit 的 8、16、32、64 位类型。floating、packed/alternate
+instruction-only type、`.b128`、predicate、special register 和 whole vector 不满足此 role。
+普通 selected component 使用同一 element-type 规则，并保留真实 owner identity、selector
+range 及 vector declaration 的 128 位上限。源码中 call component 仍不属于当前 call grammar；
+此 invariant 也检查已构造的 public register-component value，不新增 call syntax 或 parameter field。
+
+这是从 [PTX §6.4.1](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#addresses-as-operands)
+与 [§9.7.13.5](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-instructions-call)
+的函数地址 register 要求作出的 **derived** address-carrier 解释，不声称 `call` 显式枚举
+全部十二种 carrier type。32/64 位 address value 不构成 register 至少 32 位的下限，
+也不要求 `.address_size 64` 必须使用 64 位 register。类型资格不证明窄 register 的实际值
+能表示函数地址，不计算 linked code address，也不证明 runtime target-set membership。
+
+source resolution、direct typed check 与两种 module validation API 都在缺失 version/target
+导致 defer 之前检查此 role。owned 检查重连真实 symbol declaration，拒绝虚假或删除的
+类型 cache；合法 supplied source 不能掩盖非法 current data。generated view 借用实际 active
+RegRef alternative，不把 metadata/table alternative 重新解释为 register。完全未知的
+standalone fact 保持原有 unknown/context 行为。formal input/return ABI 与普通 floating
+call input 的规则继续独立。

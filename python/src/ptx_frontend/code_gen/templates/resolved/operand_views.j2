@@ -77,6 +77,7 @@
               }{% elif model.structure == "operand_view_indirect_callee" %}              OperandView{
                   .field_id = "{{ model.field_id }}",
                   .actual_shape = {{ model.indirectcallee_cpp }},
+                  .register_ref = std::get_if<ResolvedRegisterRef>(&{{ model.member_expr }}.value),
                   .call_table_ref = std::get_if<ResolvedCallTableRef>(&{{ model.member_expr }}.value),
                   .locations = {{ model.member_expr }}.locs,
               }{% elif model.structure == "operand_view_call_return_parameter" %}              OperandView{

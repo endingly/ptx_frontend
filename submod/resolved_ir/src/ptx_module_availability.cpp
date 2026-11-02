@@ -7,6 +7,7 @@
 #include <ptx_frontend/resolved_ir/model/tensor_memory/tcgen05.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
+#include "ptx_address_register_type.hpp"
 #include "ptx_call_graph.hpp"
 #include "ptx_call_parameter_transfers.hpp"
 #include "ptx_call_tables.hpp"
@@ -739,6 +740,8 @@ struct ModuleReferenceUse {
   bool requires_register_state{};
   /** True when the binding must name a scalar .reg .pred declaration. */
   bool requires_predicate_register{};
+  /** Actual register alternative of an indirect function-address operand. */
+  bool requires_function_address{};
   /** Role-specific consumers may exclude ordinary selected register components. */
   bool excludes_register_component{};
   /** True only for a lane in a structurally validated complete named vector. */
@@ -946,8 +949,10 @@ void collect_operand_references(
       append_reference(uses, table->symbol_id, std::nullopt,
                        binding::SymbolKind::Variable, false, locations,
                        fallback);
-    else
+    else {
       collect_register(std::get<ResolvedRegisterRef>(value));
+      uses.back().requires_function_address = true;
+    }
   } else if constexpr (std::same_as<Value, ResolvedRegisterVector>) {
     const bool named =
         value.source.kind == ResolvedVectorSourceKind::NamedVector &&
@@ -1844,6 +1849,16 @@ void check_module_references(
             diagnostics, use.range,
             "Resolved register metadata disagrees with its owned declaration.");
       }
+      if (use.requires_function_address &&
+          (!declared || !detail::is_function_address_register_type(*declared) ||
+           cached.register_class != ResolvedRegisterClass::General ||
+           (symbol->vector_width && !cached.component) ||
+           (symbol->vector_width && declared &&
+            base::scalar_size_of(*declared) * *symbol->vector_width > 16)))
+        append_model_mismatch(
+            diagnostics, use.range,
+            "Indirect function address requires a scalar General integer or "
+            "bit register no wider than 64 bits.");
     }
     if (use.opaque_use_kind &&
         *use.opaque_use_kind != base::OpaqueResourceKind::Texture &&

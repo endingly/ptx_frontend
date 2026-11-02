@@ -1,6 +1,7 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 
+#include "ptx_address_register_type.hpp"
 #include "ptx_resolved_ir_packed_literal.hpp"
 
 #include <algorithm>
@@ -1292,6 +1293,33 @@ CheckResult check_operands(
   CheckDiagnostics diagnostics;
 
   for (const OperandView& operand : operands) {
+    if (operand.actual_shape == OperandShape::IndirectCallee &&
+        (operand.register_ref || operand.register_type ||
+         operand.register_class || operand.register_vector_width)) {
+      const auto* actual = operand.register_ref;
+      const auto type = actual ? actual->declared_type : operand.register_type;
+      const bool scalar =
+          actual ? !actual->vector_width : !operand.register_vector_width;
+      const bool general =
+          actual ? actual->register_class == ResolvedRegisterClass::General
+                 : (!operand.register_class ||
+                    *operand.register_class == ResolvedRegisterClass::General);
+      const bool owner_fits =
+          !actual || !actual->component || !type ||
+          base::scalar_size_of(*type) * actual->component->declaration_width <=
+              16;
+      if (!general || !scalar || !owner_fits ||
+          (actual && actual->symbol_id && !type) ||
+          (type && !ptx_frontend::resolved_ir::detail::
+                       is_function_address_register_type(*type))) {
+        diagnostics.push_back(
+            {.kind = CheckDiagnosticKind::OperandTypeMismatch,
+             .range = diagnostic_range(operand.locations, context),
+             .message = "Indirect function address requires a scalar General "
+                        "integer or bit register no wider than 64 bits."});
+        continue;
+      }
+    }
     if (operand.call_table_ref &&
         (operand.call_table_ref->spelling.empty() ||
          operand.locations.size() != 1 ||

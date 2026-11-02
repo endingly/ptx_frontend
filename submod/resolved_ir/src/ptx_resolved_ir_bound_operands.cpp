@@ -1,3 +1,4 @@
+#include "ptx_address_register_type.hpp"
 #include "ptx_resolved_ir_private.hpp"
 
 #include <algorithm>
@@ -721,6 +722,15 @@ resolve_indirect_callee(const syntax_ast::AstOperand& operand,
         resolve_register(syntax_ast::AstOperand{target->name}, context);
     if (!register_ref)
       return std::unexpected(register_ref.error());
+    if ((register_ref->value.symbol_id && !register_ref->value.declared_type) ||
+        (register_ref->value.declared_type &&
+         !detail::is_function_address_register_type(
+             *register_ref->value.declared_type)))
+      return std::unexpected(ResolveDiagnostic{
+          .range = target->range,
+          .message = "Indirect function address requires a scalar General "
+                     "integer or bit register no wider than 64 bits.",
+      });
     return WithLocs<ResolvedIndirectCallee>{
         ResolvedIndirectCallee{std::move(register_ref->value)}, target->range};
   }
@@ -1085,19 +1095,11 @@ resolve_address_offset(
   return resolved;
 }
 
-/** Return whether a declared register can hold a PTX address value. */
-bool is_address_register_type(ScalarType type) {
-  const auto kind = scalar_kind(type);
-  return (kind == base::ScalarKind::Unsigned ||
-          kind == base::ScalarKind::Signed || kind == base::ScalarKind::Bit) &&
-         scalar_size_of(type) <= sizeof(uint64_t);
-}
-
 /** Reject a bound address base whose declaration cannot represent an address. */
 std::expected<void, ResolveDiagnostic> check_address_register_type(
     const ResolvedRegisterRef& register_ref, SourceRange range) {
   if (register_ref.declared_type &&
-      is_address_register_type(*register_ref.declared_type))
+      detail::is_address_register_type(*register_ref.declared_type))
     return {};
   return std::unexpected(ResolveDiagnostic{
       .range = range,

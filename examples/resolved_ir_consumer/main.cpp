@@ -2144,8 +2144,171 @@ bool checkInstalledScalarAtomicF16Sources() {
   return true;
 }
 
+/** Borrow the installed src member only while its actual instruction owner remains alive. */
+const ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>&
+installedAtomicBf16Source(const ptx_frontend::resolved_ir::Instruction& instruction) {
+  namespace ir = ptx_frontend::resolved_ir;
+  if (const auto* atom = dynamic_cast<const ir::AtomGlobalAddNoftzBf16*>(&instruction))
+    return atom->src;
+  return dynamic_cast<const ir::RedGlobalAddNoftzBf16&>(instruction).src;
+}
+
+/** Check both installed exact classes/layouts with register and converted immediate sources. */
+bool checkInstalledScalarAtomicBf16() {
+  namespace ir = ptx_frontend::resolved_ir;
+  static_assert(std::same_as<decltype(ir::AtomGlobalAddNoftzBf16{}.src.value), ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::RedGlobalAddNoftzBf16{}.src.value), ir::RegOrImm>);
+  static_assert(std::derived_from<ir::AtomGlobalAddNoftzBf16, ir::Instruction>);
+  static_assert(std::derived_from<ir::RedGlobalAddNoftzBf16, ir::Instruction>);
+  static_assert(std::is_copy_constructible_v<ir::AtomGlobalAddNoftzBf16> &&
+                std::is_copy_assignable_v<ir::AtomGlobalAddNoftzBf16>);
+  static_assert(std::is_move_constructible_v<ir::RedGlobalAddNoftzBf16> &&
+                std::is_copy_assignable_v<ir::RedGlobalAddNoftzBf16>);
+  /** Emit a precise contract label when a future installed fixture fails. */
+  const auto require = [](bool condition, std::string_view contract) {
+    if (!condition) std::cerr << "atomic BF16 consumer: " << contract << '\n';
+    return condition;
+  };
+  const std::array<std::string_view, 4> numbered{
+      "atom.global.add.noftz.bf16 %b0,[%rd0],$;",
+      "atom.global.add.noftz.L2::cache_hint.bf16 %b0,[%rd0],$,%rd1;",
+      "red.global.add.noftz.bf16 [%rd0],$;",
+      "red.global.add.noftz.L2::cache_hint.bf16 [%rd0],$,%rd1;"};
+  for (size_t layout = 0; layout < numbered.size(); ++layout)
+    for (const auto value : {"%b1", "1.5"}) {
+      std::string operation(numbered[layout]);
+      operation.replace(operation.find('$'), 1, value);
+      ptx_frontend::PtxSyntaxParser parser(operation);
+      const auto ast = parser.parseInstruction();
+      if (!require(ast && ast.diagnostics.empty(), "standalone numbered factory source parses")) return false;
+      auto instruction = ir::resolveInstruction(*ast);
+      const auto kind = layout < 2 ? ir::AtomGlobalAddNoftzBf16::kind
+                                   : ir::RedGlobalAddNoftzBf16::kind;
+      if (!require(instruction && *instruction && (*instruction)->instruction_kind() == kind,
+                   "existing generic factory selects exact atomic class")) return false;
+      const auto clone = (*instruction)->clone();
+      if (!require(clone && clone->instruction_kind() == kind, "standalone exact factory clone")) return false;
+      const auto& field = installedAtomicBf16Source(*clone);
+      if (std::string_view(value) == "1.5") {
+        const auto* word = std::get_if<ir::ResolvedImmediate>(&field.value);
+        if (!require(word && word->type == ir::ScalarType::BF16 && word->bits == 0x3fc0 &&
+                     !word->integer_source_bits && !word->is_negative,
+                     "standalone factory uses existing BF16 converter")) return false;
+      } else if (!require(std::get_if<ir::ResolvedRegisterRef>(&field.value),
+                          "standalone factory retains register alternative")) return false;
+      // Standalone construction has no bound declaration or target legality claim.
+    }
+  std::optional<ir::ResolvedModule> owned;
+  {
+    const std::string source = R"ptx(
+.version 9.3
+.target sm_90
+.global .align 2 .b16 data;
+.entry kernel(){
+ .reg .b16 h,d; .reg .b64 policy;
+ atom.global.add.noftz.bf16 d,[data],h;
+ atom.global.add.noftz.bf16 d,[data],1.5;
+ atom.global.add.noftz.L2::cache_hint.bf16 d,[data],h,policy;
+ atom.global.add.noftz.L2::cache_hint.bf16 d,[data],1.5,policy;
+ red.global.add.noftz.bf16 [data],h;
+ red.global.add.noftz.bf16 [data],1.5;
+ red.global.add.noftz.L2::cache_hint.bf16 [data],h,policy;
+ red.global.add.noftz.L2::cache_hint.bf16 [data],1.5,policy;
+}
+)ptx";
+    ptx_frontend::PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "complete aligned source parses") ||
+        !require(ast.diagnostics.empty(), "parser diagnostics are empty")) return false;
+    auto result = ir::resolveAndValidateModule(*ast);
+    if (!require(result.has_value(), "both classes/layouts resolve and strictly validate")) return false;
+    if (!require(ir::validateModule(*ast, *result).has_value(), "provided AST association validates")) return false;
+    owned.emplace(std::move(*result));
+  }
+  if (!require(owned && owned->functions.size() == 1, "one owned function survives AST death") ||
+      !require(owned->functions.front().body.size() == 8, "all eight independent source controls are owned")) return false;
+  /** Observe actual members synchronously; no callback payload/range pointer escapes. */
+  struct Observer final : ir::detail::IReferenceObserver {
+    /** Borrowed actual source, valid only through visit_references. */
+    const ptx_frontend::WithLocs<ir::RegOrImm>& expected;
+    /** True after the callback matches the owner address and all source ranges. */
+    bool seen = false;
+    /** Borrow one live owner for synchronous inspection. */
+    explicit Observer(const ptx_frontend::WithLocs<ir::RegOrImm>& source) : expected(source) {}
+    /** Inspect the real member without constructing a surrogate callback value. */
+    void reg_or_imm(const ir::RegOrImm& value, std::span<const ptx_frontend::SourceRange> ranges,
+                   ir::checker::AddressSymbolResolutionPolicy) override {
+      if (&value != &expected.value || ranges.size() != expected.locs.size()) return;
+      seen = true;
+      for (size_t index = 0; index < ranges.size(); ++index)
+        seen = seen && ranges[index] == expected.locs[index];
+    }
+  };
+  for (size_t index = 0; index < 8; ++index) {
+    if (!require(owned->functions.front().body[index] != nullptr, "owned instruction exists")) return false;
+    const auto& instruction = *owned->functions.front().body[index];
+    const auto expected_kind = index < 4 ? ir::AtomGlobalAddNoftzBf16::kind
+                                       : ir::RedGlobalAddNoftzBf16::kind;
+    if (!require(instruction.instruction_kind() == expected_kind, "exact installed final class selected")) return false;
+    const auto& source = installedAtomicBf16Source(instruction);
+    const bool hinted = index % 4 >= 2;
+    if (!require(!source.locs.empty(), "source range retained")) return false;
+    if (index % 2 == 1) {
+      const auto* immediate = std::get_if<ir::ResolvedImmediate>(&source.value);
+      if (!require(immediate && immediate->type == ir::ScalarType::BF16 &&
+                       immediate->bits == 0x3fc0 && !immediate->integer_source_bits &&
+                       !immediate->is_negative, "logical BF16 immediate word/flags")) return false;
+    } else {
+      const auto* reg = std::get_if<ir::ResolvedRegisterRef>(&source.value);
+      if (!require(reg && reg->symbol_id && reg->declared_type == ir::ScalarType::B16,
+                   "existing actual B16 register carrier and SymbolId")) return false;
+    }
+    const auto& policy = index < 4
+        ? dynamic_cast<const ir::AtomGlobalAddNoftzBf16&>(instruction).cache_policy
+        : dynamic_cast<const ir::RedGlobalAddNoftzBf16&>(instruction).cache_policy;
+    if (!require(policy.has_value() == hinted, "cache-policy optional presence matches layout")) return false;
+    if (hinted && !require(policy->value.declared_type == ir::ScalarType::B64,
+                           "policy remains a B64 register")) return false;
+    if (index < 4) {
+      const auto& atom = dynamic_cast<const ir::AtomGlobalAddNoftzBf16&>(instruction);
+      if (!require(atom.dst.value.register_ref.has_value(), "atomic destination exists") ||
+          !require(atom.dst.value.register_ref->declared_type == ir::ScalarType::B16,
+                   "atomic destination keeps exact B16 carrier")) return false;
+    }
+    Observer observer(source);
+    instruction.visit_references(observer);
+    if (!require(observer.seen, "observer receives actual owned source and ranges")) return false;
+    const auto clone = instruction.clone();
+    if (!require(clone && clone->instruction_kind() == instruction.instruction_kind() &&
+                     installedAtomicBf16Source(*clone) == source,
+                 "existing exact-class clone preserves migrated payload")) return false;
+  }
+  auto copied = *owned;
+  ir::ResolvedModule assigned;
+  assigned = copied;
+  owned.reset();
+  ir::ResolvedFunction function = assigned.functions.front(), function_assigned;
+  function_assigned = function;
+  assigned.functions.front() = std::move(function_assigned);
+  for (size_t index = 0; index < function.body.size(); ++index)
+    assigned.functions.front().body[index] = function.body[index]->clone();
+  ir::ResolvedModule moved = std::move(assigned);
+  assigned = std::move(moved);
+  for (const auto* module : {&copied, &assigned})
+    for (const auto& instruction : module->functions.front().body) {
+      const auto& field = installedAtomicBf16Source(*instruction);
+      Observer observer(field);
+      instruction->visit_references(observer);
+      if (!require(observer.seen && !field.locs.empty(), "reacquired copied/cloned callback and locations")) return false;
+    }
+  return require(ir::validateModule(copied).has_value(), "copied owner validates after producer death") &&
+         require(ir::validateModule(assigned).has_value(), "assigned owner validates after producer death");
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledScalarAtomicBf16())
+    return 1;
   if (!checkInstalledScalarAtomicF16Sources())
     return 40;
   if (!checkInstalledOrdinaryBf16FmaSet())

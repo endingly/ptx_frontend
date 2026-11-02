@@ -2105,3 +2105,42 @@ source identity and existing AvailableContext/RequireCompleteContext rules remai
 independent. Packed F16x2, BF16/BF16x2, atomic vectors, compare/swap and all other
 source permissions remain unchanged. Frontend checks do not certify GPU runtime
 behavior or opaque cache-policy contents.
+
+### Scalar BF16 atomic source members
+
+`AtomGlobalAddNoftzBf16::src` and `RedGlobalAddNoftzBf16::src` use
+`WithLocs<RegOrImm>` in both `no_hint` and `with_policy` layouts. Consumers
+must rebuild with matching headers/libraries and inspect `.value` through
+`std::get_if<ResolvedRegisterRef>` or `std::get_if<ResolvedImmediate>`.
+The two existing class identities and member names remain. Atomic destinations
+remain B16/Exact register-or-sink values; cache policies remain B64 registers.
+Addresses, alignment, qualifiers, modifier order and target floors are independent
+of this source permission. Scalar F16, packed and vector atomic cohorts retain
+their separately defined contracts.
+
+The four source keys use logical BF16 and SameWidth with the existing converter.
+Numeric Float sources `1.5`, `1.0+0.5`, `0d3ff8000000000000` and
+`0f3fc00000` produce the existing BF16 `0x3fc0` golden. Actual register sources
+still require the ordinary scalar B16 declaration under intrinsic type and
+bit-compatibility rules; SameWidth does not admit F16/U16/S16, standalone BF16,
+special registers or whole vectors. Integer-origin literals/expressions are
+excluded; no integer-immediate policy or new conversion path is introduced.
+
+The producer stores logical BF16. Logical BF16 current words require low sixteen
+bits and clean origin/negative flags; this grant does not change pre-existing
+current Bit-carrier compatibility. Floating lexical history is unnecessary, so a coherent canonical word can
+validate after AST destruction, copy, assignment and clone. Stale high bits,
+type/origin/class/provenance or range facts remain errors. Source association
+checks the supplied AST against retained syntax independently of current-word
+retargeting. Synchronous observers borrow the actual member and ranges only for
+the traversal. These scalar numeric rules add no packed pair/splat/truncation
+permission. The frontend validates representation and availability; it does not
+execute an atomic update, memory ordering, cache behavior or BF16 arithmetic.
+
+Current family references retain a real declaration/member identity: erasing a
+required family index or contradicting its current spelling is invalid. Coherent
+current spelling/member retargets and erasing only the numbered convenience
+cache remain valid; validation does not authenticate old operand spelling.
+Known reference contradictions are checked under partial context, while the
+existing whole-instruction deferral remains. Required delivery evidence includes
+actual generated views and real borrowed callbacks, not a manual projection.

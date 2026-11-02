@@ -1852,14 +1852,33 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
             for name, (ptx, sm, container, width_policy) in tuples.items():
                 variant = variants[name]
                 self.assertEqual(dict(variant.availability), {"ptx": ptx, "sm": sm})
-                bindings = variant.operand_layouts[0].bindings
-                source_bindings = tuple(binding for binding in bindings
-                                        if binding.target_field_id not in ("dst", "address"))
-                self.assertTrue(source_bindings)
-                for binding in source_bindings:
-                    self.assertEqual(binding.type_expression.scalar_type, container)
-                    self.assertEqual(binding.register_width_policy,
-                                     width_policy)
+                for layout in variant.operand_layouts:
+                    source_bindings = tuple(binding for binding in layout.bindings
+                                            if binding.target_field_id not in
+                                            ("dst", "address", "cache_policy"))
+                    self.assertTrue(source_bindings)
+                    for binding in source_bindings:
+                        if name == "GlobalAddNoftzBf16":
+                            self.assertEqual(binding.target_field_id, "src")
+                            self.assertEqual(binding.type_expression.scalar_type, "bf16")
+                            self.assertEqual(binding.register_width_policy,
+                                             ResolvedRegisterWidthPolicy.SAME_WIDTH)
+                            self.assertEqual(binding.allowed_shapes,
+                                             (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE))
+                        else:
+                            self.assertEqual(binding.type_expression.scalar_type, container)
+                            self.assertEqual(binding.register_width_policy, width_policy)
+                    if opcode == "atom" and name == "GlobalAddNoftzBf16":
+                        destination = next(binding for binding in layout.bindings
+                                           if binding.target_field_id == "dst")
+                        self.assertEqual(destination.type_expression.scalar_type, "b16")
+                        self.assertEqual(destination.register_width_policy,
+                                         ResolvedRegisterWidthPolicy.EXACT)
+                    if layout.layout_id == "with_policy":
+                        policy = next(binding for binding in layout.bindings
+                                      if binding.target_field_id == "cache_policy")
+                        self.assertEqual(policy.type_expression.scalar_type, "b64")
+                        self.assertEqual(policy.allowed_shapes, (ResolvedOperandShape.REGISTER,))
                 if name == "GlobalAddNoftzF16":
                     self.assertEqual(tuple(layout.layout_id for layout in variant.operand_layouts),
                                      ("no_hint", "with_policy"))
@@ -1921,6 +1940,15 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                 self.assertEqual(policy.target_field_id, "cache_policy")
                 self.assertEqual(policy.type_expression.scalar_type, "b64")
                 self.assertEqual(policy.allowed_shapes, (ResolvedOperandShape.REGISTER,))
+                if variant.cpp_name == "GlobalAddNoftzBf16":
+                    for layout in variant.operand_layouts:
+                        source = next(binding for binding in layout.bindings
+                                      if binding.target_field_id == "src")
+                        self.assertEqual(source.type_expression.scalar_type, "bf16")
+                        self.assertEqual(source.register_width_policy,
+                                         ResolvedRegisterWidthPolicy.SAME_WIDTH)
+                        self.assertEqual(source.allowed_shapes,
+                                         (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE))
                 address = next(binding for binding in policy_layout.bindings
                                if binding.target_field_id == "address")
                 self.assertEqual(tuple(space.value for space in address.allowed_address_state_spaces),

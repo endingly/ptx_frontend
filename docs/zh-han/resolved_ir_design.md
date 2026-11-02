@@ -1711,3 +1711,36 @@ binary16 转换器（`1.5` 得到 F16 字 `0x3e00`），整数来源不获得浮
 AvailableContext/RequireCompleteContext 规则独立保留。Packed F16x2、BF16/BF16x2、
 atomic 向量、compare/swap 及所有其他源权限不变。前端检查不证明 GPU 运行时行为或
 opaque cache-policy 内容。
+
+### 标量 BF16 atomic 源成员
+
+`AtomGlobalAddNoftzBf16::src` 与 `RedGlobalAddNoftzBf16::src` 在
+`no_hint`、`with_policy` 两个 layout 中均使用 `WithLocs<RegOrImm>`。
+Consumer 须以匹配的 header/library 重建，并对 `.value` 使用
+`std::get_if<ResolvedRegisterRef>` 或 `std::get_if<ResolvedImmediate>`。
+既有两个类的 identity、成员名不变。Atomic destination 仍为 B16/Exact
+register-or-sink，cache policy 仍为 B64 register。Address、alignment、qualifier、
+modifier order 与 target floor 独立于该 source permission；标量 F16、packed 与
+vector atomic cohort 保持各自独立契约。
+
+四个源 key 使用逻辑 BF16、SameWidth 和既有 converter。Numeric Float 源
+`1.5`、`1.0+0.5`、`0d3ff8000000000000` 与 `0f3fc00000` 产生既有
+BF16 `0x3fc0` golden。实际寄存器 source 仍须满足 intrinsic type 与 bit-compatible
+规则，只接受普通标量 B16 声明；SameWidth 不授权 F16/U16/S16、独立 BF16
+声明、special register 或整体向量。Integer-origin literal/expression 仍被排除，
+不增加 integer-immediate policy 或转换路径。
+
+转换器存储逻辑 BF16；逻辑 BF16 的当前 payload 要求低十六位以及干净的 origin/negative flags，
+不要求 Float lexical history。因此 AST 销毁、copy、assignment 或 clone 后，一致的
+canonical word 仍可验证；保留的错误高位、type/origin/class/provenance 或 range
+事实仍然报错。Source association 独立核对 supplied AST 与 retained syntax，不认证
+当前 word 的历史。同步 observer 仅在 traversal 中借用实际成员与范围。此标量
+numeric 规则不增加 packed pair/splat/截断授权。前端验证 representation 与
+availability，不执行 atomic update、memory ordering、cache 行为或 BF16 算术。
+
+当前寄存器族引用保留真实声明和成员身份：删除必需的族成员索引或使其与当前拼写矛盾均无效。
+当前拼写与成员索引一致的重定向、仅删除数字编号便利缓存仍有效；验证不认证旧操作数拼写。
+缺少部分上下文时仍检查已知引用矛盾，同时保留现有整条指令检查的延迟规则。
+交付证据必须覆盖实际生成的视图及真实借用回调，手工投影视图不能替代这些检查。
+
+本来源许可不改变手工构造当前值的既有 Bit 容器兼容性。

@@ -262,6 +262,10 @@ class ScalarHalfSourceTests(unittest.TestCase):
                             actual.add((instruction.opcode, variant.name, layout.name,
                                         operand.name, scalar))
         self.assertEqual(actual, {
+            ('atom', 'atom_global_add_noftz_bf16', 'no_hint', 'src', 'bf16'),
+            ('atom', 'atom_global_add_noftz_bf16', 'with_policy', 'src', 'bf16'),
+            ('red', 'red_global_add_noftz_bf16', 'no_hint', 'src', 'bf16'),
+            ('red', 'red_global_add_noftz_bf16', 'with_policy', 'src', 'bf16'),
             ('fma', 'fma_mixed_f32_bf16', 'default', 'src1', 'bf16'),
             ('fma', 'fma_mixed_f32_bf16', 'default', 'src2', 'bf16'),
             ('set', 'set_half_integer_bf16', 'default', 'src1', 'bf16'),

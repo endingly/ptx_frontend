@@ -1057,5 +1057,189 @@ TEST(ResolvedModule, RejectsVectorRegisterIndirectShapeMismatch) {
     EXPECT_FALSE(resolveModule(*ast)) << metadata;
   }
 }
+
+/** The four already supported formal-signature lookup routes. */
+enum class PackedCallRoute { Direct, Prototype, Targets, Storage };
+
+/** Build a real initialized call; Param staging is kept immediately before its call. */
+std::string packedCallSource(PackedCallRoute route, bool parameter,
+                             std::string_view actual,
+                             bool vector_formal = false) {
+  const std::string state = parameter ? ".param " : ".reg ";
+  const std::string formal =
+      state + (vector_formal ? ".v2 " : "") + ".f16x2 input";
+  std::string source =
+      ".version 9.3\n.target sm_100a\n.address_size 64\n"
+      ".func packed_callee(" +
+      formal + ") { ret; }\n";
+  if (route == PackedCallRoute::Storage)
+    source += ".global .u64 packed_table[] = {packed_callee};\n";
+  source += ".entry kernel() {\n";
+  if (route != PackedCallRoute::Direct)
+    source += ".reg .u64 %fp; mov.u64 %fp, packed_callee;\n";
+  if (route == PackedCallRoute::Prototype)
+    source += "prototype: .callprototype _ (" + formal + ");\n";
+  if (route == PackedCallRoute::Targets)
+    source += "targets: .calltargets packed_callee;\n";
+  std::string argument(actual);
+  if (actual == "register-control") {
+    if (parameter) {
+      source +=
+          ".param .f16x2 slot; .reg .b32 word; mov.b32 word,0; "
+          "st.param.b32 [slot],word;\n";
+      argument = "slot";
+    } else {
+      source += ".reg .f16x2 value; mov.b32 value,0;\n";
+      argument = "value";
+    }
+  }
+  source +=
+      "call " +
+      std::string(route == PackedCallRoute::Direct ? "packed_callee" : "%fp") +
+      ", (" + argument + ")";
+  if (route == PackedCallRoute::Prototype)
+    source += ", prototype";
+  if (route == PackedCallRoute::Targets)
+    source += ", targets";
+  if (route == PackedCallRoute::Storage)
+    source += ", packed_table";
+  return source + ";\n}\n";
+}
+
+/** Resolve with full context and release the parser and source before returning. */
+std::expected<ResolvedModule, ModuleResolveDiagnostics> packedCallOwned(
+    std::string source) {
+  const auto ast = parseModule(source);
+  EXPECT_TRUE(ast && ast.diagnostics.empty());
+  if (!ast || !ast.diagnostics.empty())
+    return std::unexpected(ModuleResolveDiagnostics{});
+  return resolveAndValidateModule(*ast);
+}
+
+/** Borrow only the actual final call payload owned by the supplied module. */
+ResolvedCallLiteral& packedCallLiteral(ResolvedModule& module) {
+  auto& call = dynamic_cast<CallDirect&>(*module.functions.back().body.back());
+  return std::get<ResolvedCallLiteral>(
+      call.arguments->value.values.front().value);
+}
+
+/** Every route retains exact words and formal-driven recomputation after AST death. */
+TEST(ResolvedModule, NativePackedExactWordsUseAllFormalSignatureRoutes) {
+  for (const auto route :
+       {PackedCallRoute::Direct, PackedCallRoute::Prototype,
+        PackedCallRoute::Targets, PackedCallRoute::Storage}) {
+    for (const bool parameter : {false, true}) {
+      SCOPED_TRACE(std::to_string(static_cast<int>(route)) +
+                   (parameter ? " Param" : " Reg"));
+      const auto control_source =
+          packedCallSource(route, parameter, "register-control");
+      const auto control_ast = parseModule(control_source);
+      ASSERT_MODULE_PARSE_SUCCEEDS(control_ast);
+      const auto control = resolveAndValidateModule(*control_ast);
+      ASSERT_TRUE(control) << control.error().front().message;
+      EXPECT_TRUE(validateModule(*control_ast, *control));
+      EXPECT_TRUE(validateModule(*control));
+      for (const auto& [spelling, bits] :
+           {std::pair{"0f3e003e00", uint64_t{0x3e003e00}},
+            std::pair{"0f7f800001", uint64_t{0x7f800001}}}) {
+        const auto source = packedCallSource(route, parameter, spelling);
+        auto owned = packedCallOwned(source);
+        ASSERT_TRUE(owned) << owned.error().front().message;
+        const auto ast = parseModule(source);
+        ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+        ASSERT_TRUE(validateModule(*ast, *owned));
+        auto& literal = packedCallLiteral(*owned);
+        ASSERT_TRUE(literal.value);
+        EXPECT_EQ(literal.kind, base::LiteralCategory::F32Hex);
+        EXPECT_EQ(literal.spelling, spelling);
+        EXPECT_FALSE(literal.source_value);
+        EXPECT_EQ(literal.value->type, ScalarType::F16x2);
+        EXPECT_EQ(literal.value->bits, bits);
+        EXPECT_FALSE(literal.value->integer_source_bits);
+        EXPECT_FALSE(literal.value->is_negative);
+        const auto& call = dynamic_cast<const CallDirect&>(
+            *owned->functions.back().body.back());
+        const auto& actual = call.arguments->value.values.front();
+        ASSERT_EQ(actual.locs.size(), 1u);
+        EXPECT_NE(actual.locs.front(), SourceRange{});
+        auto copy = *owned;
+        ResolvedModule assigned;
+        assigned = copy;
+        auto moved = std::move(copy);
+        EXPECT_TRUE(validateModule(moved));
+        EXPECT_TRUE(validateModule(assigned));
+        auto function_copy = assigned.functions.back();
+        assigned.functions.back() = function_copy;
+        assigned.functions.back().body.back() =
+            assigned.functions.back().body.back()->clone();
+        EXPECT_TRUE(validateModule(assigned));
+      }
+    }
+  }
+}
+
+/** Retained call source is recomputed, while a coherent source/word edit remains legal. */
+TEST(ResolvedModule,
+     NativePackedCallsRecomputeCurrentLiteralsAgainstActualFormals) {
+  for (const auto route :
+       {PackedCallRoute::Direct, PackedCallRoute::Prototype,
+        PackedCallRoute::Targets, PackedCallRoute::Storage}) {
+    for (const bool parameter : {false, true}) {
+      const auto source = packedCallSource(route, parameter, "0f3e003e00");
+      const auto ast = parseModule(source);
+      ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+      auto owned = packedCallOwned(source);
+      ASSERT_TRUE(owned) << owned.error().front().message;
+      for (int mutation = 0; mutation < 4; ++mutation) {
+        auto bad = *owned;
+        auto& literal = packedCallLiteral(bad);
+        if (mutation == 0)
+          literal.value->bits ^= 1;
+        if (mutation == 1)
+          literal.value->integer_source_bits = 0;
+        if (mutation == 2) {
+          literal.kind = base::LiteralCategory::DecimalInteger;
+          literal.spelling = "0";
+        }
+        if (mutation == 3)
+          literal.source_value =
+              declaration_semantics::FloatingConstantValue{1.5};
+        const auto rejected = validateModule(bad);
+        ASSERT_FALSE(rejected) << mutation;
+        EXPECT_FALSE(validateModule(*ast, bad));
+        EXPECT_TRUE(std::any_of(
+            rejected.error().begin(), rejected.error().end(),
+            [](const auto& diagnostic) {
+              return diagnostic.message.find("formal typed value") !=
+                         std::string::npos &&
+                     diagnostic.range != SourceRange{};
+            }));
+        EXPECT_TRUE(validateModule(*owned));
+      }
+      auto coherent = *owned;
+      auto& edited = packedCallLiteral(coherent);
+      edited.spelling = "0f80000000";
+      edited.value->bits = 0x80000000;
+      EXPECT_TRUE(validateModule(coherent));
+      // Source identity belongs to the saved syntax, independently of current data.
+      EXPECT_TRUE(validateModule(*ast, coherent));
+      const auto changed_ast =
+          parseModule(packedCallSource(route, parameter, "0f80000000"));
+      ASSERT_MODULE_PARSE_SUCCEEDS(changed_ast);
+      ASSERT_TRUE(resolveAndValidateModule(*changed_ast));
+      const auto mismatch = validateModule(*changed_ast, *owned);
+      ASSERT_FALSE(mismatch);
+      EXPECT_TRUE(std::any_of(
+          mismatch.error().begin(), mismatch.error().end(),
+          [](const auto& diagnostic) {
+            return diagnostic.kind ==
+                   checker::CheckDiagnosticKind::ModuleSourceMismatch;
+          }));
+      EXPECT_FALSE(packedCallOwned(
+          packedCallSource(route, parameter, "0f3e003e00", true)));
+    }
+  }
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

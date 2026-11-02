@@ -219,10 +219,12 @@ indices still scale by the declared scalar element (four bytes for F16x2), not v
 
 A numeric one-to-pair F16x2 call-literal constructor remains a reference gap:
 integers, zero, decimal and F64 expressions do not define a splat or lane placement.
-The same-width bare unsigned direct `0f` binary32 whole-word route has an adopted
-exact-word interpretation, with its source producer pending separately. This is
-not a blanket prohibition on packed literals and is distinct from the implemented
-ordinary scalar F16 numeric converter.
+The exact-word contract requires a same-width bare unsigned direct `0f` binary32
+literal to retain the entire 32-bit word for an otherwise eligible scalar `.f16x2`
+Reg or Param input. Direct calls, `.callprototype`, `.calltargets`, and storage
+function-list routes use the same formal-driven conversion. This does not admit a
+scalar literal to a vector formal or return list, or classify `.bf16x2` as a call
+formal. This exact-word route is distinct from ordinary scalar F16 numeric conversion.
 
 Known opaque entry inputs remain name-only: numeric aggregate traversal skips them
 without assigning bytes or padding, and continues checking later numeric/vector inputs.

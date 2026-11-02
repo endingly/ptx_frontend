@@ -270,7 +270,7 @@ void expect_packed_origin_result(const checker::CheckResult& checked,
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::ImmediateValueMismatch);
     EXPECT_EQ(checked.error().front().range, range);
-    EXPECT_NE(checked.error().front().message.find("Packed FP8 immediate"),
+    EXPECT_NE(checked.error().front().message.find("Packed floating immediate"),
               std::string::npos);
   }
 }

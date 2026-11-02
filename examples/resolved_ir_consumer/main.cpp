@@ -11,6 +11,7 @@
 #include <ptx_frontend/cst/ptx_cst_parser.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/resolved_ir/ptx_tcgen_descriptors.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -453,6 +454,53 @@ bool checkInstalledCombinedSourceStates() {
       return false;
   }
   return true;
+}
+
+/** Exercise exact packed words through installed helper and owned native call interfaces. */
+bool checkInstalledPackedWords() {
+  namespace ir = ptx_frontend::resolved_ir;
+  namespace base = ptx_frontend::base;
+  for (const auto type : {base::ScalarType::F16x2, base::ScalarType::BF16x2,
+                          base::ScalarType::E4m3x4, base::ScalarType::E5m2x4}) {
+    const ptx_frontend::syntax_ast::AstImmediate leaf{
+        .syntax = {.text = "0f7f800001", .range = {{1, 1}, {1, 11}}},
+        .kind = base::AstImmediateKind::F32Hex};
+    const auto value = ir::resolve_immediate_literal(leaf, type);
+    if (!value || value->type != type || value->bits != 0x7f800001 ||
+        value->integer_source_bits || value->is_negative)
+      return false;
+  }
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser(R"ptx(
+.version 9.3
+.target sm_100a
+.address_size 64
+.func take(.param .f16x2 input) { ret; }
+.entry kernel() { call take,(0f7f800001); }
+)ptx");
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return false;
+    auto module = ir::resolveAndValidateModule(*ast);
+    if (!module || !ir::validateModule(*ast, *module))
+      return false;
+    owned = std::move(*module);
+  }
+  if (!ir::validateModule(*owned))
+    return false;
+  auto copy = *owned;
+  auto& call =
+      dynamic_cast<ir::CallDirect&>(*copy.functions.back().body.back());
+  auto& literal = std::get<ir::ResolvedCallLiteral>(
+      call.arguments->value.values.front().value);
+  if (!literal.value || literal.value->bits != 0x7f800001)
+    return false;
+  literal.value->bits ^= 1;
+  if (ir::validateModule(copy))
+    return false;
+  literal.value->bits ^= 1;
+  return ir::validateModule(copy).has_value();
 }
 
 /** Inspect exported packed element and vector parameter contracts after source release. */
@@ -1607,6 +1655,8 @@ int main() {
   if (!checkInstalledMbarrierTokenForms())
     return 1;
   if (!checkInstalledValueVectorSources())
+    return 1;
+  if (!checkInstalledPackedWords())
     return 1;
   if (!checkInstalledHeaderArrayRank() || !checkInstalledParameterDomain())
     return 1;

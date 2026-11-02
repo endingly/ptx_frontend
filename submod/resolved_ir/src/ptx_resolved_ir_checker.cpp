@@ -440,7 +440,7 @@ std::pair<uint64_t, bool> integer_constraint_value(
 }
 
 /**
- * Recheck integer-source use-width bits and canonical raw packed FP8 words.
+ * Recheck integer-source use-width bits and canonical raw packed floating words.
  * Packed floating words have no integer origin, including an optional zero.
  * Fixed integer constraints use the original source value for legality, while
  * consumers observe the converted bits; both representations must agree.
@@ -468,7 +468,7 @@ CheckResult check_source_immediate_consistency(const OperandView& operand,
                         .message = "A scalar FP8 immediate requires a "
                                    "canonical floating 8-bit word."}});
   const bool packed_raw32 =
-      ::ptx_frontend::resolved_ir::detail::is_raw32_fp8x4_type(
+      ::ptx_frontend::resolved_ir::detail::is_packed32_literal_type(
           *operand.immediate_type);
   if (packed_raw32 &&
       (*operand.immediate_bits > std::numeric_limits<uint32_t>::max() ||
@@ -478,7 +478,7 @@ CheckResult check_source_immediate_consistency(const OperandView& operand,
         .kind = CheckDiagnosticKind::ImmediateValueMismatch,
         .range = diagnostic_range(operand.locations, context),
         .message = fmt::format(
-            "Packed FP8 immediate '{}' has invalid raw 32-bit metadata.",
+            "Packed floating immediate '{}' has invalid raw 32-bit metadata.",
             operand.field_id),
     }});
   }

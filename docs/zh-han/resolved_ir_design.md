@@ -1567,3 +1567,11 @@ schema、generated layout 和 callback 不变。
 返回的 immediate 保留逻辑格式，BF16 仅使用低 16 位，FP8 仅使用低 8 位，且不携带整数来源或整数负号元数据。所有位宽内的当前字编码仍合法，包括 signaling NaN；转换器的 quiet 选择不要求之后的当前字重放字面量历史。整数来源、窄 Bit 容器和 packed 格式不会因此获得标量浮点转换。exact F32 原有的符号、括号及表达式限制不变。公共类型、签名及源码权限均不改变。
 
 当前源码模型恰有五个 BF16 数值输入字段：mixed ADD/SUB 的 `src`，以及 `CvtF32Bf16`、`CvtF32Bf16Ftz`、`CvtNonF32BaseFromBf16` 的源。mixed 结果和另一输入仍为 F32；所选舍入、位宽和可用性检查保持独立。E4M3/E5M2 在此没有获准的标量 opcode 源，helper 与通用 checker 覆盖不能证明源码或模块 clone 支持。其余 BF16 寄存器专用、向量、packed、call 和存储权限仍属独立范围。受支持的 F16 call 仍按保留的转换前来源重算。部分 target 上下文的指令延期策略不变。
+
+### Packed32 exact word 与 native call formal
+
+Exact-word 契约仅覆盖既有 literal helper 的 F16x2、BF16x2、E4M3x4 与 E5M2x4。无已求值 `source_value` 的裸 unsigned 直接 `0f` 字面量保留完整 32 位 payload 与所选 logical type，包括 raw sign 及类似 signaling NaN 的编码；不执行 component 转换、舍入、quiet、饱和或 splat。Integer origin、decimal/F64 numeric packing、带符号或括号的 exact F32 expression，以及向 packed16 截断均不因此获得 producer。未定义的 numeric one-to-many mapping 保持 reference boundary，而非 packed literal 的一概规范禁令。
+
+普通当前 packed word 必须在位宽内、没有 integer-source metadata（包括 optional zero），且没有 integer-negative flag。位宽内的一致当前字修改不认证已擦除的字面量历史。Call literal 已保留 spelling/kind 或已求值输入，因此其余条件合法的 scalar native F16x2 Reg/Param formal 必须经同一 helper 重算保留的直接 word。仅改 typed word 或注入 integer origin 会被拒绝；同时一致修改保留的直接 spelling 与 typed bits 可以仍有效，保存的 AST identity 则独立核对。既有 direct、prototype、target-list 与 storage-function-list 四条 signature 路径共用该规则。Vector formal、return actual grammar、formal ABI readiness 与 BF16x2 的 instruction-only 分类保持不变。
+
+该私有 helper 契约不向九个 multimem vector 字段、六个相邻 scalar packed 字段或 atomic 字段授予 literal 权限。既有 scalar alternate RNE/NaN 策略与 integer-origin 区分仍独立。公共结构、metadata 与生成字段不变；记录 delivery 完成前仍需 current Debug、installed-only consumer 检查及独立 actual-diff 验收。

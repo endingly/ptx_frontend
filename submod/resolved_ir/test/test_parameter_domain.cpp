@@ -188,8 +188,13 @@ TEST(ParameterDomain, CallsAndTransfersPreserveNativePackedObjects) {
 
 /** Numeric packed conversion is an explicit reference boundary, not declaration rejection. */
 TEST(ParameterDomain, KeepsPackedLiteralRepresentationBoundaryPrecise) {
-  for (const auto literal :
-       {"1.5", "0d3ff8000000000000", "0f3fc00000", "0x3c003c00", "0"}) {
+  const auto exact =
+      parameter_module(parameter_header() +
+                       ".extern .func take(.param .f16x2 input); "
+                       ".entry kernel() { call take, (0f3fc00000); }");
+  ASSERT_TRUE(exact) << exact.error().front().message;
+  EXPECT_TRUE(validateModule(*exact));
+  for (const auto literal : {"1.5", "0d3ff8000000000000", "0x3c003c00", "0"}) {
     auto result = parameter_module(parameter_header() +
                                    ".extern .func take(.param .f16x2 input); "
                                    ".entry kernel() { call take, (" +

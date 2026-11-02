@@ -11,9 +11,11 @@
 #include <ptx_frontend/resolved_ir/model/arithmetic/xor.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+#include "ptx_resolved_ir_private.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -329,6 +331,120 @@ TEST(FloatingBitConstants,
     EXPECT_FALSE(resolveBitConstantSource(
         ".global .u32 A; .entry kernel() { .reg .b32 %q; .reg .b64 %d; " +
         std::string(body) + " }"));
+  }
+}
+
+/** Resolve a written use expression without extending any instruction permissions. */
+std::expected<ResolvedImmediate, ResolveDiagnostic> packedWordExpression(
+    std::string_view source, ScalarType type) {
+  PtxSyntaxParser parser("mov.b32 %r, " + std::string(source) + ";");
+  const auto ast = parser.parseInstruction();
+  EXPECT_TRUE(ast && ast.diagnostics.empty());
+  if (!ast || !ast.diagnostics.empty())
+    return std::unexpected(ResolveDiagnostic{});
+  return detail::resolve_numeric_operand(ast->operands[1], type);
+}
+
+/** Rebuild a synchronous generic view from the actual current word on every check. */
+checker::CheckResult checkPackedCurrentWord(ScalarType selected,
+                                            const ResolvedImmediate& word) {
+  const checker::OperandDescriptor descriptor{
+      .target_field_id = "src",
+      .type_expression = {.kind =
+                              checker::OperandTypeExpressionKind::FixedScalar,
+                          .fixed_scalar_type = selected},
+      .role = checker::OperandRole::Source,
+      .access = checker::OperandAccess::Read,
+      .allowed_shapes = checker::OperandShape::Immediate};
+  const SourceRange range{{4, 3}, {4, 13}};
+  const checker::OperandView view{
+      .field_id = "src",
+      .actual_shape = checker::OperandShape::Immediate,
+      .immediate_type = word.type,
+      .immediate_bits = word.bits,
+      .immediate_is_negative = word.is_negative,
+      .locations = {&range, 1},
+      .integer_source_bits = word.integer_source_bits};
+  const auto profile = base::find_target_profile("sm_100a");
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3},
+                 .sm_version = 100,
+                 .enabled_family_features = profile->enabled_family_features,
+                 .identity = profile->identity,
+                 .capabilities = profile->capabilities}};
+  return checker::check_operands({&descriptor, 1}, {}, {&view, 1}, {}, context);
+}
+
+/** All packed32 formats preserve complete words, including encoded signs and NaNs. */
+TEST(FloatingBitConstants,
+     PackedWordsPreserveExactBitsAndRejectNumericPacking) {
+  constexpr std::array words{std::pair{"0f00000000", uint64_t{0}},
+                             std::pair{"0f00000001", uint64_t{1}},
+                             std::pair{"0f80000000", uint64_t{0x80000000}},
+                             std::pair{"0f7f800001", uint64_t{0x7f800001}},
+                             std::pair{"0f7fc12345", uint64_t{0x7fc12345}},
+                             std::pair{"0fffffffff", uint64_t{0xffffffff}},
+                             std::pair{"0f3f800000", uint64_t{0x3f800000}},
+                             std::pair{"0f3e003e00", uint64_t{0x3e003e00}}};
+  for (const auto type : {ScalarType::F16x2, ScalarType::BF16x2,
+                          ScalarType::E4m3x4, ScalarType::E5m2x4}) {
+    for (const auto& [source, bits] : words) {
+      SCOPED_TRACE(std::string(to_string(type)) + " " + source);
+      const auto value = packedWordExpression(source, type);
+      ASSERT_TRUE(value) << value.error().message;
+      EXPECT_EQ(value->type, type);
+      EXPECT_EQ(value->bits, bits);
+      EXPECT_FALSE(value->integer_source_bits);
+      EXPECT_FALSE(value->is_negative);
+      EXPECT_TRUE(checkPackedCurrentWord(type, *value));
+    }
+    for (const auto source :
+         {"0", "0x3e003e00", "0x3e003e00U", "1+2", "1.5==1.5", "-0f3e003e00",
+          "+0f3e003e00", "(0f3e003e00)", "1.5", "0d3ff8000000000000"}) {
+      SCOPED_TRACE(std::string(to_string(type)) + " " + source);
+      EXPECT_FALSE(packedWordExpression(source, type));
+    }
+  }
+  for (const auto type :
+       {ScalarType::B8, ScalarType::B16, ScalarType::B32, ScalarType::B64}) {
+    const auto integer = packedWordExpression("1", type);
+    ASSERT_TRUE(integer);
+    EXPECT_EQ(integer->bits, 1u);
+    EXPECT_EQ(integer->integer_source_bits, 1u);
+  }
+  for (const auto type : {ScalarType::E4m3x2, ScalarType::E5m2x2})
+    EXPECT_FALSE(packedWordExpression("0f00003c3c", type));
+}
+
+/** Current data accepts coherent word edits, with flags and selected type rechecked. */
+TEST(FloatingBitConstants, PackedCurrentWordsRejectFlagsWithoutLiteralHistory) {
+  for (const auto type : {ScalarType::F16x2, ScalarType::BF16x2,
+                          ScalarType::E4m3x4, ScalarType::E5m2x4}) {
+    SCOPED_TRACE(std::string(to_string(type)));
+    ResolvedImmediate word{.bits = 1, .type = type};
+    ASSERT_TRUE(checkPackedCurrentWord(type, word));
+    word.bits = 2;
+    EXPECT_TRUE(checkPackedCurrentWord(type, word));
+    for (int mutation = 0; mutation < 5; ++mutation) {
+      auto bad = word;
+      if (mutation == 0)
+        bad.bits = uint64_t{1} << 32;
+      if (mutation == 1)
+        bad.integer_source_bits = 0;
+      if (mutation == 2)
+        bad.integer_source_bits = bad.bits;
+      if (mutation == 3)
+        bad.is_negative = true;
+      if (mutation == 4)
+        bad.type = ScalarType::F32;
+      const auto result = checkPackedCurrentWord(type, bad);
+      ASSERT_FALSE(result) << mutation;
+      EXPECT_EQ(result.error().front().range, (SourceRange{{4, 3}, {4, 13}}));
+      if (mutation < 4)
+        EXPECT_EQ(result.error().front().kind,
+                  checker::CheckDiagnosticKind::ImmediateValueMismatch);
+      EXPECT_TRUE(checkPackedCurrentWord(type, word));
+    }
   }
 }
 

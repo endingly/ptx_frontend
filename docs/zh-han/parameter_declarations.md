@@ -183,10 +183,12 @@ container；named array index 仍按声明 scalar element 缩放（F16x2 为四�
 vector 大小。Header 多维 parameter array 保留完整轴；call ABI 使用总元素数，自身记录逐轴核对。
 
 Numeric one-to-pair F16x2 call-literal constructor 仍是 reference gap：整数、
-zero、decimal 与 F64 expression 不定义 splat 或 lane placement。同宽、裸 unsigned
-直接 `0f` binary32 whole-word 路径已有 adopted exact-word 解释，其 source producer
-另待实现。这不是 packed literal 的一概禁令，并且不同于已经实现的普通 scalar F16
-numeric converter。
+zero、decimal 与 F64 expression 不定义 splat 或 lane placement。Exact-word 契约要求
+同宽、裸 unsigned 直接 `0f` binary32 字面量为其余条件合法的 scalar `.f16x2`
+Reg 或 Param input 保留完整 32 位 word。Direct call、`.callprototype`、
+`.calltargets` 与 storage function-list 路径复用同一 formal-driven 转换。这不允许
+scalar literal 满足 vector formal 或 return list，也不把 `.bf16x2` 分类为 call formal。
+该 exact-word 路径不同于普通 scalar F16 numeric conversion。
 
 已知 opaque entry input 仍为 name-only：numeric aggregate 遍历跳过它们，不分配
 byte 或 padding，同时继续检查后续 numeric/vector input。

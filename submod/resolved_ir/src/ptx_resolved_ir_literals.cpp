@@ -335,7 +335,7 @@ bool is_alternate_literal_type(ScalarType type) {
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
     const syntax_ast::AstImmediate& immediate, ScalarType type,
     std::string_view text, bool negative, uint8_t bit_width) {
-  const bool packed_raw32 = is_raw32_fp8x4_type(type) && bit_width == 32;
+  const bool packed_raw32 = is_packed32_literal_type(type) && bit_width == 32;
   const auto source_type = bit_width == 32 ? ScalarType::F32 : ScalarType::F64;
   if (!floating_destination_compatible(type, source_type) && !packed_raw32) {
     return std::unexpected(invalid_immediate(
@@ -359,7 +359,7 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
   if (packed_raw32) {
     if (*bits > std::numeric_limits<uint32_t>::max()) {
       return std::unexpected(invalid_immediate(
-          immediate, "Packed FP8 literal exceeds its 32-bit raw width."));
+          immediate, "Packed floating literal exceeds its 32-bit raw width."));
     }
     return ResolvedImmediate{.bits = *bits, .type = type};
   }
@@ -594,7 +594,10 @@ resolve_call_literal(
             literal.spelling, formal.type_spelling),
     });
   }
-  if (formal.scalar_type == ScalarType::F16x2)
+  // Packed numeric construction remains undefined; only a retained direct word
+  // may reach the shared exact-width producer. Vector formals are rejected above.
+  if (formal.scalar_type == ScalarType::F16x2 &&
+      (literal.source_value || literal.kind != base::LiteralCategory::F32Hex))
     return std::unexpected(ResolveDiagnostic{
         .range = range,
         .message = "No direct numeric call-literal conversion to packed .f16x2 "

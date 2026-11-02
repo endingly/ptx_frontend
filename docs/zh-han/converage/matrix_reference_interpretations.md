@@ -176,3 +176,17 @@ Table 59 的 factor count 不产生缺失的物理 row。K 未知时 source vect
 既有代码已表达此决策。定向 C++/Python 回归检查两组字段 mask、三个 block row、
 ID/alignment 组合、错误 layout、缺失事实与 source/known-word 边界。Live contents
 和 GPU execution 不在这些检查范围内。
+
+## 逻辑 descriptor carrier 与基本位数据
+
+固定的 PTX 9.3 [§6.1](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#operand-type-information) 与 [§9.4/Table 26](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#type-information-for-instructions-and-operands) 描述通用基本数据兼容性。[WGMMA matrix descriptor](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#asynchronous-warpgroup-level-matrix-shared-memory-layout-matrix-descriptor) 和 [TCGEN shared descriptor](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-shared-memory-descriptor) 则编码独立定义的地址、stride 和布局/控制字段。手册没有明确枚举这些角色允许的全部声明 carrier。此处优先采用特定编码控制/地址角色，是公开说明的工程解释，不是 NVIDIA 发布的勘误；不透明性本身不是理由。
+
+七个不透明逻辑角色要求位宽精确的标量 General 寄存器：WGMMA shared A/B、TCGEN copy `s_desc`、TCGEN MMA shared A/B 和 TCGEN WS `zero_column_desc` 为 64 位，接受 B64/U64/S64；TCGEN MMA `idesc` 为 32 位，接受 B32/U32/S32。`idesc` 是 **instruction descriptor**，不是 TMA im2col descriptor。这些集合约束声明的 carrier，不只是内部 `.b64`/`.b32` 存储标签。这些角色拒绝同宽 F64/F32 声明。错误位宽、普通完整 `v2` 寄存器、predicate 类、immediate 和不适用的括号地址形状不能提供标量 descriptor。带括号的 32 位 A 仍是独立的 Tensor Memory 来源选项。
+
+例如，声明 `.reg .b64 %bits64; .reg .f64 %float64;` 时，`mov.b64 %bits64, %float64;` 是合法的基本位数据操作，但将 `%float64` 直接作为 WGMMA shared descriptor 会被拒绝。同样，`mov.b32 %bits32, %float32;` 接受 F32 位数据；`%bits32` 可以提供 `idesc`，`%float32` 则不能。显式位复制到 B32/B64 只建立允许的 carrier，不证明复制的位编码了有效的运行时 descriptor。普通 `add.rn.f64` 和实际 `mbarrier.arrive.b64` 的 F64 arrival-state 输出仍合法，不属于 matrix descriptor 角色。
+
+通用 `SameWidth` 和 `Exact` 策略不变。TCGEN output-lane mask 保留独立的 B32/U32/S32/F32 策略。Tensor Memory 地址、predicate、matrix fragment、普通内存数据和其他不透明资源各自保留其契约；descriptor 的不透明性不会引入全局整数 carrier 规则，也不授予 component/named-vector 权限。
+
+Owned validation 在 AST 销毁后重新核对实际符号身份、声明、标量形状、角色和源码来源。允许一致地改指向真实的 B/U/S 符号；伪造 cache 不能使已知浮点声明合法。绑定符号缺少声明类型会被拒绝。独立的未知 General 引用可以延后类型检查，但不能因此满足 module binding。副本和 instruction clone 拥有自己的 payload；descriptor view 借用当前 owner，复制后必须重新获取。
+
+另见 [WGMMA](wgmma_coverage.md)、[TCGEN descriptor facts](tcgen_descriptor_coverage.md) 和 [TCGEN F8/F6/F4](tcgen_mma_f8f6f4_coverage.md)。运行时 descriptor 位、对齐/布局、放置和异步完成仍是这些 carrier 检查以外的义务。

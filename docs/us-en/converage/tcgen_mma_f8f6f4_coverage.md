@@ -76,3 +76,5 @@ remain outside it. TMA and MMA can coexist in one module, but this slice does no
 execution or cross-instruction completion.
 
 The current ordinary non-WS dense and sparse forms also support [typed A collector and ashift controls](tcgen_mma_a_collector_coverage.md); their caller-known history checks remain conditional.
+
+The [descriptor-carrier interpretation](matrix_reference_interpretations.md#logical-descriptor-carriers-and-fundamental-bit-data) distinguishes exact-width B/U/S descriptor roles from ordinary `SameWidth` bit data: F64/F32 are rejected for those roles, while `mov.b64`/`mov.b32` bit copies remain valid. TCGEN `idesc` is a 32-bit instruction descriptor, not TMA im2col. Lane-mask F32 and actual `.b64` mbarrier arrival-state data retain separate policies; runtime descriptor contents remain unproved.

@@ -13,3 +13,5 @@ absolute leading mode 要求编码的 swizzle 为 2 且 base offset 为 0。已�
 表 48 暴露四组 start count 与 first-span flag、`generate_mask`、used/zero-column span（编码值加一）和 shift。第 39 位保留原始极性：`generate_mask` 为 true 时启用 pattern 生成；为 false 时生成全零 mask，不强制将任何 B 列置零。提供 M/N 后，M128 使用一个 mask、M64 使用两个、M32 使用四个，并相应分割 N。条件性 shift 最大值在 M32 为 16、其余为 32；缺少 M 时较紧的检查仍待完成。非活动 count/flag 字段并非 reserved-zero。第 39 位取何值都要接受 fixed/reserved 和条件字段检查。固定表未定义 bits62–63：report 单独保留这些 **unclassified** 位，不声称完整的 64 位 descriptor 合法性。
 
 此字段 API 是部分检查，不构成 Tensor Memory 完整合法性证明。离线组装指令不能证明调用方提供的 bit 与运行期寄存器或内存布局一致。
+
+[Descriptor carrier 解释](matrix_reference_interpretations.md#逻辑-descriptor-carrier-与基本位数据) 区分精确位宽的 B/U/S descriptor 角色与普通 `SameWidth` 位数据：这些角色拒绝 F64/F32，`mov.b64`/`mov.b32` 位复制仍合法。TCGEN `idesc` 是 32 位 instruction descriptor，不是 TMA im2col。Lane-mask F32 与实际 `.b64` mbarrier arrival-state 数据保留独立策略；运行时 descriptor 内容仍未获证明。

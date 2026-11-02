@@ -1097,6 +1097,12 @@ signedness/placement/satfinite identity 保留；[双语说明](../docs/zh-han/c
 继续为独立义务。本项仅新增该局部 known-word/source 边界的测试与说明，生产规则未改，
 不改变上述整族状态。
 
+局部参考解释：七个逻辑 matrix descriptor 角色按精确位宽接受标量 General B/U/S，
+拒绝同宽 F32/F64；普通 SameWidth 位数据、显式 Bit copy、F32 lane mask 和实际 B64
+arrival-state 输出仍保留独立策略。[双语说明](../docs/zh-han/converage/matrix_reference_interpretations.md)
+区分实际诊断阶段、当前角色/binding 与 source 关联，不认证 descriptor 内容或 GPU 结果。
+本项仅新增该局部工程解释的测试与说明，生产规则未改，不改变上述整族状态。
+
 
 
 ---

@@ -59,3 +59,5 @@ major/swizzle 规则。E4M3/E5M2 为 8 位，E2M3/E3M2 为 6 位，E2M1 为 4 �
 范围之外。TMA 与 MMA 可以共存于同一个模块，但本切片不证明执行或跨指令完成。
 
 当前普通非 WS 稠密与稀疏形式还支持[强类型 A collector 与 ashift 控制](tcgen_mma_a_collector_coverage.md)；调用方已知历史检查仍是条件性的。
+
+[Descriptor carrier 解释](matrix_reference_interpretations.md#逻辑-descriptor-carrier-与基本位数据) 区分精确位宽的 B/U/S descriptor 角色与普通 `SameWidth` 位数据：这些角色拒绝 F64/F32，`mov.b64`/`mov.b32` 位复制仍合法。TCGEN `idesc` 是 32 位 instruction descriptor，不是 TMA im2col。Lane-mask F32 与实际 `.b64` mbarrier arrival-state 数据保留独立策略；运行时 descriptor 内容仍未获证明。

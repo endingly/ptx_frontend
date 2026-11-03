@@ -35,10 +35,15 @@ class ScalarAtomicBf16SourcesTests(unittest.TestCase):
                     self.assertEqual(operands["cache_policy"].type_expression.scalar_type, "b64")
                 else:
                     self.assertNotIn("cache_policy", operands)
-            for suffix, container in (("bf16x2", "b32"),):
+            # Packed raw-word permission is an independent adopted source route.
+            for suffix in ("bf16x2",):
                 sibling = next(item for item in instruction.variants
                                if item.name == f"{opcode}_global_add_noftz_{suffix}")
                 for layout in sibling.operand_layouts:
                     source = next(item for item in layout.operands if item.name == "src")
-                    self.assertIs(source.kind, OperandKind.REGISTER)
-                    self.assertEqual(source.type_expression.scalar_type, container)
+                    self.assertIs(source.kind, OperandKind.REGISTER_OR_IMMEDIATE)
+                    self.assertEqual(source.type_expression.scalar_type, suffix)
+                    self.assertIs(source.register_width_policy,
+                                  OperandRegisterWidthPolicy.SAME_WIDTH)
+                    self.assertIsNone(source.integer_immediate_type)
+                    self.assertFalse(source.vector_allow_named)

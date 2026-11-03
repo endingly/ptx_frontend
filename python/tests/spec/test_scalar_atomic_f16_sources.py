@@ -45,21 +45,38 @@ class ScalarAtomicF16SourceTests(unittest.TestCase):
         self.assertEqual(len(members), 2)
 
     def test_packed_bfloat_vector_and_destination_permissions_are_preserved(self) -> None:
-        """No permission follows merely from a shared opcode or physical width."""
+        """Explicit later source grants preserve independent destination policies."""
         database = get_packaged_spec_database()
+        seen = set()
         for instruction in database.instructions:
             if instruction.opcode not in ("atom", "red"):
                 continue
+            formats = {instruction.opcode + "_global_add_noftz_" + suffix: suffix
+                       for suffix in ("f16x2", "bf16", "bf16x2")}
             for variant in instruction.variants:
-                if variant.name not in {instruction.opcode + "_global_add_noftz_" + suffix
-                                        for suffix in ("f16x2", "bf16", "bf16x2")}:
+                if variant.name not in formats:
                     continue
+                logical_type = formats[variant.name]
                 for layout in variant.operand_layouts:
+                    seen.add((instruction.opcode, logical_type, layout.name))
                     source = next(o for o in layout.operands if o.name == "src")
-                    self.assertIs(source.kind, OperandKind.REGISTER)
+                    self.assertIs(source.kind, OperandKind.REGISTER_OR_IMMEDIATE)
+                    self.assertEqual(source.type_expression.scalar_type, logical_type)
+                    self.assertEqual(source.register_width_policy.value, "same_width")
+                    self.assertIsNone(source.integer_immediate_type)
+                    self.assertFalse(source.vector_allow_named)
                     if instruction.opcode == "atom":
                         destination = next(o for o in layout.operands if o.name == "dst")
                         self.assertIs(destination.kind, OperandKind.REGISTER_OR_SINK)
+                        self.assertEqual(destination.type_expression.scalar_type,
+                                         "f16x2" if logical_type == "f16x2" else
+                                         "b16" if logical_type == "bf16" else "b32")
+                        self.assertEqual(destination.register_width_policy.value,
+                                         "same_width" if logical_type == "f16x2" else "exact")
+        self.assertEqual(seen, {(opcode, logical_type, layout)
+                               for opcode in ("atom", "red")
+                               for logical_type in ("f16x2", "bf16", "bf16x2")
+                               for layout in ("no_hint", "with_policy")})
 
 if __name__ == "__main__":
     unittest.main()

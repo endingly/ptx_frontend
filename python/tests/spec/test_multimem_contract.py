@@ -173,6 +173,12 @@ class MultimemContractTests(unittest.TestCase):
                 self.assertIs(register.kind, OperandKind.VALUE_VECTOR
                               if register.name == "src" and family in {"st", "red"}
                               else OperandKind.REGISTER_VECTOR)
+            elif variant.name in {
+                    "multimem_st_float_packed_none_scalar_default_weak",
+                    "multimem_st_float_packed_none_scalar_default_ordered",
+                    "multimem_red_float_packed_add_scalar_default_red"}:
+                self.assertEqual(register.name, "src")
+                self.assertIs(register.kind, OperandKind.REGISTER_OR_IMMEDIATE)
             elif family in {"st", "red"} and types <= {"f32", "f64", "e5m2x4", "e4m3x4"}:
                 self.assertIs(register.kind, OperandKind.REGISTER_OR_IMMEDIATE)
             else:
@@ -240,7 +246,15 @@ class MultimemContractTests(unittest.TestCase):
             if source.kind in {OperandKind.REGISTER_VECTOR, OperandKind.VALUE_VECTOR}:
                 continue
             if types <= {"f16x2", "bf16x2"}:
-                self.assertIs(source.kind, OperandKind.REGISTER)
+                if variant.name in {
+                    "multimem_st_float_packed_none_scalar_default_weak",
+                    "multimem_st_float_packed_none_scalar_default_ordered",
+                    "multimem_red_float_packed_add_scalar_default_red",
+                }:
+                    self.assertEqual(types, {"f16x2", "bf16x2"})
+                    self.assertIs(source.kind, OperandKind.REGISTER_OR_IMMEDIATE)
+                else:
+                    self.assertIs(source.kind, OperandKind.REGISTER)
             else:
                 self.assertIs(source.kind, OperandKind.REGISTER_OR_IMMEDIATE)
                 if types.isdisjoint({"f32", "f64"}):

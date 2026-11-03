@@ -2152,3 +2152,36 @@ Exactly four existing public `src` members migrate from `WithLocs<ResolvedRegist
 Use `std::get_if<ResolvedRegisterRef>(&form.src.value)` or `std::get_if<ResolvedImmediate>(&form.src.value)` and consume the actual alternative. BF16x2 sources carry logical BF16x2/`SameWidth`; their accepted declared register remains B32, while BF16x2 destinations keep B32/`Exact`. Native F16x2 sources keep F16x2/B32 compatibility. The B64 cache-policy register, address/target/modifier rules, declaration guard and component provenance are independent.
 
 Only bare unsigned direct `0f` supplies packed words; all32 bits, including signs and NaNs, survive. Numeric pair/splat/new `0h`/`0d` truncation producers are Source_N_A / reference-qualified. The source converter produces the selected logical packed type. Canonical low32 F16x2/BF16x2 current-word positives with no integer origin and false floating-negative metadata are valid without lexical history. Existing current Bit-carrier compatibility remains unchanged; these examples do not narrow inherited `SameWidth` policy or establish a new B32 rule. Copies, assignment and clones own their words, SymbolIds and locations. Borrowed `OperandView` and synchronous `reg_or_imm` observer values must refer to the current owner; callbacks must not retain them or mutate/reenter the owner. Source/AST lifetime and supplied-source identity remain distinct checks. See [atomic coverage](converage/atomic_reduction_coverage.md#packed32-source-words-and-member-migration); this payload migration provides no runtime atomic or numeric packed-construction proof.
+
+### Scalar packed32 source members
+
+The existing classes `MultimemStFloatPackedNoneScalarDefaultWeak`,
+`MultimemStFloatPackedNoneScalarDefaultOrdered` and
+`MultimemRedFloatPackedAddScalarDefaultRed` expose `src` as
+`WithLocs<RegOrImm>`. Consumers must rebuild with matching installed headers and
+libraries and inspect `.value` with `std::get_if<ResolvedRegisterRef>` or
+`std::get_if<ResolvedImmediate>`. These are three changed source fields, each
+retaining the existing `modifier(type)` domain F16x2/BF16x2 and SameWidth policy.
+Variant identities, member names, controls, address/global/alignment and target
+contracts remain; the nine prior ValueVector source fields retain their API.
+
+Each of the six branches admits a bare unsigned direct `0f` packed32 word through
+the existing shared helper. All 32 bits are data, including encoded sign and
+signaling/quiet NaN-looking patterns: no quantization, splat or NaN quieting occurs.
+F16x2 retains ordinary B32/native F16x2 register carriers; BF16x2 retains B32.
+Existing scalar component provenance rules remain. No whole vector or new tuple
+source is granted. Integer-origin literals/results, unary signs, parentheses,
+operators, decimal/F64 packed constructors, numeric pairs and implicit packing
+remain excluded. There is no low-word `0d` truncation or new lexical format.
+
+The source converter produces the selected logical packed type. Canonical current-word
+positives use that type, at most 32 bits, absent integer origin (optional zero is still
+present) and `is_negative=false`. Existing current Bit-carrier compatibility remains
+unchanged; these examples do not narrow inherited `SameWidth` policy or establish a
+new B32 rule. Canonical current-word edits do not authenticate erased producer history. Copy/assignment/
+clone and AST-free checks retain actual member/range/provenance; supplied AST
+association independently checks retained syntax identity. Synchronous observers
+borrow the real owner only during traversal. The frontend does not execute
+multimem mappings, stores, reductions, ordering or GPU behavior.
+
+The scalar packed tests establish selected logical F16x2/BF16x2 canonical words. Compatibility of a Bit-typed B32 **current** word is a separate inherited-policy question and remains unproved here; scalar F16 Bit16 controls do not decide it. This qualification grants no additional source literal or constructor.

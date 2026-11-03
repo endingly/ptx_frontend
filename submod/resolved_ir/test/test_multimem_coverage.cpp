@@ -122,6 +122,7 @@ TEST(Multimem, SourceExclusionsAndTables) {
     EXPECT_FALSE(accepts_multimem(multimem_source(candidate)));
   }
   for (std::string_view candidate : {
+           "multimem.st.bf16x2 [mm], 0f3f800000;",
            "multimem.ld_reduce.add.f32 %f0, [mm];",
            "multimem.red.add.f32 [mm], %f0;",
            "multimem.red.add.u32 [mm], %u0;",
@@ -161,7 +162,7 @@ TEST(Multimem, StaticAddressAndSizeConstraints) {
            "multimem.st.f32 [mm], 1;",
            "multimem.st.f16x2 [mm], 1;",
            "multimem.red.add.f16x2 [mm], 1;",
-           "multimem.st.bf16x2 [mm], 0f3f800000;",
+           "multimem.st.bf16x2 [mm], 1.5;",
            "multimem.st.e4m3x4 [mm], 1.5;",
            "multimem.st.e5m2x4 [mm], 0d3ff0000000000000;",
            "multimem.ld_reduce.add.u32 1, [mm];",

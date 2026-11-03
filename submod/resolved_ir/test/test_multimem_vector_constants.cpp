@@ -562,7 +562,7 @@ TEST(MultimemValueVector, PreservesArityRangesAndIndependentSourceIdentity) {
 .address_size 64
 .global .align 16 .b8 mm[256]; .entry k(){)ptx" +
                                  std::string(prefix) + dtype +
-                                 " [mm],0f3e003e00;}";
+                                 " [mm],1.5;}";
       EXPECT_FALSE(valueOwned(source));
     }
   }

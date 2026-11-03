@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <array>
 #include <concepts>
+#include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -10,6 +12,52 @@
 #include <ptx_frontend/resolved_ir/model/data_movement/multimem.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+
+
+#ifdef PTX_SCALAR_MM_CAPTURE_GENERATED_VIEWS
+namespace ptx_frontend::resolved_ir::scalar_mm_generated {
+/** Current member borrowed only during one enclosed actual generated check. */
+const WithLocs<RegOrImm>* expected=nullptr;
+/** Selected owner type, independent from mutable payload mirrors. */
+ScalarType logical=ScalarType::Invalid;
+/** Count actual generated src projections, not hand-built visitor views. */
+unsigned observed=0;
+/** Track all pointer, field, cached value and range mirrors synchronously. */
+bool mirrors=true;
+#define SCALAR_MM_PARAMETERS std::span<const checker::OperandDescriptor> descriptors, std::span<const checker::FieldView> fields, std::span<const checker::OperandView> views, std::span<const checker::OperandTypeCompatibilityDescriptor> compatibility, const checker::Context& context, const MatrixInstructionDescriptor* matrix
+/** Forward to the real matching library after test-only interception. */
+extern "C" checker::CheckResult original_operands(SCALAR_MM_PARAMETERS) asm("__real__ZN12ptx_frontend11resolved_ir7checker14check_operandsESt4spanIKNS1_17OperandDescriptorELm18446744073709551615EES2_IKNS1_9FieldViewELm18446744073709551615EES2_IKNS1_11OperandViewELm18446744073709551615EES2_IKNS1_34OperandTypeCompatibilityDescriptorELm18446744073709551615EERKNS1_7ContextEPKNS0_27MatrixInstructionDescriptorE");
+/** Link-only shim observing actual generated operands; no production API hook. */
+extern "C" checker::CheckResult generated_operands(SCALAR_MM_PARAMETERS) asm("__wrap__ZN12ptx_frontend11resolved_ir7checker14check_operandsESt4spanIKNS1_17OperandDescriptorELm18446744073709551615EES2_IKNS1_9FieldViewELm18446744073709551615EES2_IKNS1_11OperandViewELm18446744073709551615EES2_IKNS1_34OperandTypeCompatibilityDescriptorELm18446744073709551615EERKNS1_7ContextEPKNS0_27MatrixInstructionDescriptorE");
+/** Consume all borrowed arguments before forwarding the unmodified real checker result. */
+checker::CheckResult generated_operands(SCALAR_MM_PARAMETERS) {
+  if (expected) for (const auto& view:views) if (view.field_id=="src") {
+    ++observed;
+    const auto descriptor=std::ranges::find(descriptors,std::string_view("src"),&checker::OperandDescriptor::target_field_id);
+    const auto type_field=std::ranges::find(fields,std::string_view("type"),&checker::FieldView::field_id);
+    bool valid=descriptor!=descriptors.end() && type_field!=fields.end() && type_field->scalar_type==logical &&
+        descriptor->type_expression.kind==checker::OperandTypeExpressionKind::ModifierField &&
+        descriptor->type_expression.modifier_field_id=="type" &&
+        descriptor->register_width_policy==base::ScalarTypeSizePolicy::SameWidth &&
+        view.locations.data()==expected->locs.data() && std::ranges::equal(view.locations,expected->locs);
+    if (const auto* reg=std::get_if<ResolvedRegisterRef>(&expected->value))
+      valid=valid && view.actual_shape==checker::OperandShape::Register && view.register_ref==reg &&
+          view.register_type==reg->declared_type && view.register_symbol_id==reg->symbol_id &&
+          view.register_class==reg->register_class && view.register_vector_width==reg->vector_width &&
+          !view.immediate_type && !view.immediate_bits && !view.integer_source_bits;
+    else if (const auto* word=std::get_if<ResolvedImmediate>(&expected->value))
+      valid=valid && view.actual_shape==checker::OperandShape::Immediate && !view.register_ref &&
+          !view.register_type && !view.register_symbol_id && !view.register_class && !view.register_vector_width &&
+          view.immediate_type==word->type && view.immediate_bits==word->bits &&
+          view.immediate_is_negative==word->is_negative && view.integer_source_bits==word->integer_source_bits;
+    else valid=false;
+    mirrors=mirrors && valid;
+  }
+  return original_operands(descriptors,fields,views,compatibility,context,matrix);
+}
+#undef SCALAR_MM_PARAMETERS
+}  // namespace ptx_frontend::resolved_ir::scalar_mm_generated
+#endif
 
 namespace {
 namespace ir = ptx_frontend::resolved_ir;
@@ -234,10 +282,175 @@ bool checkInstalledNamedValueRoots() {
   }
   return true;
 }
+/** Borrow one of the three migrated scalar packed members from its live owner. */
+const ptx_frontend::WithLocs<ir::RegOrImm>& installedScalarPackedSource(const ir::Instruction& instruction) {
+  if (const auto* form = dynamic_cast<const ir::MultimemStFloatPackedNoneScalarDefaultWeak*>(&instruction)) return form->src;
+  if (const auto* form = dynamic_cast<const ir::MultimemStFloatPackedNoneScalarDefaultOrdered*>(&instruction)) return form->src;
+  return dynamic_cast<const ir::MultimemRedFloatPackedAddScalarDefaultRed&>(instruction).src;
+}
+
+/** Read the existing selected logical modifier without any opcode-dependent interpretation. */
+ir::ScalarType installedScalarPackedType(const ir::Instruction& instruction) {
+  if (const auto* form = dynamic_cast<const ir::MultimemStFloatPackedNoneScalarDefaultWeak*>(&instruction)) return form->type.value;
+  if (const auto* form = dynamic_cast<const ir::MultimemStFloatPackedNoneScalarDefaultOrdered*>(&instruction)) return form->type.value;
+  return dynamic_cast<const ir::MultimemRedFloatPackedAddScalarDefaultRed&>(instruction).type.value;
+}
+
+/** Synchronously inspect the real scalar source address and location storage. */
+struct InstalledScalarPackedObserver final : ir::detail::IReferenceObserver {
+  /** Borrowed actual member; the instruction outlives this single traversal. */
+  const ptx_frontend::WithLocs<ir::RegOrImm>& owner;
+  /** Selected logical owner type, independent of callback payload storage. */
+  ir::ScalarType logical;
+  /** Number of callbacks for the exact member, without retaining callback payloads. */
+  size_t calls = 0;
+  /** Whether every copied range comparison matched while callback storage was live. */
+  bool valid = true;
+  /** Bind a live owner for the synchronous visit. */
+  InstalledScalarPackedObserver(const ptx_frontend::WithLocs<ir::RegOrImm>& source,ir::ScalarType selected)
+      : owner(source),logical(selected) {}
+  /** Compare real owner and range mirrors without constructing an observer surrogate. */
+  void reg_or_imm(const ir::RegOrImm& value, std::span<const ptx_frontend::SourceRange> ranges,
+                 ir::checker::AddressSymbolResolutionPolicy) override {
+    if (&value != &owner.value) return;
+    ++calls;
+    valid = valid && ranges.size() == owner.locs.size() && ranges.data()==owner.locs.data();
+    if (const auto* word=std::get_if<ir::ResolvedImmediate>(&value))
+      valid=valid && word->type==logical && word->bits<=0xffffffffu && !word->integer_source_bits && !word->is_negative;
+    else if (const auto* ref=std::get_if<ir::ResolvedRegisterRef>(&value))
+      valid=valid && ref->symbol_id.has_value() && ref->declared_type==ir::ScalarType::B32;
+    else valid=false;
+    if (!valid) return;
+    for (size_t index = 0; index < ranges.size(); ++index)
+      valid = valid && ranges[index] == owner.locs[index];
+  }
+};
+
+/** Exercise all six scalar type branches with actual installed register/immediate members. */
+bool checkInstalledScalarPackedMultimem() {
+  static_assert(std::same_as<decltype(ir::MultimemStFloatPackedNoneScalarDefaultWeak{}.src.value), ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::MultimemStFloatPackedNoneScalarDefaultOrdered{}.src.value), ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::MultimemRedFloatPackedAddScalarDefaultRed{}.src.value), ir::RegOrImm>);
+  static_assert(std::default_initializable<ir::MultimemStFloatPackedNoneScalarDefaultWeak> &&
+                std::default_initializable<ir::MultimemStFloatPackedNoneScalarDefaultOrdered> &&
+                std::default_initializable<ir::MultimemRedFloatPackedAddScalarDefaultRed>);
+  static_assert(std::copy_constructible<ir::MultimemStFloatPackedNoneScalarDefaultWeak> &&
+                std::copy_constructible<ir::MultimemStFloatPackedNoneScalarDefaultOrdered> &&
+                std::copy_constructible<ir::MultimemRedFloatPackedAddScalarDefaultRed>);
+  /** Report the actual installed fixture contract that failed. */
+  const auto require = [](bool condition, std::string_view contract) {
+    if (!condition) std::cerr << "scalar packed multimem consumer: " << contract << '\n';
+    return condition;
+  };
+  constexpr std::array patterns{
+      "multimem.st.weak.@ [mm],$;", "multimem.st.release.gpu.@ [mm],$;",
+      "multimem.red.relaxed.gpu.add.@ [mm],$;"};
+  constexpr std::array kinds{ir::MultimemStFloatPackedNoneScalarDefaultWeak::kind,
+      ir::MultimemStFloatPackedNoneScalarDefaultOrdered::kind,
+      ir::MultimemRedFloatPackedAddScalarDefaultRed::kind};
+  std::optional<ir::ResolvedModule> owned;
+  {
+    std::string source = ".version 9.3\n.target sm_90\n.address_size 64\n"
+                         ".global .align 16 .b8 mm[256];\n.entry kernel(){ .reg .b32 b; ";
+    for (const auto pattern : patterns)
+      for (const bool bf : {false, true})
+        for (const bool immediate : {false, true}) {
+          std::string operation(pattern);
+          operation.replace(operation.find('@'), 1, bf ? "bf16x2" : "f16x2");
+          operation.replace(operation.find('$'), 1, immediate ? (bf ? "0f3fc03fc0" : "0f3e003e00") : "b");
+          source += operation;
+        }
+    source += "}";
+    ptx_frontend::PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "complete source parses") ||
+        !require(ast.diagnostics.empty(), "parser diagnostics are empty")) return false;
+    auto result = ir::resolveAndValidateModule(*ast);
+    if (!require(result.has_value(), "all six branches strictly resolve") ||
+        !require(ir::validateModule(*ast, *result).has_value(), "provided AST association validates")) return false;
+    owned.emplace(std::move(*result));
+  }
+  if (!require(owned && owned->functions.size() == 1, "owned function survives source/AST death") ||
+      !require(owned->functions.front().body.size() == 12, "all six register/immediate pairs are owned")) return false;
+  for (size_t index = 0; index < 12; ++index) {
+    const auto& pointer = owned->functions.front().body[index];
+    if (!require(pointer != nullptr, "actual instruction exists")) return false;
+    const auto& instruction = *pointer;
+    if (!require(instruction.instruction_kind() == kinds[index / 4], "existing exact final class selected")) return false;
+    const bool bf = (index / 2) % 2 != 0;
+    const auto type = bf ? ir::ScalarType::BF16x2 : ir::ScalarType::F16x2;
+    if (!require(installedScalarPackedType(instruction) == type, "existing type modifier preserved")) return false;
+    const auto& source = installedScalarPackedSource(instruction);
+    if (!require(!source.locs.empty(), "owned source range retained")) return false;
+    if (index % 2 != 0) {
+      const auto* immediate = std::get_if<ir::ResolvedImmediate>(&source.value);
+      if (!require(immediate && immediate->type == type &&
+                       immediate->bits == (bf ? 0x3fc03fc0u : 0x3e003e00u) &&
+                       !immediate->integer_source_bits && !immediate->is_negative,
+                   "exact packed word/type/origin flags")) return false;
+    } else {
+      const auto* reg = std::get_if<ir::ResolvedRegisterRef>(&source.value);
+      if (!require(reg && reg->symbol_id && reg->declared_type == ir::ScalarType::B32,
+                   "existing actual B32 register carrier")) return false;
+    }
+#ifdef PTX_SCALAR_MM_CAPTURE_GENERATED_VIEWS
+    const auto profile=ptx_frontend::base::find_target_profile("sm_90");
+    if (!profile) return false;
+    const ir::checker::Context context{.target={.ptx_version={9,3},
+        .sm_version=profile->identity.architecture.number,.enabled_family_features=profile->enabled_family_features,
+        .identity=profile->identity,.capabilities=profile->capabilities}};
+    const auto before=ir::scalar_mm_generated::observed;ir::scalar_mm_generated::mirrors=true;
+    ir::scalar_mm_generated::logical=type;ir::scalar_mm_generated::expected=&source;
+    const auto checked=instruction.check(context);ir::scalar_mm_generated::expected=nullptr;
+    if (!checked || !ir::scalar_mm_generated::mirrors || ir::scalar_mm_generated::observed!=before+1) return false;
+#endif
+    {
+      std::string operation(patterns[index/4]);
+      operation.replace(operation.find('@'),1,bf?"bf16x2":"f16x2");
+      operation.replace(operation.find('$'),1,index%2?(bf?"0f3fc03fc0":"0f3e003e00"):"%b0");
+      operation.replace(operation.find("[mm]"),4,"[%rd0]");
+    ptx_frontend::PtxSyntaxParser factory_parser(operation);
+      const auto syntax=factory_parser.parseInstruction();
+      if (!syntax || !syntax.diagnostics.empty()) return false;
+      const auto factory=ir::resolveInstruction(*syntax);
+      if (!factory || !*factory || (*factory)->instruction_kind()!=kinds[index/4]) return false;
+      const auto& factory_source=installedScalarPackedSource(**factory);
+      if (index%2) {
+        const auto* word=std::get_if<ir::ResolvedImmediate>(&factory_source.value);
+        if (!word || word->type!=type || word->bits!=(bf?0x3fc03fc0u:0x3e003e00u)) return false;
+      } else if (!std::get_if<ir::ResolvedRegisterRef>(&factory_source.value)) return false;
+    }
+    InstalledScalarPackedObserver observer(source,type);
+    instruction.visit_references(observer);
+    if (!require(observer.calls == 1 && observer.valid, "observer saw the actual member and ranges")) return false;
+    const auto clone = instruction.clone();
+    if (!require(clone && clone->instruction_kind() == instruction.instruction_kind() &&
+                     installedScalarPackedSource(*clone) == source,
+                 "exact-class clone preserves migrated member")) return false;
+#ifdef PTX_SCALAR_MM_CAPTURE_GENERATED_VIEWS
+    const auto& cloned_source=installedScalarPackedSource(*clone);
+    const auto clone_before=ir::scalar_mm_generated::observed;ir::scalar_mm_generated::expected=&cloned_source;
+    const auto clone_check=clone->check(context);ir::scalar_mm_generated::expected=nullptr;
+    if (!clone_check || !ir::scalar_mm_generated::mirrors || ir::scalar_mm_generated::observed!=clone_before+1) return false;
+#endif
+  }
+  auto copied = *owned;
+  ir::ResolvedModule assigned;
+  assigned = copied;
+  ir::ResolvedFunction function=copied.functions.front(),function_assigned;
+  function_assigned=function;
+  assigned.functions.front()=function_assigned;
+  owned.reset();
+  return require(ir::validateModule(copied).has_value(), "copied module validates after producer death") &&
+         require(ir::validateModule(assigned).has_value(), "assigned module validates after producer death");
+}
+
 }  // namespace
 
 /** Verify installed multimem form and completion contracts without GPU execution. */
 int main() {
+  if (!checkInstalledScalarPackedMultimem())
+    return 10;
   using namespace ptx_frontend::resolved_ir;
   std::optional<ResolvedModule> module;
   {

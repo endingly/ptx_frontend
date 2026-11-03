@@ -71,7 +71,7 @@ and operator-based exact-word sources retain their existing restrictions.
 Decimal, `0d` and floating-expression packed constructors remain unsupported:
 the one-number-to-four-values mapping is reference-qualified, not a blanket
 manual ban on floating literals. Broader packed source permissions are separate
-from this four-branch origin repair. The six adjacent scalar `f16x2/bf16x2` source branches remain register-only;
+from this four-branch origin repair. The six adjacent scalar `f16x2/bf16x2` source branches also admit the existing bare unsigned direct `0f` whole-word producer;
 the nine selected floating vector source fields follow the value-vector contract below.
 Load destinations remain registers.
 
@@ -121,4 +121,37 @@ All64 selected type branches have typed value carriers. Exactly32 have one-value
 
 Mixed braces may contain registers and immediates. The50 v2/v4 named branches retain actual General whole-base declaration identity, exact NamedProjection lanes, element SameWidth and the16-byte declaration cap. The14 v8 branches remain brace-only; the existing128-element projection buffer and256-bit generic capacity are unchanged, and this cohort needs at most8 lanes/128 bits. Immediate projection is not a user sink. Synchronous observers receive actual payloads and all lane ranges, including lane8, and must not retain callback references. Copies/assignments/clones reacquire views from their own owners.
 
-Ordinary typed words require the selected logical type, in-width bits and absent integer-origin/negative flags; coherent current edits do not replay erased floating source history. Current payload/pointer/range/provenance checks and retained source-identity checks remain independent. Address alignment, selected type/modifier/target gates and incomplete-context deferral still apply. This contract does not widen the six scalar packed branches, atomic inputs, packed numeric constructors or load destinations, and makes no runtime multimem mapping or GPU execution claim. Current generation, Debug, fresh installed public-consumer and independent actual-diff evidence remain required before delivery completion.
+Ordinary typed words require the selected logical type, in-width bits and absent integer-origin/negative flags; coherent current edits do not replay erased floating source history. Current payload/pointer/range/provenance checks and retained source-identity checks remain independent. Address alignment, selected type/modifier/target gates and incomplete-context deferral still apply. The vector contract remains separate from scalar packed source permission and does not widen atomic inputs, packed numeric constructors or load destinations, and makes no runtime multimem mapping or GPU execution claim. Current generation, Debug, fresh installed public-consumer and independent actual-diff evidence remain required before delivery completion.
+
+### Scalar packed32 source members
+
+The existing classes `MultimemStFloatPackedNoneScalarDefaultWeak`,
+`MultimemStFloatPackedNoneScalarDefaultOrdered` and
+`MultimemRedFloatPackedAddScalarDefaultRed` expose `src` as
+`WithLocs<RegOrImm>`. Consumers must rebuild with matching installed headers and
+libraries and inspect `.value` with `std::get_if<ResolvedRegisterRef>` or
+`std::get_if<ResolvedImmediate>`. These are three changed source fields, each
+retaining the existing `modifier(type)` domain F16x2/BF16x2 and SameWidth policy.
+Variant identities, member names, controls, address/global/alignment and target
+contracts remain; the nine prior ValueVector source fields retain their API.
+
+Each of the six branches admits a bare unsigned direct `0f` packed32 word through
+the existing shared helper. All 32 bits are data, including encoded sign and
+signaling/quiet NaN-looking patterns: no quantization, splat or NaN quieting occurs.
+F16x2 retains ordinary B32/native F16x2 register carriers; BF16x2 retains B32.
+Existing scalar component provenance rules remain. No whole vector or new tuple
+source is granted. Integer-origin literals/results, unary signs, parentheses,
+operators, decimal/F64 packed constructors, numeric pairs and implicit packing
+remain excluded. There is no low-word `0d` truncation or new lexical format.
+
+The source converter produces the selected logical packed type. Canonical current-word
+positives use that type, at most 32 bits, absent integer origin (optional zero is still
+present) and `is_negative=false`. Existing current Bit-carrier compatibility remains
+unchanged; these examples do not narrow inherited `SameWidth` policy or establish a
+new B32 rule. Canonical current-word edits do not authenticate erased producer history. Copy/assignment/
+clone and AST-free checks retain actual member/range/provenance; supplied AST
+association independently checks retained syntax identity. Synchronous observers
+borrow the real owner only during traversal. The frontend does not execute
+multimem mappings, stores, reductions, ordering or GPU behavior.
+
+The scalar packed tests establish selected logical F16x2/BF16x2 canonical words. Compatibility of a Bit-typed B32 **current** word is a separate inherited-policy question and remains unproved here; scalar F16 Bit16 controls do not decide it. This qualification grants no additional source literal or constructor.

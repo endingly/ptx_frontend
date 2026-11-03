@@ -1752,3 +1752,32 @@ availability，不执行 atomic update、memory ordering、cache 行为或 BF16 
 使用 `std::get_if<ResolvedRegisterRef>(&form.src.value)` 或 `std::get_if<ResolvedImmediate>(&form.src.value)`，读取实际 alternative。BF16x2 source 使用逻辑 BF16x2 / `SameWidth`，允许的声明寄存器仍是 B32；BF16x2 目标保留 B32 / `Exact`。Native F16x2 source 保留 F16x2/B32 兼容性。B64 cache-policy 寄存器、地址/target/modifier 规则、声明 guard 和 component 来源彼此独立。
 
 只有裸写、无符号、直接 `0f` 可以产生 packed word；全部 32 位（包括符号和 NaN）原样保留。Numeric pair/splat、新 `0h` 与截断 `0d` producer 为 Source_N_A / reference-qualified。源码 converter 产生选中的逻辑 packed 类型。Canonical 低 32 位 F16x2/BF16x2 current-word 正例在没有 integer origin 且 floating-negative metadata 为 false 时无需 lexical history 即可合法。既有 current Bit-carrier 兼容性保持不变；这些示例不收窄继承的 `SameWidth` 策略，也不制定新的 B32 规则。副本、赋值与 clone 拥有自己的 word、SymbolId 和位置。借用的 `OperandView` 与同步 `reg_or_imm` observer 值必须指向当前 owner；callback 不得保留这些值，也不得修改或重入 owner。Source/AST 生命周期和传入源码 identity 分别核对。参见 [atomic 覆盖](converage/atomic_reduction_coverage.md#packed32-source-words-and-member-migration)；本 payload 迁移不证明运行时 atomic 行为或 numeric packed construction。
+
+### 标量 packed32 源成员
+
+既有类 `MultimemStFloatPackedNoneScalarDefaultWeak`、
+`MultimemStFloatPackedNoneScalarDefaultOrdered` 与
+`MultimemRedFloatPackedAddScalarDefaultRed` 的 `src` 使用
+`WithLocs<RegOrImm>`。Consumer 须以匹配的 installed header/library 重建，并对
+`.value` 使用 `std::get_if<ResolvedRegisterRef>` 或 `std::get_if<ResolvedImmediate>`。
+仅有三个源字段变化；各自保留既有 `modifier(type)` 的 F16x2/BF16x2 domain 与
+SameWidth。Variant identity、成员名、control、address/global/alignment、target
+契约保持不变，先前九个 ValueVector 源字段的 API 也保持不变。
+
+六个分支均通过既有 shared helper 接受裸 unsigned 直接 `0f` packed32 word。
+全部 32 位都是数据，包括 encoded sign、signaling/quiet NaN-looking pattern；
+不量化、splat 或 quiet NaN。F16x2 保留普通 B32/native F16x2 register carrier，
+BF16x2 保留 B32。既有 scalar component provenance 规则仍适用，不授权整体向量
+或新 tuple source。Integer-origin literal/result、unary sign、括号、operator、
+decimal/F64 packed constructor、numeric pair 和隐式 packing 仍被排除；不增加
+`0d` 低位截断或新 lexical format。
+
+源码 converter 产生选中的逻辑 packed 类型。Canonical current-word 正例使用该类型、
+最多 32 位、没有 integer origin（optional zero 仍是 present）且 `is_negative=false`。
+既有 current Bit-carrier 兼容性保持不变；这些示例不收窄继承的 `SameWidth` 策略，
+也不制定新的 B32 规则。Canonical current-word 修改不认证已擦除的 producer history。Copy/assignment/clone 与 AST-free 检查保留实际成员、范围及
+provenance；supplied AST association 独立核对 retained syntax identity。同步
+observer 仅在 traversal 中借用真实 owner。前端不执行 multimem mapping、store、
+reduction、ordering 或 GPU 行为。
+
+Scalar packed 检查针对选定逻辑 F16x2/BF16x2 的 canonical word。Bit 类型 B32 **current** word 的兼容性是独立的继承策略问题，此处仍未证明；标量 F16 Bit16 控制不能决定该问题。本限定不增加 source literal 或 constructor 权限。

@@ -57,7 +57,7 @@ reduction 输入接受寄存器或在使用处窄转换的整数字面量；`f32
 源码拼写。带符号、包装或 operator 的 exact-word 来源保留既有约束。十进制、`0d`
 及浮点表达式 packed constructor 仍不支持：一个数到四个值的映射仍是 reference-qualified
 边界，并非手册全面禁止浮点字面量。更广 packed source 权限与此四分支 origin 修复分开。
-六个相邻标量 `f16x2/bf16x2` source 分支仍限 register；九个所选浮点 vector source 字段
+六个相邻标量 `f16x2/bf16x2` source 分支也接受既有裸 unsigned 直接 `0f` whole-word producer；九个所选浮点 vector source 字段
 遵循下述 value-vector 契约。Load 目标仍限寄存器。
 
 Direct 与 owned 检查保留 SameWidth、global address 和 target/flavor 约束。在适用
@@ -98,4 +98,33 @@ Canonical 清单和负例边界测试见
 
 Mixed brace 可同时含 register 与 immediate。50个 v2/v4 named 分支保留真实 General whole-base declaration identity、精确 NamedProjection lane、element SameWidth 及16字节 declaration 上限。14个 v8 分支仍仅接受 brace；既有128-element projection buffer 与256-bit generic capacity 不变，本 cohort 至多需要8 lane／128 bit。Immediate projection 不是 user sink。同步 observer 接收实际 payload 与全部 lane range（包括第8 lane），不得保留 callback reference。Copy／assignment／clone 必须从自身 owner 重新取得 view。
 
-普通 typed word 要求所选 logical type、位宽内 bits，且没有 integer-origin／negative flag；一致的当前字修改不重放已擦除的浮点 source history。当前 payload／pointer／range／provenance 检查与保留的 source identity 检查彼此独立。Address alignment、所选 type／modifier／target gate 及不完整上下文延期策略仍适用。本契约不扩展六个 scalar packed 分支、atomic input、packed numeric constructor 或 load destination，也不声称 runtime multimem mapping 或 GPU 执行。记录 delivery 完成前仍需 current generation、Debug、fresh installed public consumer 与独立 actual-diff 证据。
+普通 typed word 要求所选 logical type、位宽内 bits，且没有 integer-origin／negative flag；一致的当前字修改不重放已擦除的浮点 source history。当前 payload／pointer／range／provenance 检查与保留的 source identity 检查彼此独立。Address alignment、所选 type／modifier／target gate 及不完整上下文延期策略仍适用。Vector 契约独立于 scalar packed source permission，不扩展 atomic input、packed numeric constructor 或 load destination，也不声称 runtime multimem mapping 或 GPU 执行。记录 delivery 完成前仍需 current generation、Debug、fresh installed public consumer 与独立 actual-diff 证据。
+
+### 标量 packed32 源成员
+
+既有类 `MultimemStFloatPackedNoneScalarDefaultWeak`、
+`MultimemStFloatPackedNoneScalarDefaultOrdered` 与
+`MultimemRedFloatPackedAddScalarDefaultRed` 的 `src` 使用
+`WithLocs<RegOrImm>`。Consumer 须以匹配的 installed header/library 重建，并对
+`.value` 使用 `std::get_if<ResolvedRegisterRef>` 或 `std::get_if<ResolvedImmediate>`。
+仅有三个源字段变化；各自保留既有 `modifier(type)` 的 F16x2/BF16x2 domain 与
+SameWidth。Variant identity、成员名、control、address/global/alignment、target
+契约保持不变，先前九个 ValueVector 源字段的 API 也保持不变。
+
+六个分支均通过既有 shared helper 接受裸 unsigned 直接 `0f` packed32 word。
+全部 32 位都是数据，包括 encoded sign、signaling/quiet NaN-looking pattern；
+不量化、splat 或 quiet NaN。F16x2 保留普通 B32/native F16x2 register carrier，
+BF16x2 保留 B32。既有 scalar component provenance 规则仍适用，不授权整体向量
+或新 tuple source。Integer-origin literal/result、unary sign、括号、operator、
+decimal/F64 packed constructor、numeric pair 和隐式 packing 仍被排除；不增加
+`0d` 低位截断或新 lexical format。
+
+源码 converter 产生选中的逻辑 packed 类型。Canonical current-word 正例使用该类型、
+最多 32 位、没有 integer origin（optional zero 仍是 present）且 `is_negative=false`。
+既有 current Bit-carrier 兼容性保持不变；这些示例不收窄继承的 `SameWidth` 策略，
+也不制定新的 B32 规则。Canonical current-word 修改不认证已擦除的 producer history。Copy/assignment/clone 与 AST-free 检查保留实际成员、范围及
+provenance；supplied AST association 独立核对 retained syntax identity。同步
+observer 仅在 traversal 中借用真实 owner。前端不执行 multimem mapping、store、
+reduction、ordering 或 GPU 行为。
+
+Scalar packed 检查针对选定逻辑 F16x2/BF16x2 的 canonical word。Bit 类型 B32 **current** word 的兼容性是独立的继承策略问题，此处仍未证明；标量 F16 Bit16 控制不能决定该问题。本限定不增加 source literal 或 constructor 权限。

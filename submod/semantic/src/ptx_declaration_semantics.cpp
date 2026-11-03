@@ -21,6 +21,37 @@
 #include <fmt/format.h>
 
 namespace ptx_frontend::declaration_semantics {
+
+/** Share the existing exact-token language decoder across source and owned contracts. */
+std::optional<uint64_t> languageCode(std::string_view spelling) {
+  if (spelling.size() >= 2 && spelling.front() == '"' &&
+      spelling.back() == '"') {
+    std::string name{spelling.substr(1, spelling.size() - 2)};
+    std::ranges::transform(name, name.begin(), [](unsigned char character) {
+      return static_cast<char>(character >= 'A' && character <= 'Z'
+                                   ? character - 'A' + 'a'
+                                   : character);
+    });
+    static constexpr std::array<std::pair<std::string_view, uint64_t>, 9>
+        names = {{{"unknown", 0},
+                  {"ptx", 3},
+                  {"nvvm", 4},
+                  {"cuda c++", 5},
+                  {"cuda c++ tile", 6},
+                  {"tile ir", 7},
+                  {"python-cutile", 8},
+                  {"fortran", 9},
+                  {"optix", 10}}};
+    const auto found = std::ranges::find_if(
+        names, [&name](const std::pair<std::string_view, uint64_t>& entry) {
+          return entry.first == name;
+        });
+    return found == names.end() ? std::nullopt : std::optional{found->second};
+  }
+  const auto code = base::parseIntegerMagnitude(spelling);
+  return code && *code <= 10 ? code : std::nullopt;
+}
+
 namespace {
 
 using syntax_ast::AstConstantBinaryOperator;
@@ -50,6 +81,8 @@ struct ExpressionInfo {
   std::optional<IntegerValue> integer_value;
   /** Concrete binary64 value when the expression is floating and evaluable. */
   std::optional<double> floating_value;
+  /** Lexical precision for direct floating literals; expression results are F64. */
+  base::ScalarType floating_type = base::ScalarType::F64;
 };
 
 using DiagnosticSink = std::vector<DeclarationDiagnostic>*;
@@ -94,31 +127,6 @@ void reportInvalidIntegerLiteral(DiagnosticSink diagnostics,
 
 std::optional<uint64_t> unsignedIntegerLiteral(std::string_view spelling) {
   return base::parseIntegerMagnitude(spelling);
-}
-
-std::optional<uint64_t> languageCode(std::string_view spelling) {
-  if (spelling.size() >= 2 && spelling.front() == '"' &&
-      spelling.back() == '"') {
-    std::string name{spelling.substr(1, spelling.size() - 2)};
-    std::ranges::transform(name, name.begin(), [](unsigned char character) {
-      return static_cast<char>(std::tolower(character));
-    });
-    static constexpr std::array<std::pair<std::string_view, uint64_t>, 9>
-        names = {{{"unknown", 0},
-                  {"ptx", 3},
-                  {"nvvm", 4},
-                  {"cuda c++", 5},
-                  {"cuda c++ tile", 6},
-                  {"tile ir", 7},
-                  {"python-cutile", 8},
-                  {"fortran", 9},
-                  {"optix", 10}}};
-    const auto found = std::ranges::find_if(
-        names, [&name](const auto& entry) { return entry.first == name; });
-    return found == names.end() ? std::nullopt : std::optional{found->second};
-  }
-  const auto code = unsignedIntegerLiteral(spelling);
-  return code && *code <= 10 ? code : std::nullopt;
 }
 
 int64_t asSigned(ExpressionInfo::IntegerValue value) {
@@ -269,16 +277,40 @@ ExpressionInfo evaluateIntegerBinary(AstConstantBinaryOperator operation,
   return {};
 }
 
+/**
+ * Classify/evaluate one source tree; direct F32 permission is limited to its root.
+ * Operator operands always use expression rules, including unselected branches.
+ */
 ExpressionInfo classifyExpression(
     const AstConstantExpression& expression, DiagnosticSink diagnostics,
-    ConstantEvaluationDiagnostic* failure = nullptr);
+    ConstantEvaluationDiagnostic* failure = nullptr,
+    bool allow_direct_f32 = false);
+
+/** Promote mixed numeric operands to binary64 while preserving integer signedness. */
+void promoteFloatingOperands(ExpressionInfo& left, ExpressionInfo& right) {
+  const auto promote = [](ExpressionInfo& value) {
+    if (value.integer_value) {
+      value.floating_value =
+          value.integer_value->type == ExpressionInfo::IntegerType::Unsigned
+              ? static_cast<double>(value.integer_value->bits)
+              : static_cast<double>(asSigned(*value.integer_value));
+    }
+    value.integer_value.reset();
+    value.category = ExpressionCategory::Floating;
+  };
+  if (left.category == ExpressionCategory::Floating &&
+      right.category == ExpressionCategory::Integer)
+    promote(right);
+  else if (right.category == ExpressionCategory::Floating &&
+           left.category == ExpressionCategory::Integer)
+    promote(left);
+}
 
 ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary,
                               DiagnosticSink diagnostics,
                               ConstantEvaluationDiagnostic* failure) {
-  const ExpressionInfo left =
-      classifyExpression(*binary.left, diagnostics, failure);
-  const ExpressionInfo right =
+  ExpressionInfo left = classifyExpression(*binary.left, diagnostics, failure);
+  ExpressionInfo right =
       classifyExpression(*binary.right, diagnostics, failure);
   using Operator = AstConstantBinaryOperator;
 
@@ -306,6 +338,8 @@ ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary,
       right.category == ExpressionCategory::Address) {
     return {ExpressionCategory::Integer, std::nullopt};
   }
+
+  promoteFloatingOperands(left, right);
 
   if (left.category != right.category ||
       (left.category != ExpressionCategory::Integer &&
@@ -396,9 +430,11 @@ ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary,
 
 ExpressionInfo classifyExpression(const AstConstantExpression& expression,
                                   DiagnosticSink diagnostics,
-                                  ConstantEvaluationDiagnostic* failure) {
+                                  ConstantEvaluationDiagnostic* failure,
+                                  bool allow_direct_f32) {
   const auto result = std::visit(
-      [diagnostics, failure](const auto& value) -> ExpressionInfo {
+      [diagnostics, failure,
+       allow_direct_f32](const auto& value) -> ExpressionInfo {
         using Value = std::remove_cvref_t<decltype(value)>;
         if constexpr (std::same_as<Value, syntax_ast::AstConstantLiteral>) {
           switch (value.value.kind) {
@@ -424,25 +460,35 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
                           .type = ExpressionInfo::IntegerType::Signed,
                       }};
             case syntax_ast::AstImmediateKind::F32Hex:
+              if (allow_direct_f32 &&
+                  !value.value.syntax.text.starts_with('+') &&
+                  !value.value.syntax.text.starts_with('-'))
+                return {ExpressionCategory::Floating, std::nullopt,
+                        std::nullopt, base::ScalarType::F32};
               if (failure) {
                 if (failure->message.empty() || failure->deferred)
                   *failure = {value.value.syntax.range,
                               "Exact single-precision bit patterns cannot "
                               "participate in constant expressions.",
                               false};
-                return {};
               }
-              return {ExpressionCategory::Floating, std::nullopt};
+              return {};
             case syntax_ast::AstImmediateKind::F64Hex: {
               uint64_t bits{};
-              const auto& text = value.value.syntax.text;
+              std::string_view text = value.value.syntax.text;
+              const bool negative = text.starts_with('-');
+              if (negative || text.starts_with('+'))
+                text.remove_prefix(1);
+              if (text.size() < 2)
+                return {};
               const auto parsed = std::from_chars(
                   text.data() + 2, text.data() + text.size(), bits, 16);
               if (parsed.ec != std::errc{} ||
                   parsed.ptr != text.data() + text.size())
                 return {};
+              const double number = std::bit_cast<double>(bits);
               return {ExpressionCategory::Floating, std::nullopt,
-                      std::bit_cast<double>(bits)};
+                      negative ? -number : number};
             }
             case syntax_ast::AstImmediateKind::DecimalFloat: {
               double number{};
@@ -483,8 +529,7 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
           }
           const auto* mask =
               std::get_if<syntax_ast::AstConstantLiteral>(&value.callee->node);
-          if (mask != nullptr &&
-              mask->value.kind == syntax_ast::AstImmediateKind::HexInteger) {
+          if (mask != nullptr && callee.integer_value) {
             if (callee.category == ExpressionCategory::Integer &&
                 (argument.category == ExpressionCategory::Integer ||
                  argument.category == ExpressionCategory::Address)) {
@@ -548,6 +593,7 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
               classifyExpression(*value.true_expression, diagnostics, failure);
           ExpressionInfo false_value =
               classifyExpression(*value.false_expression, diagnostics, failure);
+          promoteFloatingOperands(true_value, false_value);
           if (condition.category != ExpressionCategory::Integer ||
               true_value.category != false_value.category) {
             return {};
@@ -745,7 +791,8 @@ parameterPointedStateSpace(
 NormalizedNumericValue parameterArrayExtentContract(
     const AstConstantExpression& expression) {
   const ExpressionInfo value = classifyExpression(expression, nullptr);
-  if (const auto extent = nonnegativeIntegerValue(value))
+  if (const auto extent = nonnegativeIntegerValue(value);
+      extent && *extent != 0)
     return *extent;
   return InvalidStructuralKey{expressionKey(expression)};
 }
@@ -777,6 +824,12 @@ FunctionParameterContract parameterContract(
       scalar != base::ScalarType::Invalid
           ? std::optional<uint64_t>{base::scalar_size_of(scalar) * lanes}
           : std::nullopt;
+  std::vector<std::optional<NormalizedNumericValue>> extents;
+  for (const auto& dimension : parameter.array_dimensions)
+    extents.push_back(
+        dimension.size
+            ? std::optional{parameterArrayExtentContract(*dimension.size)}
+            : std::nullopt);
   return {
       .state_space = parameterStateSpace(parameter.state_space),
       .alignment =
@@ -791,11 +844,7 @@ FunctionParameterContract parameterContract(
       .pointer_alignment = parameterAlignmentContract(
           parameter.pointer_alignment,
           parameter.is_pointer ? std::optional<uint64_t>{4} : std::nullopt),
-      .is_array = parameter.is_array,
-      .array_extent = parameter.array_size
-                          ? std::optional{parameterArrayExtentContract(
-                                *parameter.array_size)}
-                          : std::nullopt,
+      .array_extents = std::move(extents),
   };
 }
 
@@ -865,8 +914,8 @@ bool isOpaqueObjectType(std::string_view type) {
   return base::opaque_resource_kind(type).has_value();
 }
 
-bool initializerTypeAccepts(std::string_view type,
-                            ExpressionCategory category) {
+bool initializerTypeAccepts(std::string_view type, const ExpressionInfo& info) {
+  const auto category = info.category;
   if (category == ExpressionCategory::Address)
     return type == ".u32" || type == ".u64";
   if (category == ExpressionCategory::Integer) {
@@ -874,6 +923,11 @@ bool initializerTypeAccepts(std::string_view type,
            type.starts_with(".b") || type == ".pred";
   }
   if (category == ExpressionCategory::Floating) {
+    const auto* destination = base::find_scalar_type_metadata(type);
+    if (destination && destination->kind == base::ScalarKind::Bit)
+      return base::scalar_types_compatible(
+          destination->type, info.floating_type,
+          base::ScalarTypeSizePolicy::SameWidth);
     return type.starts_with(".f") || type.starts_with(".bf") ||
            type.starts_with(".tf") || type.starts_with(".e");
   }
@@ -892,6 +946,7 @@ class Checker {
     checkKernelResources(module);
     checkM11Directives(module);
     checkCommonLinkage(module);
+    checkWeakLinkage(module, module_version);
     std::optional<uint32_t> active_target;
     for (const auto& item : module.items) {
       if (const auto* target =
@@ -918,17 +973,17 @@ class Checker {
         checkIdentifier(function->name);
         checkFunctionParameters(*function, module_version, context->target_sm);
         checkFunctionBodyDeclarations(function->body, module_version,
-                                      context->target_sm);
+                                      context->target_sm, function->is_entry);
       } else if (const auto* alias =
                      std::get_if<syntax_ast::AstAliasDirective>(&item)) {
         checkIdentifier(alias->alias);
       } else if (const auto* section =
                      std::get_if<syntax_ast::AstSectionDirective>(&item);
                  section && section->name.text == ".debug_str") {
-        for (size_t index = 0; index + 1 < section->payload.size(); ++index)
-          if (section->payload[index + 1].text == ":")
-            checkIdentifier(
-                syntax_ast::AstIdentifierRef{section->payload[index]});
+        for (const auto& entry : section->payload)
+          if (const auto* label =
+                  std::get_if<syntax_ast::AstSectionLabelDefinition>(&entry))
+            checkIdentifier(syntax_ast::AstIdentifierRef{label->name});
       }
     }
     return std::move(diagnostics_);
@@ -1167,6 +1222,7 @@ class Checker {
   static PtxVersion minimumPtxVersion(syntax_ast::AstKernelResourceKind kind) {
     switch (kind) {
       case syntax_ast::AstKernelResourceKind::MaxNreg:
+      case syntax_ast::AstKernelResourceKind::MaxNctaPerSm:
       case syntax_ast::AstKernelResourceKind::MaxNtid:
         return {1, 3};
       case syntax_ast::AstKernelResourceKind::ReqNtid:
@@ -1192,6 +1248,8 @@ class Checker {
         return ".reqntid";
       case syntax_ast::AstKernelResourceKind::MinNctaPerSm:
         return ".minnctapersm";
+      case syntax_ast::AstKernelResourceKind::MaxNctaPerSm:
+        return ".maxnctapersm";
       case syntax_ast::AstKernelResourceKind::ReqNctaPerCluster:
         return ".reqnctapercluster";
       case syntax_ast::AstKernelResourceKind::ExplicitCluster:
@@ -1310,7 +1368,9 @@ class Checker {
     if (target.targets.empty())
       return std::nullopt;
     const auto profile = base::find_target_profile(target.targets.front().text);
-    return profile ? std::optional{profile->identity.architecture.number}
+    return profile ? std::optional{base::target_feature_architecture(
+                                       profile->identity)
+                                       .number}
                    : std::nullopt;
   }
 
@@ -1379,6 +1439,27 @@ class Checker {
       if (!unsignedIntegerLiteral(value.text)) {
         reportInvalidIntegerLiteral(&diagnostics_, value.text, value.range);
       }
+    }
+  }
+
+  /** Check each typed source occurrence, never a canonical symbol's first qualifier. */
+  void checkWeakLinkage(const syntax_ast::AstModule& module,
+                        std::optional<PtxVersion> version) {
+    const auto check =
+        [&](const std::vector<syntax_ast::AstSyntax>& qualifiers) {
+          if (declarationLinkage(qualifiers) != binding::SymbolLinkage::Weak)
+            return;
+          for (const auto& qualifier : qualifiers)
+            if (qualifier.text == ".weak")
+              requirePtx(version, {3, 1}, qualifier.range, ".weak");
+        };
+    for (const auto& item : module.items) {
+      if (const auto* declaration =
+              std::get_if<syntax_ast::AstVariableDeclaration>(&item))
+        check(declaration->qualifiers);
+      else if (const auto* function =
+                   std::get_if<syntax_ast::AstFunction>(&item))
+        check(function->qualifiers);
     }
   }
 
@@ -1775,21 +1856,26 @@ class Checker {
            context == ParameterContext::CallPrototypeInput;
   }
 
-  /** Return a static scalar or one-dimensional array byte count when known. */
+  /** Check all known axes and derive bytes, retaining unknown outer extent. */
   static std::optional<uint64_t> parameterByteExtent(
-      base::ScalarType type, bool is_array,
-      const std::optional<AstConstantExpression>& array_size) {
-    const uint64_t scalar_bytes = base::scalar_size_of(type);
-    if (scalar_bytes == 0 || (is_array && !array_size))
+      base::ScalarType type, uint32_t lanes,
+      std::span<const syntax_ast::AstArrayDimension> dimensions) {
+    uint64_t bytes = base::scalar_size_of(type) * lanes;
+    bool unknown = false;
+    if (bytes == 0)
       return std::nullopt;
-    if (!is_array)
-      return scalar_bytes;
-    const auto extent = constantArrayExtent(*array_size);
-    if (!extent || *extent == 0 ||
-        scalar_bytes > std::numeric_limits<uint64_t>::max() / *extent) {
-      return std::nullopt;
+    for (const auto& dimension : dimensions) {
+      if (!dimension.size) {
+        unknown = true;
+        continue;
+      }
+      const auto extent = constantArrayExtent(*dimension.size);
+      if (!extent || *extent == 0 ||
+          bytes > std::numeric_limits<uint64_t>::max() / *extent)
+        return std::nullopt;
+      bytes *= *extent;
     }
-    return scalar_bytes * *extent;
+    return unknown ? std::nullopt : std::optional<uint64_t>{bytes};
   }
 
   /** Validate type, state space, shape, availability, and pointer attributes. */
@@ -1803,8 +1889,18 @@ class Checker {
       checkIdentifier(parameter.name);
     checkAlignment(parameter.alignment);
     checkAlignment(parameter.pointer_alignment);
-    if (parameter.array_size)
-      checkDimension(*parameter.array_size);
+    const bool is_array = !parameter.array_dimensions.empty();
+    for (std::size_t axis = 0; axis < parameter.array_dimensions.size();
+         ++axis) {
+      const auto& dimension = parameter.array_dimensions[axis];
+      if (dimension.size)
+        checkDimension(*dimension.size);
+      else if (axis != 0)
+        diagnose(DeclarationDiagnosticKind::UnsizedArrayDimension,
+                 dimension.range,
+                 "Only the outermost parameter axis may be unsized.");
+    }
+    const bool unsized = is_array && !parameter.array_dimensions.front().size;
 
     const bool is_parameter =
         parameter.state_space == syntax_ast::AstStateSpace::Parameter;
@@ -1826,7 +1922,7 @@ class Checker {
       const uint64_t lanes =
           shape == call_argument_compatibility::CallArgumentVectorShape::V2 ? 2
                                                                             : 4;
-      if (!is_register || parameter.is_array || parameter.is_pointer ||
+      if ((is_register && is_array) || parameter.is_pointer ||
           shape ==
               call_argument_compatibility::CallArgumentVectorShape::Invalid ||
           !metadata ||
@@ -1836,20 +1932,27 @@ class Checker {
           metadata->size_bytes * lanes > 16) {
         diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                  parameter.range,
-                 "Vector formals require .reg .v2/.v4 non-predicate "
+                 "Vector formals require .v2/.v4 non-predicate "
                  "fundamental elements totaling at most 128 bits.");
         return;
       }
     }
 
     if (const auto opaque = base::opaque_resource_kind(parameter.type.text)) {
+      const auto extent = detail::parameter_array_extent(
+          parameterContract(parameter).array_extents);
+      if (!extent.valid)
+        diagnose(DeclarationDiagnosticKind::InvalidArrayDimension,
+                 parameter.range,
+                 "Opaque parameter dimensions require a representable positive "
+                 "element count.");
       if (context != ParameterContext::EntryInput || !is_parameter ||
           parameter.is_pointer || parameter.pointer_alignment) {
         diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                  parameter.range,
                  "Opaque resource parameters require an .entry input "
                  "without pointer qualifiers.");
-      } else if (parameter.is_array && !parameter.array_size) {
+      } else if (unsized) {
         diagnose(DeclarationDiagnosticKind::UnsizedArrayDimension,
                  parameter.range,
                  "Opaque entry parameter arrays require a positive extent.");
@@ -1860,23 +1963,32 @@ class Checker {
       return;
     }
     const bool predicate = parameter.type.text == ".pred";
-    const bool packed_half_register =
-        parameter.type.text == ".f16x2" && is_register;
     const auto scalar = parameterScalarType(parameter.type.text);
-    if (!scalar && !(predicate && is_register) && !packed_half_register) {
+    if (!scalar && !(predicate && is_register)) {
       diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                parameter.type.range,
                predicate ? ".pred parameters must use .reg state space."
-               : parameter.type.text == ".f16x2"
-                   ? "Fundamental .f16x2 parameter storage is not "
-                     "modeled by this frontend."
-                   : fmt::format("Parameter type '{}' is not a supported "
-                                 "fundamental scalar type.",
-                                 parameter.type.text));
+                         : fmt::format("Parameter type '{}' is not a supported "
+                                       "fundamental scalar type.",
+                                       parameter.type.text));
       return;
     }
 
-    if (parameter.is_array && !is_parameter) {
+    if (is_register && !is_array && module_version &&
+        *module_version >= PtxVersion{2, 0} && module_sm && *module_sm >= 20) {
+      const auto* metadata =
+          base::find_scalar_type_metadata(parameter.type.text);
+      const uint64_t lanes = !parameter.vector_type                 ? 1
+                             : parameter.vector_type->text == ".v2" ? 2
+                                                                    : 4;
+      if (metadata && metadata->size_bytes * lanes < 4)
+        diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+                 parameter.range,
+                 "Register formal total width must be at least 32 bits under "
+                 "the default ABI.");
+    }
+
+    if (is_array && !is_parameter) {
       const bool is_call_prototype =
           context == ParameterContext::CallPrototypeInput ||
           context == ParameterContext::CallPrototypeReturn;
@@ -1890,9 +2002,9 @@ class Checker {
               : "Array parameters must use .param state space.");
       return;
     }
-    if (parameter.is_array && !parameter.array_size) {
+    if (unsized) {
       if (!permitsUnsizedInput(context) || !is_final || !scalar ||
-          *scalar != base::ScalarType::B8) {
+          *scalar != base::ScalarType::B8 || parameter.vector_type) {
         diagnose(DeclarationDiagnosticKind::UnsizedArrayDimension,
                  parameter.range,
                  "Only a final device or call-prototype .param .b8 input may "
@@ -1909,7 +2021,7 @@ class Checker {
     }
     if (parameter.is_pointer) {
       if (context != ParameterContext::EntryInput || !is_parameter || !scalar ||
-          parameter.is_array ||
+          is_array ||
           (*scalar != base::ScalarType::B32 &&
            *scalar != base::ScalarType::B64 &&
            *scalar != base::ScalarType::S32 &&
@@ -1925,13 +2037,35 @@ class Checker {
                                      parameter.range, ".ptr entry parameter");
       }
     }
-    if (scalar && parameter.array_size) {
-      const auto extent = constantArrayExtent(*parameter.array_size);
-      if (extent && *extent != 0 &&
-          !parameterByteExtent(*scalar, true, parameter.array_size)) {
+    if (scalar && is_array) {
+      const auto contract = parameterContract(parameter);
+      const auto extent =
+          detail::parameter_array_extent(contract.array_extents);
+      // Unknown outer axes still require representable known inner byte products.
+      auto known_dimensions = std::span<const syntax_ast::AstArrayDimension>{
+          parameter.array_dimensions};
+      if (unsized)
+        known_dimensions = known_dimensions.subspan(1);
+      if (extent.valid &&
+          !parameterByteExtent(
+              *scalar,
+              parameter.vector_type
+                  ? (parameter.vector_type->text == ".v2" ? 2 : 4)
+                  : 1,
+              known_dimensions)) {
         diagnose(DeclarationDiagnosticKind::StorageExtentOverflow,
-                 parameter.array_size->range,
-                 "Parameter byte extent overflows uint64_t.");
+                 parameter.range, "Parameter byte extent overflows uint64_t.");
+      } else if (!extent.valid) {
+        bool known_positive = true;
+        for (const auto& dimension : parameter.array_dimensions)
+          if (dimension.size) {
+            const auto count = constantArrayExtent(*dimension.size);
+            known_positive &= count && *count != 0;
+          }
+        if (known_positive)
+          diagnose(DeclarationDiagnosticKind::StorageExtentOverflow,
+                   parameter.range,
+                   "Parameter array extent overflows uint64_t.");
       }
     }
   }
@@ -1993,11 +2127,18 @@ class Checker {
     for (const auto& parameter : parameters) {
       if (parameter.state_space != syntax_ast::AstStateSpace::Parameter)
         return;
+      // Name-only opaque inputs contribute no numeric bytes or padding.
+      if (base::opaque_resource_kind(parameter.type.text))
+        continue;
       const auto scalar = parameterScalarType(parameter.type.text);
-      const auto bytes = scalar
-                             ? parameterByteExtent(*scalar, parameter.is_array,
-                                                   parameter.array_size)
-                             : std::nullopt;
+      const auto bytes =
+          scalar ? parameterByteExtent(
+                       *scalar,
+                       parameter.vector_type
+                           ? (parameter.vector_type->text == ".v2" ? 2 : 4)
+                           : 1,
+                       parameter.array_dimensions)
+                 : std::nullopt;
       if (!bytes)
         return;
       if (parameter.alignment && !isValidAlignment(parameter.alignment->text))
@@ -2005,7 +2146,10 @@ class Checker {
       const uint64_t alignment =
           parameter.alignment
               ? positiveCount(parameter.alignment->text).value_or(0)
-              : base::scalar_size_of(*scalar);
+              : base::scalar_size_of(*scalar) *
+                    (parameter.vector_type
+                         ? (parameter.vector_type->text == ".v2" ? 2 : 4)
+                         : 1);
       if (alignment == 0)
         return;
       if (total > std::numeric_limits<uint64_t>::max() - (alignment - 1)) {
@@ -2147,10 +2291,11 @@ class Checker {
     }
   }
 
+  /** Check common body shapes and the entry-specific historical placement window. */
   void checkFunctionBodyDeclarations(
       const std::vector<syntax_ast::AstFunctionBodyItem>& body,
       std::optional<PtxVersion> module_version,
-      std::optional<uint32_t> module_sm) {
+      std::optional<uint32_t> module_sm, bool is_entry) {
     for (const auto& body_item : body) {
       if (const auto* label = std::get_if<syntax_ast::AstLabel>(&body_item))
         checkIdentifier(label->name);
@@ -2169,33 +2314,38 @@ class Checker {
         checkVariableDeclaration(*declaration, module_version);
         checkCommonVariable(*declaration, module_version, module_sm, false);
         if (declaration->state_space == syntax_ast::AstStateSpace::Parameter) {
-          checkBodyParameterDeclaration(*declaration, module_version,
-                                        module_sm);
+          checkBodyParameterDeclaration(*declaration, module_version, module_sm,
+                                        is_entry);
         }
       } else if (const auto* block =
                      std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(
                          &body_item);
                  block != nullptr && *block) {
-        checkFunctionBodyDeclarations((*block)->body, module_version,
-                                      module_sm);
+        checkFunctionBodyDeclarations((*block)->body, module_version, module_sm,
+                                      is_entry);
       }
     }
   }
 
-  /** Validate body-local .param objects without assigning call ABI allocation. */
+  /** Validate body .param shapes and historical entry placement without allocating ABI slots. */
   void checkBodyParameterDeclaration(
       const syntax_ast::AstVariableDeclaration& declaration,
       std::optional<PtxVersion> module_version,
-      std::optional<uint32_t> module_sm) {
-    requireParameterAvailability(module_version, module_sm, {2, 0}, 20,
-                                 declaration.range, "Body-local call .param");
-    if (declaration.vector_type) {
+      std::optional<uint32_t> module_sm, bool is_entry) {
+    const bool legacy =
+        is_entry && module_version && *module_version < PtxVersion{1, 4};
+    if (legacy)
+      requireParameterAvailability(module_version, std::nullopt, {1, 0}, 0,
+                                   declaration.range,
+                                   "Legacy entry input .param");
+    if (is_entry && module_version && *module_version >= PtxVersion{1, 4} &&
+        *module_version < PtxVersion{2, 0})
       diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
-               declaration.vector_type->range,
-               "Vector body-local .param declarations are not modeled by this "
-               "frontend.");
-      return;
-    }
+               declaration.range,
+               "Entry body .param requires PTX ISA < 1.4 or >= 2.0.");
+    else if (!is_entry || (module_version && !legacy))
+      requireParameterAvailability(module_version, module_sm, {2, 0}, 20,
+                                   declaration.range, "Body-local call .param");
     if (isOpaqueObjectType(declaration.type.text)) {
       diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                declaration.type.range,
@@ -2209,12 +2359,23 @@ class Checker {
                declaration.type.range,
                declaration.type.text == ".pred"
                    ? ".pred parameters must use .reg state space."
-               : declaration.type.text == ".f16x2"
-                   ? "Fundamental .f16x2 parameter storage is not "
-                     "modeled by this frontend."
                    : fmt::format("Parameter type '{}' is not a supported "
                                  "fundamental scalar type.",
                                  declaration.type.text));
+      return;
+    }
+    const uint32_t lanes =
+        declaration.vector_type
+            ? (declaration.vector_type->text == ".v2" ? 2 : 4)
+            : 1;
+    if (declaration.vector_type &&
+        ((declaration.vector_type->text != ".v2" &&
+          declaration.vector_type->text != ".v4") ||
+         base::scalar_size_of(*scalar) * lanes > 16)) {
+      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+               declaration.vector_type->range,
+               "Parameter vectors require .v2/.v4 fundamental elements "
+               "totaling at most 128 bits.");
       return;
     }
     for (const auto& declarator : declaration.declarators) {
@@ -2223,17 +2384,10 @@ class Checker {
                  declarator.initializer->range,
                  "Body-local .param declarations cannot have initializers.");
       }
-      if (declarator.parameterized_count) {
-        diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
-                 declarator.parameterized_count->range,
-                 "Parameterized body-local .param declaration groups are not "
-                 "modeled by this frontend.");
-        continue;
-      }
-      uint64_t bytes = base::scalar_size_of(*scalar);
+      uint64_t bytes = base::scalar_size_of(*scalar) * lanes;
       for (const auto& dimension : declarator.array_dimensions) {
         if (!dimension.size) {
-          if (declarator.initializer) {
+          if (legacy || declarator.initializer) {
             diagnose(DeclarationDiagnosticKind::UnsizedArrayDimension,
                      dimension.range,
                      "Body-local .param array dimensions must be sized.");
@@ -2427,14 +2581,14 @@ class Checker {
         return;
       }
       const ExpressionInfo info =
-          classifyExpression(*expression, &diagnostics_);
+          classifyExpression(*expression, &diagnostics_, nullptr, true);
       checkInitializerSymbols(*expression);
       if (info.category == ExpressionCategory::Invalid) {
         diagnose(DeclarationDiagnosticKind::InvalidInitializerExpression,
                  expression->range,
                  "Initializer contains an invalid constant expression.");
       } else if (!isUnsupportedInitializerType(element_type) &&
-                 !initializerTypeAccepts(element_type, info.category)) {
+                 !initializerTypeAccepts(element_type, info)) {
         diagnose(DeclarationDiagnosticKind::InitializerTypeMismatch,
                  expression->range,
                  fmt::format(
@@ -2623,40 +2777,14 @@ std::optional<IntegerConstantValue> constantIntegerValue(
 
 std::optional<base::ScalarType> parameterScalarType(
     std::string_view spelling) noexcept {
-  using base::ScalarType;
-  if (spelling == ".u8")
-    return ScalarType::U8;
-  if (spelling == ".u16")
-    return ScalarType::U16;
-  if (spelling == ".u32")
-    return ScalarType::U32;
-  if (spelling == ".u64")
-    return ScalarType::U64;
-  if (spelling == ".s8")
-    return ScalarType::S8;
-  if (spelling == ".s16")
-    return ScalarType::S16;
-  if (spelling == ".s32")
-    return ScalarType::S32;
-  if (spelling == ".s64")
-    return ScalarType::S64;
-  if (spelling == ".b8")
-    return ScalarType::B8;
-  if (spelling == ".b16")
-    return ScalarType::B16;
-  if (spelling == ".b32")
-    return ScalarType::B32;
-  if (spelling == ".b64")
-    return ScalarType::B64;
-  if (spelling == ".b128")
-    return ScalarType::B128;
-  if (spelling == ".f16")
-    return ScalarType::F16;
-  if (spelling == ".f32")
-    return ScalarType::F32;
-  if (spelling == ".f64")
-    return ScalarType::F64;
-  return std::nullopt;
+  // The declaration registry is the common fundamental/instruction-only boundary.
+  const auto* metadata = base::find_scalar_type_metadata(spelling);
+  if (!metadata ||
+      metadata->register_declaration_usage !=
+          base::ScalarDeclarationUsage::Fundamental ||
+      metadata->type == base::ScalarType::Pred)
+    return std::nullopt;
+  return metadata->type;
 }
 
 std::vector<DeclarationDiagnostic> checkDeclarations(

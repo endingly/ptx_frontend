@@ -17,6 +17,7 @@ ResolvedFunction::ResolvedFunction(const ResolvedFunction& other)
       label_positions(other.label_positions),
       range(other.range),
       parameter_declarations(other.parameter_declarations),
+      opaque_entry_parameters(other.opaque_entry_parameters),
       declaration_scope(other.declaration_scope),
       instruction_ranges(other.instruction_ranges),
       instruction_opcodes(other.instruction_opcodes),

@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
 #include <string>
 #include <string_view>
@@ -29,6 +31,99 @@ using syntax_cst::CstTokenRange;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
+/** Invented declaration tails are project parse errors despite recovery. */
+TEST(PtxCstParser, RejectsUndefinedDeclarationTailsWithoutLosingSource) {
+  /** Candidate spelling and its first unexpected token's physical byte range. */
+  struct Case {
+    /** Not an official fixed-address production or vendor-negative oracle. */
+    std::string_view source;
+    /** Expected project diagnostic span, with an exclusive end column. */
+    int32_t start_column, end_column;
+  };
+  constexpr Case cases[] = {
+      {".global .u32 x @ 0x100;", 16, 17},
+      {".global .u32 x .fixed(0x100);", 16, 22},
+      {".global .u32 x .address(0x100);", 16, 24},
+      {".global .u32 x:0x100;", 15, 16},
+  };
+  for (const auto& fixture : cases) {
+    SCOPED_TRACE(fixture.source);
+    const std::string source = std::string(fixture.source) +
+                               "\n/*keep*/ .global .u32 following = 7;\n";
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_FALSE(result.diagnostics.empty());
+    EXPECT_EQ(result.diagnostics.front().message, "expected ';'");
+    EXPECT_EQ(
+        result.diagnostics.front().range,
+        (SourceRange{{1, fixture.start_column}, {1, fixture.end_column}}));
+    // A recovered CST is lossless, but diagnostics prevent clean acceptance.
+    ASSERT_TRUE(result);
+    EXPECT_EQ(result->sourceText(), source);
+    ASSERT_NE(result->module(), nullptr);
+    size_t following_count = 0;
+    for (const auto& item : result->module()->items) {
+      const auto* declaration =
+          std::get_if<syntax_cst::CstVariableDeclaration>(&item);
+      if (!declaration)
+        continue;
+      for (const auto& declarator : declaration->declarators) {
+        const auto& name = result->token(declarator.name);
+        if (name.text != "following")
+          continue;
+        ++following_count;
+        EXPECT_EQ(name.range, (SourceRange{{2, 23}, {2, 32}}));
+        EXPECT_EQ(result->sourceRange(declaration->token_range),
+                  (SourceRange{{2, 10}, {2, 37}}));
+      }
+    }
+    EXPECT_EQ(following_count, 1u);
+  }
+}
+
+/** Ordinary contents, array dimensions and alignment remain distinct syntax. */
+TEST(PtxCstParser, RetainsOrdinaryDeclarationContentsShapeAndAlignment) {
+  /** Existing ordinary declaration syntax, without an absolute placement field. */
+  struct Case {
+    /** Complete declaration source, reconstructed byte for byte. */
+    std::string_view source;
+    /** Number of explicit array dimensions. */
+    size_t dimensions;
+    /** Whether an equals initializer is written. */
+    bool initialized;
+    /** Written alignment token; empty means omitted. */
+    std::string_view alignment;
+  };
+  constexpr Case cases[] = {
+      {".global .u32 x;", 0, false, ""},
+      {".global .u32 x=0x100;", 0, true, ""},
+      {".global .u32 x[256];", 1, false, ""},
+      {".global .align 256 .u32 x;", 0, false, "256"},
+      {".global .align 16 .u32 x[2]={0x100,0};", 1, true, "16"},
+  };
+  for (const auto& fixture : cases) {
+    SCOPED_TRACE(fixture.source);
+    PtxCstParser parser(fixture.source);
+    const auto result = parser.parseModule();
+    ASSERT_TRUE(result);
+    ASSERT_TRUE(result.diagnostics.empty());
+    EXPECT_EQ(result->sourceText(), fixture.source);
+    ASSERT_EQ(result->module()->items.size(), 1u);
+    const auto* declaration = std::get_if<syntax_cst::CstVariableDeclaration>(
+        &result->module()->items.front());
+    ASSERT_NE(declaration, nullptr);
+    ASSERT_EQ(declaration->declarators.size(), 1u);
+    const auto& declarator = declaration->declarators.front();
+    EXPECT_EQ(result->token(declarator.name).text, "x");
+    EXPECT_EQ(declarator.array_dimensions.size(), fixture.dimensions);
+    EXPECT_EQ(declarator.equals.has_value(), fixture.initialized);
+    EXPECT_EQ(declarator.initializer.has_value(), fixture.initialized);
+    EXPECT_EQ(declaration->alignment.has_value(), !fixture.alignment.empty());
+    if (declaration->alignment)
+      EXPECT_EQ(result->token(*declaration->alignment).text, fixture.alignment);
+  }
+}
+
 /** Form-feed token separators and EOF trivia survive exact CST reconstruction. */
 TEST(PtxCstParser, RoundTripsFormFeedWhitespace) {
   constexpr std::string_view source =
@@ -44,6 +139,85 @@ TEST(PtxCstParser, RoundTripsFormFeedWhitespace) {
   ASSERT_TRUE(reparsed.has_value());
   EXPECT_TRUE(reparsed.diagnostics.empty());
   EXPECT_EQ(reparsed->sourceText(), source);
+}
+
+/** All six physical ASCII whitespace terminals delimit legal declarations losslessly. */
+TEST(PtxCstParser, RoundTripsSixAsciiWhitespaceTerminals) {
+  for (const char separator : {' ', '\t', '\n', '\v', '\f', '\r'}) {
+    SCOPED_TRACE(static_cast<unsigned>(separator));
+    const std::string byte(1, separator);
+    const auto source = ".global" + byte + ".u32" + byte + "x;";
+    PtxCstParser parser(source);
+    const auto parsed = parser.parseModule();
+    ASSERT_TRUE(parsed);
+    ASSERT_TRUE(parsed.diagnostics.empty());
+    EXPECT_EQ(parsed->sourceText(), source);
+    ASSERT_EQ(parsed->tokens.size(), 5u);
+    EXPECT_EQ(parsed->tokens.back().kind, TokenKind::Eof);
+    ASSERT_EQ(parsed->tokens[1].leading_trivia.size(), 1u);
+    EXPECT_EQ(parsed->tokens[1].leading_trivia[0].text, byte);
+    ASSERT_EQ(parsed->tokens[2].leading_trivia.size(), 1u);
+    EXPECT_EQ(parsed->tokens[2].leading_trivia[0].text, byte);
+  }
+}
+
+/** Mixed terminals, comments, and EOF bytes stay owned after input/parser destruction. */
+TEST(PtxCstParser, OwnsVerticalTabRoundTripAndAllPhysicalRanges) {
+  const std::string expected =
+      "\v.version 9.3\r\n.target sm_90\n.global "
+      "\t\v\f.u32\vvalue\v=\v1\v;\r\v\n"
+      "//a\vcomment\r\n.entry\vk()\v{.reg\v.u32\v%r;mov.u32\v%r,\v0;ret;}\v//"
+      "tail\v";
+  auto owned = [&] {
+    std::string input = expected;
+    PtxCstParser parser(input);
+    auto parsed = parser.parseModule();
+    EXPECT_TRUE(parsed && parsed.diagnostics.empty());
+    return std::move(*parsed);
+  }();
+  EXPECT_EQ(owned.sourceText(), expected);
+  const auto& eof = owned.tokens.back();
+  EXPECT_EQ(eof.kind, TokenKind::Eof);
+  ASSERT_EQ(eof.leading_trivia.size(), 2u);
+  EXPECT_EQ(eof.leading_trivia[0].kind, TriviaKind::Whitespace);
+  EXPECT_EQ(eof.leading_trivia[0].text, "\v");
+  EXPECT_EQ(eof.leading_trivia[1].kind, TriviaKind::LineComment);
+  EXPECT_EQ(eof.leading_trivia[1].text, "//tail\v");
+  PtxCstParser parser(owned.sourceText());
+  const auto reparsed = parser.parseModule();
+  ASSERT_TRUE(reparsed);
+  ASSERT_TRUE(reparsed.diagnostics.empty());
+  EXPECT_EQ(reparsed->sourceText(), expected);
+  ASSERT_EQ(reparsed->tokens.size(), owned.tokens.size());
+  for (size_t i = 0; i < owned.tokens.size(); ++i) {
+    const auto& a = owned.tokens[i];
+    const auto& b = reparsed->tokens[i];
+    EXPECT_EQ(a.kind, b.kind);
+    EXPECT_EQ(a.text, b.text);
+    EXPECT_EQ(a.range, b.range);
+    ASSERT_EQ(a.leading_trivia.size(), b.leading_trivia.size());
+    for (size_t j = 0; j < a.leading_trivia.size(); ++j) {
+      EXPECT_EQ(a.leading_trivia[j].kind, b.leading_trivia[j].kind);
+      EXPECT_EQ(a.leading_trivia[j].text, b.leading_trivia[j].text);
+      EXPECT_EQ(a.leading_trivia[j].range, b.leading_trivia[j].range);
+    }
+  }
+}
+
+/** Parser recovery does not turn unrelated controls or Unicode spaces into acceptance. */
+TEST(PtxCstParser, RejectsOtherOutsideTokenControlsAndUnicodeSpaces) {
+  for (const auto& bytes :
+       {std::string(1, '\0'), std::string("\x01"), std::string("\x07"),
+        std::string("\x08"), std::string("\x1f"), std::string("\x1b"),
+        std::string("\x7f"), std::string("\xc2\xa0"),
+        std::string("\xe2\x80\x83")}) {
+    const auto source = ".global" + bytes + ".u32 x;";
+    PtxCstParser parser(source);
+    const auto parsed = parser.parseModule();
+    EXPECT_FALSE(parsed.diagnostics.empty());
+    if (parsed)
+      EXPECT_EQ(parsed->sourceText(), source);
+  }
 }
 
 /** Decimal-point floats round-trip through both declaration and operand syntax. */
@@ -444,7 +618,10 @@ TEST(PtxCstParser, RetainsDedicatedCallOperandStructure) {
 
   const auto& target =
       std::get<CstCallTarget>(instruction->operands[1].operand);
-  EXPECT_EQ(result->token(target.name.token).text, "%callee");
+  EXPECT_EQ(
+      result->token(std::get<syntax_cst::CstIdentifier>(target.name).token)
+          .text,
+      "%callee");
 
   const auto& inputs =
       std::get<CstCallParameterList>(instruction->operands[2].operand);
@@ -886,12 +1063,15 @@ Lend:
   EXPECT_EQ(result->token(section.left_brace).kind, TokenKind::LBrace);
   EXPECT_EQ(result->token(section.right_brace).kind, TokenKind::RBrace);
   ASSERT_TRUE(section.terminator.has_value());
-  ASSERT_EQ(section.payload.size(), 46u);
-  EXPECT_EQ(result->token(section.payload.front()).text, "Lbegin");
-  EXPECT_EQ(result->token(section.payload.at(1)).kind, TokenKind::Colon);
-  EXPECT_EQ(result->token(section.payload.at(29)).text, ".debug_str");
-  EXPECT_EQ(result->token(section.payload.at(30)).kind, TokenKind::Plus);
-  EXPECT_EQ(result->token(section.payload.at(40)).text, ".b64");
+  ASSERT_EQ(section.payload_tokens.size(), 46u);
+  ASSERT_EQ(section.payload.size(), 12u);
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstSectionLabelDefinition>(
+      section.payload.front()));
+  EXPECT_EQ(result->token(section.payload_tokens.front()).text, "Lbegin");
+  EXPECT_EQ(result->token(section.payload_tokens.at(1)).kind, TokenKind::Colon);
+  EXPECT_EQ(result->token(section.payload_tokens.at(29)).text, ".debug_str");
+  EXPECT_EQ(result->token(section.payload_tokens.at(30)).kind, TokenKind::Plus);
+  EXPECT_EQ(result->token(section.payload_tokens.at(40)).text, ".b64");
   EXPECT_EQ(result->sourceRange(section.token_range).start.line, 1u);
 }
 
@@ -1200,8 +1380,8 @@ TEST(PtxCstParser, ParsesParameterAttributesArraysAndPrototype) {
   ASSERT_TRUE(blob.alignment.has_value());
   EXPECT_EQ(result->token(*blob.alignment).text, "8");
   EXPECT_EQ(result->token(blob.type).text, ".b8");
-  EXPECT_TRUE(blob.left_bracket.has_value());
-  EXPECT_FALSE(blob.array_size.has_value());
+  ASSERT_EQ(blob.array_dimensions.size(), 1u);
+  EXPECT_FALSE(blob.array_dimensions[0].size.has_value());
 
   const auto& pointer = function.parameters->parameters[1];
   EXPECT_TRUE(pointer.pointer_directive.has_value());
@@ -1233,18 +1413,45 @@ TEST(PtxCstParser, ParsesVectorRegisterFormals) {
   }
 }
 
+/** Every header axis retains its delimiters and exact token round-trip. */
+TEST(PtxCstParser, RetainsAllHeaderParameterDimensions) {
+  for (const auto source :
+       {".entry k(.param .u32 a[2][3][4]) {}",
+        ".func (.param .b8 r[2][3]) f(.param .b8 p[][2][3]);",
+        ".entry k() { p: .callprototype (.param .b8 r[2][3]) _ (.param .b8 "
+        "a[1][1][1][1][1][1][1][1]); }"}) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_TRUE(result);
+    ASSERT_TRUE(result.diagnostics.empty());
+    EXPECT_EQ(result->sourceText(), source);
+    const auto& function =
+        std::get<syntax_cst::CstFunction>(result->module()->items[0]);
+    if (!function.parameters || function.parameters->parameters.empty())
+      continue;
+    const auto& dimensions =
+        function.parameters->parameters[0].array_dimensions;
+    ASSERT_EQ(dimensions.size(), 3u);
+    for (const auto& axis : dimensions) {
+      EXPECT_EQ(result->token(axis.left_bracket).kind, TokenKind::LBracket);
+      EXPECT_EQ(result->token(axis.right_bracket).kind, TokenKind::RBracket);
+      EXPECT_EQ(axis.token_range.first, axis.left_bracket);
+      EXPECT_EQ(axis.token_range.last, axis.right_bracket + 1);
+    }
+  }
+  for (const auto source :
+       {".entry k(.param .u32 a[2][) {}", ".entry k(.param .u32 a[2][3) {}",
+        ".func f(.param .b8 a[][2+]);"}) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    EXPECT_TRUE(!result || !result.diagnostics.empty()) << source;
+  }
+}
+
 /** Parameter syntax restrictions report their boundary before generic token errors. */
 TEST(PtxCstParser, RejectsUnsupportedParameterDeclarationForms) {
   for (const auto& [source, message] :
        std::initializer_list<std::pair<std::string_view, std::string_view>>{
-           {".entry kernel(.param .v2 .u32 input) { }",
-            "vector .param function parameters are not supported"},
-           {".func (.param .v4 .b8 result) helper();",
-            "vector .param function parameters are not supported"},
-           {".entry kernel(.param .u32 input[2][3]) { }",
-            "multidimensional function parameters are not supported"},
-           {".func (.param .u32 result[2][3]) helper();",
-            "multidimensional function parameters are not supported"},
            {".entry kernel() { .param .b8 bytes[] = {1}; }",
             "variable initializer requires '.global' or '.const' state "
             "space"}}) {
@@ -1861,4 +2068,83 @@ TEST(PtxCstParser, ParsesNegatedIntegerInstructionOperands) {
 }
 
 }  // namespace
+}  // namespace ptx_frontend
+
+namespace ptx_frontend {
+/** Existing resource CST retains exact keyword and complete integer leaves without a spelling adapter. */
+TEST(PtxCstParser, RetainsDeprecatedMaximumCtaHint) {
+  constexpr std::string_view source = ".entry k() .maxnctapersm 0x4U {ret;}";
+  PtxCstParser p(source);
+  auto a = p.parseModule();
+  ASSERT_TRUE(a);
+  EXPECT_EQ(a->sourceText(), source);
+  const auto& f = std::get<syntax_cst::CstFunction>(a->module()->items[0]);
+  ASSERT_EQ(f.resources.size(), 1u);
+  const auto& r = f.resources[0];
+  EXPECT_EQ(a->token(r.directive).kind, TokenKind::DotMaxnctapersm);
+  ASSERT_EQ(r.values.size(), 1u);
+  EXPECT_EQ(a->token(r.values[0]).text, "0x4U");
+  EXPECT_TRUE(r.commas.empty());
+}
+
+}  // namespace ptx_frontend
+
+namespace ptx_frontend {
+/** Malformed closed records preserve the next marker, block and function at structural boundaries. */
+TEST(PtxCstParser, RecoversLegacyDwarfAtStructuralBoundaries) {
+  const std::string source = R"ptx(.version 1.3
+.target sm_13
+@@DWARF .byte 0x1,
+@@DWARF .byte 0x2
+.entry k(){@@DWARF .byte 0x1, @@DWARF .byte 0x2
+@@DWARF .byte 0x1, { @@DWARF .byte 0x3 } ret;}
+@@DWARF .byte 0x1,
+.entry next(){ret;}
+)ptx";
+  PtxCstParser p(source);
+  auto c = p.parseModule();
+  ASSERT_TRUE(c);
+  EXPECT_FALSE(c.diagnostics.empty());
+  EXPECT_EQ(c->sourceText(), source);
+  size_t module_records = 0, functions = 0, body_records = 0, blocks = 0;
+  for (const auto& item : c->module()->items) {
+    if (std::holds_alternative<syntax_cst::CstLegacyDwarfRecord>(item))
+      ++module_records;
+    if (const auto* f = std::get_if<syntax_cst::CstFunction>(&item)) {
+      ++functions;
+      if (c->token(f->name).text == "k")
+        for (const auto& body : f->body) {
+          if (std::holds_alternative<syntax_cst::CstLegacyDwarfRecord>(body))
+            ++body_records;
+          if (const auto* block =
+                  std::get_if<std::unique_ptr<syntax_cst::CstBlock>>(&body);
+              block && *block) {
+            ++blocks;
+            EXPECT_TRUE(std::ranges::any_of((*block)->body, [](const auto&
+                                                                   nested) {
+              return std::holds_alternative<syntax_cst::CstLegacyDwarfRecord>(
+                  nested);
+            }));
+          }
+        }
+    }
+  }
+  EXPECT_EQ(module_records, 1u);
+  EXPECT_EQ(functions, 2u);
+  EXPECT_EQ(body_records, 1u);
+  EXPECT_EQ(blocks, 1u);
+}
+/** Call selections retain their existing member tokens inside dedicated groups. */
+TEST(PtxCstParser, CallComponentOperands) {
+  PtxCstParser parser("call (V.r), FP.x, (V.y), meta;");
+  const auto parsed = parser.parseInstruction();
+  ASSERT_TRUE(parsed);
+  const auto& call = *parsed->instruction();
+  const auto& returns =
+      std::get<syntax_cst::CstCallParameterList>(call.operands[0].operand);
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstVectorMember>(
+      returns.parameters.front()));
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstVectorMember>(
+      std::get<syntax_cst::CstCallTarget>(call.operands[1].operand).name));
+}
 }  // namespace ptx_frontend

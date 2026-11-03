@@ -51,6 +51,8 @@ class DenseModel:
     paths: tuple[PathModel, ...]
     targets: tuple[TargetModel, ...]
     scales: tuple[ScaleModel, ...]
+    # Written block selectors have independent target/version gates.
+    block_targets: tuple[TargetModel, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -153,7 +155,9 @@ def build_dense() -> DenseGroup:
                                  variant in ('f16', 'tf32'), variant == 'i8',
                                  ' ' * {'tf32': 29, 'i8': 27, 'f8f6f4': 31}.get(variant, 28),
                                  shape_models, tuple(build_path(row) for row in paths),
-                                 tuple(build_target(kind, gate) for gate in gates), scales if variant == 'mx8' else ()))
+                                 tuple(build_target(kind, gate) for gate in gates), scales if variant == 'mx8' else (),
+                                 tuple(build_target(kind, gate) for gate in operations.MX8_BLOCK_TARGET_GATES)
+                                 if variant in ('mx8', 'mx4', 'mxnv') else ()))
     return DenseGroup(*result)
 
 

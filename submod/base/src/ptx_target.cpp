@@ -44,6 +44,8 @@ struct CatalogEntry {
   PtxIsaVersion minimum_ptx_version;
   /** Explicit legacy option support; absent initialization means unsupported. */
   bool supports_map_f64_to_f32 = false;
+  /** Optional explicit catalog rename; absence retains the source architecture. */
+  std::optional<TargetArchitecture> feature_architecture;
 };
 
 // Keep this an explicit validation allowlist: do not infer profiles by number
@@ -207,6 +209,27 @@ constexpr CatalogEntry kTargetProfiles[]{
      kSm103fEnabledFamilyFeatures,
      kSm90AndLaterCapabilities,
      {8, 8}},
+    {{101},
+     TargetFlavor::Generic,
+     kNoEnabledFamilyFeatures,
+     kSm90AndLaterCapabilities,
+     {8, 6},
+     false,
+     TargetArchitecture{110}},
+    {{101},
+     TargetFlavor::ArchitectureSpecific,
+     kSm110fEnabledFamilyFeatures,
+     kSm90AndLaterCapabilities,
+     {8, 6},
+     false,
+     TargetArchitecture{110}},
+    {{101},
+     TargetFlavor::FamilySpecific,
+     kSm110fEnabledFamilyFeatures,
+     kSm90AndLaterCapabilities,
+     {8, 8},
+     false,
+     TargetArchitecture{110}},
     {{110},
      TargetFlavor::Generic,
      kNoEnabledFamilyFeatures,
@@ -294,6 +317,15 @@ std::optional<TargetIdentity> parse_target_identity(std::string_view spelling) {
 bool same_target_identity(const TargetIdentity& left,
                           const TargetIdentity& right) noexcept {
   return left.architecture == right.architecture && left.flavor == right.flavor;
+}
+
+TargetArchitecture target_feature_architecture(
+    const TargetIdentity& identity) noexcept {
+  for (const CatalogEntry& entry : kTargetProfiles)
+    if (entry.architecture == identity.architecture &&
+        entry.flavor == identity.flavor)
+      return entry.feature_architecture.value_or(identity.architecture);
+  return identity.architecture;
 }
 
 std::optional<TargetProfile> find_target_profile(std::string_view spelling) {

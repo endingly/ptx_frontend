@@ -152,12 +152,14 @@ constexpr std::array<TcgenWsTargetGate, {{ model.targets | length }}> kWsTargets
 /** Match exact and enabled-family target features without numeric guessing. */
 bool accepts_ws_target(const TcgenWsKnownFacts& facts) {
   const auto profile = base::find_target_profile(facts.target->source_spelling);
-  if (!profile || profile->identity != *facts.target) return false;
+  if (!profile || profile->identity != *facts.target ||
+      *facts.ptx_version < checker::PtxVersion{profile->minimum_ptx_version.major, profile->minimum_ptx_version.minor}) return false;
   for (const auto& gate : kWsTargets) {
     if (gate.kind != facts.source_kind ||
         *facts.ptx_version < gate.minimum_ptx) continue;
     const auto exact = base::parse_target_identity(gate.feature);
-    if (gate.exact && exact && base::same_target_identity(*facts.target, *exact)) return true;
+    if (gate.exact && exact && (facts.target->flavor == exact->flavor &&
+        base::target_feature_architecture(*facts.target) == base::target_feature_architecture(*exact))) return true;
     if (!gate.exact && std::find(profile->enabled_family_features.begin(),
                                 profile->enabled_family_features.end(),
                                 gate.feature) !=

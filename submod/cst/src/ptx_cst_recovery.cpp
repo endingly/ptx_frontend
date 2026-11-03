@@ -40,16 +40,21 @@ PtxCstParser::RecoveryResult PtxCstParser::recover(
     });
   };
 
-  const auto is_anchor = [this, context](TokenId id) {
+  const bool legacy_record = token(first).kind == TokenKind::AtAtDwarf;
+  const auto is_anchor = [this, context, legacy_record](TokenId id) {
     const auto kind = token(id).kind;
     if (context == RecoveryContext::FunctionBody)
-      return kind == TokenKind::RBrace || isFunctionOrModuleBoundary(kind);
+      return kind == TokenKind::RBrace || kind == TokenKind::AtAtDwarf ||
+             (legacy_record && kind == TokenKind::LBrace) ||
+             isFunctionOrModuleBoundary(kind);
     return classifyModuleSource(token(id)) != ModuleSourceForm::Unsupported;
   };
   const auto stop_at_anchor = [context](TokenKind kind) {
     if (context == RecoveryContext::FunctionBody) {
       if (kind == TokenKind::RBrace)
         return RecoveryStop::RightBrace;
+      if (kind == TokenKind::AtAtDwarf || kind == TokenKind::LBrace)
+        return RecoveryStop::BodyItem;
       return RecoveryStop::FunctionBoundary;
     }
     return RecoveryStop::ModuleItem;
@@ -146,7 +151,8 @@ PtxCstParser::BodyOutcome PtxCstParser::parseBody(
     for (auto& node : recovery.nodes)
       body.emplace_back(std::move(node));
     if (recovery.stop != RecoveryStop::Semicolon &&
-        recovery.stop != RecoveryStop::RightBrace)
+        recovery.stop != RecoveryStop::RightBrace &&
+        recovery.stop != RecoveryStop::BodyItem)
       return missing();
   }
   return ClosedBody{consume()};

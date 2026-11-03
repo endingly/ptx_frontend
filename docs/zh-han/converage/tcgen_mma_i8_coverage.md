@@ -8,7 +8,7 @@
 规范印出的顺序为
 `tcgen05.mma.cta_group::{1,2}.kind::i8 [d-tmem], a, b-desc, idesc,
 {disable-output-lane}, enable-input-d`。`a` 可以是共享内存描述符寄存器，也可以是带方括号的 Tensor Memory 地址。
-可选掩码在组 1 含四个寄存器，在组 2 含八个寄存器。四种结构操作数布局乘以两个带类型的组值，共八种源码拓扑。
+必需掩码在组 1 含四个寄存器，在组 2 含八个寄存器。两种结构操作数布局乘以两个带类型的组值，共四种源码拓扑。
 i8 语法**没有** `scale-input-d` 操作数，也没有 `.satfinite` 源码限定符。
 CUDA 13.3 汇编器的独立四模块检查在两个组上均接受规范顺序及相邻的 `.mma.kind::i8.cta_group` 顺序。
 Authority 已批准恰好这个相邻别名，它选择同一个带类型的指令形式并保留写出的组位置。
@@ -17,8 +17,8 @@ Authority 已批准恰好这个相邻别名，它选择同一个带类型的指�
 共享 A/B 描述符必须是标量 General B64/U64/S64 **寄存器**，`idesc` 必须是标量 General B32/U32/S32 寄存器。
 活寄存器的内容保持不透明。`enable-input-d` 可为普通标量谓词寄存器（可保留写出的否定），
 也可为按零/非零解释的整数谓词常量；特殊谓词寄存器不在此切片中。
-可选输出通道掩码恰有四/八个标量 General 32 位寄存器。B32/U32/S32/F32 声明均可作为**位载体**，
-F32 不表示浮点运算。掩码缺席与显式空向量不同。拥有式解析结果必须在语法树销毁后保留并检查源码位置、声明及寄存器身份。
+必需输出通道掩码恰有四/八个标量 General 32 位寄存器。B32/U32/S32/F32 声明均可作为**位载体**，
+F32 不表示浮点运算。掩码缺席与显式空向量均无效。拥有式解析结果必须在语法树销毁后保留并检查源码位置、声明及寄存器身份。
 
 [表 42](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma)
 规定乘数为 S8/U8，累加及输出为 S32，密集 K 唯一确定为 32。组 1 的 M 为 64/128，N 为 8、16、24、32，
@@ -43,10 +43,12 @@ A 位于 Tensor Memory 时没有 A 共享描述符字的义务。非 WS 的 F/D/
 在 F 半路径上，仅当 A 位于 Tensor Memory 且调用方独立提供 A/D 的 0/16 通道半区身份时才能比较。
 完整 D/B/A 路径要求零；即使 A 来自 shared，也检查已知 D 半区。源码地址自身无法证明这些声明或分配历史。
 
-当前显式目标目录把 i8 源码门槛投影为 PTX 8.6 起的精确 `sm_100a`，或 PTX 9.0 起的精确 `sm_110a`。
-家族 `f` 目标不继承 i8 MMA，`sm_103a` 的其他家族特性也不能赋予它此运算能力。
-手册所述历史 `sm_101a` 拼写不在当前目录中，不能把 PTX 9.0 之前的它暗中映射到 `sm_110a`。
-表 43 对 103a 的字节步长描述符能力不代表 i8 运算可在 103a 上执行。
+i8 门槛保留 PTX8.6 起的 `sm_100a` 与 PTX9.0 起的 `sm_110a`，并加入
+PTX8.6 起的历史 source profile `sm_101a`。source identity 仍为101A，
+catalog 显式 feature 对应为110A。`sm_101f` 和 Generic101 不获得此 A-only 运算；
+family target 或不相关的 `sm_103a` 能力也不授予 i8 MMA。表43的 exact103A
+字节步长描述符规则独立。operational query 先要求实际 source profile 和其引入版本，
+再匹配 feature 门槛，不从 source register 推断描述符 word。
 
 其他固定稠密、稀疏与 WS 来源形式见[全族矩阵](tcgen_mma_family_coverage.md)。
 实时描述符内容、分配、完成与 GPU 行为仍是义务。TMA 的省略/group-1/group-2

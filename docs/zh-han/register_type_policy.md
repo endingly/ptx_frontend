@@ -5,10 +5,12 @@
 `register_width: same_width` 同时检查位宽和基础类型兼容性，而非枚举 identity：
 bit-size 寄存器可承载同宽兼容的整数或浮点 operand，同宽有符号与无符号整数声明可互换。
 整数与浮点之间的替换仍然非法。`mul.wide.u32` 和 `mad.wide.u32` 仍要求 32 位乘数、
-64 位结果；`mad` 的加数也必须为 64 位。本次不引入更宽寄存器放宽。
+64 位结果；`mad` 的加数也必须为 64 位。这些 same-width operand 拒绝更宽寄存器。
 
 `exact` 保留枚举 identity 语义，适用于显式声明格式要求，不能仅因为普通算术 operand
-位宽固定就使用它。`equal_or_wider` 和立即数转换不变。resolution 仍构造相同 IR，
+位宽固定就使用它。`equal_or_wider` 按 PTX ISA 9.3 Tables 27/28 为适用的
+`ld`/`st`/`cvt` operand 接受最宽为 `.b128` 的兼容 bit carrier。声明资格由中央检查；
+instruction、format、PTX-version 和 SM gate 仍然适用。立即数转换不变。resolution 仍构造相同 IR，
 generated checker 按 descriptor policy 检查已绑定寄存器声明；仅 resolve 成功不表示
 整个模块的指令均通过 checking。
 
@@ -59,16 +61,24 @@ Module `.reg` 与 `.local` 的 placement 遵循 source target ABI 边界
 | Consumer | Policy 决策 |
 | --- | --- |
 | `mul/mad.wide.u32`、`popc/clz`、`bfind/bfe`、普通 `mad/div/min/max` 浮点形式 | 同宽基础类型兼容，保留各 operand 原有位宽 |
-| `neg.f16x2` | 两个 operand 都要求 exact `.b32` storage；不接受 native `.f16x2` 寄存器 |
-| packed `cvt` 的 destination | expected type 使用 `f16x2` 加 `same_width`，接受 `.f16x2`/`.b32`，不接受任意 32 位存储 |
-| `cvt` 普通 f32 operand、`mapa/getctarank`、`isspacep` | 同宽兼容；address shape/state-space 检查独立保留 |
+| `neg.f16x2` | 两个 operand 接受 native `.f16x2` 或 `.b32`，使用 same-width compatibility |
+| 原生 packed `cvt` data | 原生 `.f16x2` 或兼容 Bit 载体；converted-data widening 独立检查 |
+| `cvt` 普通 f32 operand | EqualOrWider 兼容寄存器 |
+| `mapa/getctarank`、`isspacep` | address shape/state-space 检查独立保留 |
 | `vote/match/redux/elect/activemask`、mbarrier count/parity/hint、解码后的 cluster CTA ID | 同宽兼容；mask、数值范围与 target 检查独立保留 |
 | alternate-format FMA（`bf16`、`bf16x2`、`f32x2`、mixed bf16 source） | 保留 exact bit-container 要求 |
 | opaque mbarrier state 与 cluster cancellation response | 保留 exact token/response 存储及 shape 要求 |
 | mbarrier opaque report value | 保留既有 exact `.b8` 模型；本次查阅手册未独立证实其声明位宽 |
 
-本次不是更宽寄存器 `cvt` 行为的完整审查。受影响的 f32 operand 现在接受兼容的**同宽**
-声明；PTX 9.4.1 节与 `cvt` 指令规则中的进一步 widening 不属于此次修正。
+`cvt` 选定的 InstructionOnly 浮点／定点格式必须使用 Bit 存储，即使 operand model
+仅记录物理 Bit 宽度。原生 F16x2 允许原生或 Bit 声明。兼容 converted-data Bit 载体可
+放宽到 B128，但 BF16/BF16x2 source、destination 与 TF32 destination 必须精确同宽。
+Intrinsic 寄存器类型服从相同 kind／宽度检查。Scale factor 独立要求 Bit，随机 bit
+辅助 operand 则保留普通 bit-compatible 类型。根据对 CVT source note 的包含式解读，
+factor 允许至少 16 位的 Bit 寄存器，随机数据允许至少 32 位的兼容寄存器，均可至 B128；
+只有逻辑低 16／32 位参与。Data-format 精确宽度例外仍按 data role 独立检查。这是宽泛
+note 的解释，并非辅助 operand 专属句。参见
+[转换契约](converage/conversion_coverage.md#逻辑格式与寄存器载体)。
 
 回归测试链接真实 parser、resolver、兼容性 helper 和 generated checker。
 独立类型矩阵与声明替换测试不从指令 YAML 推导预期结果；负向用例检查 diagnostic kind
@@ -101,3 +111,12 @@ out/build/ci-linux-gcc-debug/submod/resolved_ir/test_resolved_ir --gtest_brief=1
 out/build/ci-linux-gcc-debug/submod/resolved_ir/test_modern_operand_codegen --gtest_brief=1
 PYTHONPATH=python .venv/bin/python -m unittest discover -s python/tests -t python -p 'test_*.py' -q
 ```
+
+Native packed `.f16x2` 是32-bit fundamental floating 值。Table 9 明确给出的
+`.f16x2`/`.b32` declaration 选择适用于 `mul.f16x2`、`neg.f16x2` 及两个 predicate-pair
+`setp.f16x2` form 的 register data role；可混用 native/bit carrier。同宽
+`.f32/.s32/.u32`、其他宽度、whole vector 和非 fundamental alternate format 不属于该
+封闭 carrier 集。显式 scalar component 保留真实 vector declaration 与 compact-member
+provenance。共享 BF16x2/其他 alternate-format exact-B32 合同保持不变。这些 slot 仍仅接受
+register，不增加 packed numeric literal 的 bits/splat/zero 表示或普通 scalar-F16 conversion。
+既有 modifier、predicate、layout 与 PTX/target availability 不变。

@@ -9,13 +9,13 @@ This slice is the [PTX 9.3 §9.7.3.3/§9.7.3.4, §9.7.4.1/§9.7.4.2 and §9.7.5.
 | `add{.rnd}.f64 d, a, b` | PTX 1.0 / SM 13. Both sources admit a floating literal; no `.ftz` or `.sat`. |
 | `add{.rn}{.ftz}{.sat}.{f16,f16x2} d, a, b` | PTX 4.2 / SM 53. RN-only; `.f16` accepts `.f16` or `.b16`, `.f16x2` accepts `.f16x2` or `.b32`. |
 | `add{.rn}.{bf16,bf16x2} d, a, b` | PTX 7.8 / SM 90. RN-only, no `.ftz` and no `.sat`; binds the exact `.b16`/`.b32` bit containers. |
-| `add{.rnd}{.sat}.f32.{f16,bf16} d, a, c` | PTX 8.6 / SM 100. The **narrow source sits in the middle position** and is register-only; the FP32 addend is immediate-capable. |
+| `add{.rnd}{.sat}.f32.{f16,bf16} d, a, c` | PTX 8.6 / SM 100. The **narrow source sits in the middle position** and accepts F16/BF16 numeric constants as well as registers; the FP32 addend is immediate-capable. |
 
 `sub` carries the mirrored table.
 
 ## Confirmed gap and fix
 
-The mixed-precision **FP32 addend/subtrahend** was declared register-only, rejecting legal spellings such as `add.f32.f16 %f0, %h1, 1.0;` and `sub.f32.bf16 %f0, %b1, 1.0;`. The assembler accepts them, so this was a false reject in a source position the manual leaves immediate-capable. The FP32 operand now admits a floating literal while the narrow source and the destination stay registers, matching the assembler on all four counts.
+The mixed-precision **FP32 addend/subtrahend** was declared register-only, rejecting legal spellings such as `add.f32.f16 %f0, %h1, 1.0;` and `sub.f32.bf16 %f0, %b1, 1.0;`. The assembler accepts them, so this was a false reject in a source position the manual leaves immediate-capable. The FP32 operand now admits a floating literal while the destination stays a register. The narrow source now follows the scalar format conversion contract below.
 
 ## Audited and confirmed already correct
 
@@ -37,7 +37,7 @@ std::get<ResolvedRegisterRef>(mixed.addend.value).spelling;  // after, register 
 std::get<ResolvedImmediate>(mixed.addend.value).bits;        // after, immediate payload
 ```
 
-These public member changes defined an explicit API break in the installed C++ package at version `0.1.0`; its CMake package compatibility is `SameMinorVersion`. Consumers must migrate to the register-or-immediate variant access shown above. No compatibility shim or parallel representation was introduced: the change reuses the same typed register/immediate path that scalar `add`/`sub` and the DIV cohorts already use. The destination and the narrow source keep their register payloads. The Python wheel version is `0.1.0b0`, a beta prerelease; the installed C++ package is now `0.2.0`. These are independent package versions with no lockstep requirement.
+These public member changes defined an explicit API break in the installed C++ package at version `0.1.0`; its CMake package compatibility is `SameMinorVersion`. Consumers must migrate to the register-or-immediate variant access shown above. No compatibility shim or parallel representation was introduced: the change reuses the same typed register/immediate path that scalar `add`/`sub` and the DIV cohorts already use. The destination keeps its register payload; the narrow source now uses RegOrImm as described below. The Python wheel version is `0.1.0b0`, a beta prerelease; the installed C++ package is now `0.2.0`. These are independent package versions with no lockstep requirement.
 
 ## Evidence
 
@@ -48,3 +48,5 @@ One floor is **not** assembler-verifiable: this `ptxas` does not define `sm_53` 
 The existing MUL and FMA regression, including mixed FMA, `.f32x2`, ReLU/OOB and the documented assembler-compatibility exceptions, is unchanged.
 
 The Issue 142 reconciliation now covers every cohort in §9.7.1 through §9.7.5 that this issue scoped. No operation here gains execution semantics.
+
+The narrow F16 source also accepts floating constants through binary16 RNE conversion; the destination remains a register and the wide addend/subtrahend keeps its F32 conversion. Shared F16/BF16 classes and modifier domains remain intact. The shared narrow BF16 source now accepts decimal, evaluated F64, exact F64 and bare unsigned exact F32 numeric inputs through direct binary64-to-BF16 RNE conversion. Its typed word `1.5 -> 0x3fc0` is independent of runtime rounding and saturation; the other input remains F32 (`1.5 -> 0x3fc00000`). No opcode source permissions or generated fields change.

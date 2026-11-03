@@ -11,9 +11,9 @@ the sole encoding authority.
 The printed source order is
 `tcgen05.mma.cta_group::{1,2}.kind::i8 [d-tmem], a, b-desc, idesc,
 {disable-output-lane}, enable-input-d`. `a` is either a shared-memory
-descriptor register or a bracketed Tensor Memory address. The optional mask
-has four registers for group 1 and eight for group 2. There are four
-structural layouts and two typed group values, or eight source topologies.
+descriptor register or a bracketed Tensor Memory address. The required mask
+has four registers for group 1 and eight for group 2. There are two
+structural layouts and two typed group values, or four source topologies.
 The i8 grammar has **no** `scale-input-d` operand or `.satfinite` source
 qualifier. A separate four-module CUDA 13.3 assembler checkpoint accepted
 canonical and adjacent `.mma.kind::i8.cta_group` orders for **both** groups.
@@ -25,10 +25,9 @@ Shared A/B descriptors are scalar General B64/U64/S64 **registers**. `idesc`
 is a scalar General B32/U32/S32 register. Their live contents remain opaque.
 `enable-input-d` is a scalar ordinary predicate register with optional written
 negation, or an integer predicate constant whose zero/nonzero truth is
-preserved. Special predicate registers are excluded. An optional lane mask
+preserved. Special predicate registers are excluded. A required lane mask
 contains exactly four/eight scalar General 32-bit registers; B32/U32/S32/F32
-declarations are compatible as **bits**, not floating arithmetic. Absence and
-an explicit empty vector are distinct. The owned resolved form must retain
+declarations are compatible as **bits**, not floating arithmetic. Absence and an explicit empty vector are both invalid. The owned resolved form must retain
 source ranges, declarations and register identity after the syntax tree dies.
 
 [Table 42](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma)
@@ -64,13 +63,14 @@ compared when A is in Tensor Memory. Full D/B/A paths require zero; a known D
 half is checked even with shared A. Source addresses do not prove the claimed
 halves or allocation history.
 
-The current explicit target catalogue projects the i8 source gate to exact
-`sm_100a` from PTX 8.6 or exact `sm_110a` from PTX 9.0. Family-f targets,
-including `sm_103a` despite its unrelated family features, do not inherit
-i8 MMA. The historical `sm_101a` spelling mentioned in the manual is absent
-from the current catalogue and is **not** silently mapped to `sm_110a` for
-pre-9.0 PTX. Table 43's exact-103a byte-stride descriptor capability does
-not grant an i8 operation on 103a.
+The explicit i8 gates retain `sm_100a` from PTX8.6 and `sm_110a` from PTX9.0,
+and add the historical `sm_101a` source profile from PTX8.6. Its source identity
+stays 101A while the catalog's explicit feature correspondence is 110A.
+`sm_101f` and Generic101 do not acquire this A-only operation. Family targets
+and the unrelated `sm_103a` capability do not grant i8 MMA. Table43's exact103A
+byte-stride descriptor rule remains independent. Operational queries require
+the exact supplied source profile and its own introduction version before
+matching feature gates; they do not infer descriptor words from source registers.
 
 The other fixed dense, sparse and WS source forms appear in the
 [family matrix](tcgen_mma_family_coverage.md). Runtime descriptor contents,

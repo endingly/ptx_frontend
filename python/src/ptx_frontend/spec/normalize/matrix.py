@@ -25,6 +25,7 @@ from ptx_frontend.spec.model import (
     ModifierPresence,
     ModifierSpec,
     OperandKind,
+    OperandVectorTypePolicy,
     OperandLayoutSpec,
     OperandTypeExpressionKind,
     modifier_spellings,
@@ -161,6 +162,22 @@ def normalize_matrix(
     elif set(fragment_roles.values()) != set(elements):
         raise ValueError("matrix elements must exactly match fragment roles")
 
+    for layout in layouts:
+        for operand in layout.operands:
+            if not operand.vector_allow_named:
+                continue
+            role = fragment_roles.get(operand.name)
+            eligible = (
+                family in {MatrixFamily.MMA, MatrixFamily.MMA_SPARSE}
+                or (family in wgmma_families and (role is MatrixFragmentRole.D or
+                    (role is MatrixFragmentRole.A and source_placement is WgmmaSourcePlacement.REGISTER)))
+                or (family is MatrixFamily.WMMA_MMA and role in
+                    {MatrixFragmentRole.A, MatrixFragmentRole.B, MatrixFragmentRole.C}))
+            count = (operand.minimum_elements if operand.kind is OperandKind.MATRIX_FRAGMENT
+                     else operand.vector_arities[0] if len(operand.vector_arities) == 1 else None)
+            if (role is None or not eligible or count not in (2, 4)
+                    or operand.vector_type_policy is not OperandVectorTypePolicy.ELEMENT):
+                raise ValueError("named matrix operand requires an eligible typed fragment role and Element cardinality2or4")
     fragments = _normalize_fragments(fragment_roles, elements, layouts, modifiers)
     selectors = _normalize_scale_selectors(raw_selectors, layouts, scale_vector_size)
     if len(fragments) > 4:

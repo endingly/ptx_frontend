@@ -17,7 +17,12 @@ add_library(ptx_frontend_resolved_ir
     src/ptx_resolved_ir_layout.cpp
     src/ptx_resolved_ir_checker.cpp
     src/ptx_named_array_address.cpp
+    src/ptx_call_target_visibility.cpp
+    src/ptx_call_parameter_transfers.cpp
     src/ptx_call_tables.cpp
+    src/ptx_debug_locations.cpp
+    src/ptx_debug_sections.cpp
+    src/ptx_legacy_dwarf.cpp
     src/ptx_video.cpp
     src/ptx_storage_declarations.cpp
     src/ptx_resolved_module.cpp

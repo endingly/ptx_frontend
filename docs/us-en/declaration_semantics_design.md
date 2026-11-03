@@ -39,11 +39,40 @@ requires decimal digits on both sides of the point in `major.minor`.
 
 Binary `&`, `|`, and `^` retain the usual arithmetic conversions (two signed
 inputs give a signed result; any unsigned input gives an unsigned result).
-This follows PTX 9.3 §4.5.5 prose and bounded CUDA 13.3 assembler checks;
-Table 5's unsigned summary differs. Unary `~` gives unsigned, while remainder
-interprets both inputs unsigned and produces signed. Shift counts outside
-0–63 remain explicit frontend errors. The assembler accepts some larger shifts,
-so this resource/domain boundary does not claim complete assembler parity.
+The detailed PTX 9.3 §4.5.5 binary-operator rule takes precedence over only the
+conflicting `&`/`|`/`^` row in Table 5. This is the frontend's adopted
+interpretation, not a NVIDIA-issued erratum. Historical assembler observations
+and their exact tool versions are recorded in the
+[bitwise policy](bitwise_constant_policy.md). Expression results retain their
+64-bit bits and signedness until use conversion; destination types and normalized
+source-sign caches do not retroactively supply an expression type. Unary `~` gives unsigned, while remainder
+interprets both inputs unsigned and produces signed. Constant-expression shifts
+evaluate the count as a 64-bit value and interpret
+its bits as unsigned, accepting exactly 0–63. Thus `1 << (-1 + 2)` is legal,
+while evaluated counts `-1`, `64`, `65`, and `UINT64_MAX` are rejected rather
+than masked or clamped. The result retains the left operand's type even when
+the count is unsigned: signed negative right shifts fill with the sign bit,
+unsigned right shifts fill with zero, and count zero preserves the input bits.
+
+This 0–63 boundary is an adopted frontend expression-domain policy. The manual's
+[constant-expression rules](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-constant-expression-evaluation)
+do not assign a result to counts of 64 or more. The policy is not a vendor
+blanket error requirement or the execution behavior of PTX `shl`/`shr`
+instructions. Concrete count failures remain non-deferred at the failing count
+subtree, including invalid shifts in unselected conditional or logical children.
+A valid symbolic relocation such as `symbol + 1` remains deferred where its
+value is unknown; `symbol << 1` and `symbol >> 1` are invalid relocation
+operations, rather than deferred numeric shifts. Initializer
+and array-dimension declaration wrappers retain their existing whole-expression
+invalid-initializer/invalid-dimension diagnostics. The common evaluator called
+on that same AST expression still supplies the concrete count-subtree error;
+MOV, call and address consumers propagate that count error directly.
+
+Accepted normalized immediate and storage payloads survive source/AST destruction,
+copies, assignments and instruction clones under the existing owned-IR checks.
+Rejected shifts never produce such a payload; owned count-tree revalidation is
+inapplicable, and no count-origin cache is introduced. Array extent, destination
+type and address-range restrictions remain separate use-site constraints.
 
 Module `.reg` and `.local` declarations are checked against the source-target
 ABI assumption: PTX ISA 3.0 or later with a recognized active source target of
@@ -125,6 +154,12 @@ function definitions or prototypes before storage metadata or a future function
 metadata backend consumes the value. Placement, PTX-version, and target checks
 remain separate declaration rules.
 
+Recursion legality is a module-validation check over current typed calls after
+binding, visibility, signature and table joins. `resolveModuleOnly` remains a
+transport operation; its success alone does not validate recursion support.
+PTX 2.0 / SM 20 is required for identified direct or finite-candidate cycles;
+open calls are not certified acyclic. See [control flow](control_flow_syntax_design.md).
+
 ## Redeclarations
 
 Binding first maps same-name module items to a stable `SymbolId`; this pass then
@@ -139,6 +174,14 @@ decides whether the redeclaration is legal:
 - symbol-kind conflicts, linkage conflicts, signature changes, and multiple
   definitions report diagnostics carrying the previous source range;
 - an `.extern .func` must be a prototype and cannot have a body.
+
+`.weak` requires PTX 3.1 on all targets. The source pass checks each typed
+variable/function occurrence at its weak qualifier, including unused prototypes.
+Binding retains the first canonical linkage; compatible redeclarations require
+identical linkage and signatures before successful module ownership handoff.
+Mixed weak/nonweak declarations remain incompatible. A binding-only table from
+rejected mixed source does not retain every historical qualifier; no additional
+occurrence-history API or weak linker behavior is implied.
 
 Redeclaration alignment compares its effective value while retaining source
 provenance and ranges on every declaration occurrence. For modeled fundamental
@@ -197,6 +240,11 @@ statically decidable ISA version/target and entry-size limits. This applies to
 entry/device headers, call-prototype formals, and body-local `.param`
 declarations; retained type spelling or array syntax alone does not establish validity.
 
+Parameter element classification reuses fundamental metadata, excludes predicates,
+and includes native scalar F16x2 without flattening its packed components. Validated vector
+lanes participate in checked object bytes, natural alignment and padded entry totals;
+unused prototype signatures receive the same shape, alignment and role checks.
+
 ## Entry resource constraints
 
 For the supported entry-header `.maxnreg`, `.maxntid`, `.reqntid`, and
@@ -234,3 +282,93 @@ evaluation together.
 Binary bitwise operators follow the detailed PTX usual-conversion rule; see
 [the signedness decision and reproducible assembler evidence](bitwise_constant_policy.md)
 for the conflicting summary-table wording and tool-version limitations.
+
+`FunctionParameterContract::array_extents` is the sole normalized formal-axis
+representation. Valid arrays compare by checked total element count for ABI
+compatibility, independently of rank; invalid structural axes and overflow remain
+invalid and retain their axis identity. Unknown outer dimensions preserve checked
+known inner axes. Derived `CallArgumentProperties::array_size` is a total count,
+not a cached first axis. Exact source identity remains separate; see
+[parameter contracts and member migration](parameter_declarations.md).
+
+Register-state device and call-prototype formals have a separate default-ABI
+minimum: when known PTX >=2.0 and the active recognized target is SM20+, the whole
+scalar/vector value must be at least32bits. This measures explicit vector total
+width, not each lane, and preserves source type/shape. It applies to unused input
+and return formals too, with the supplied AST context for source-aware retargeting
+and owned regions after AST death. Known legacy contexts disable the minimum;
+missing context defers it under partial checking. Ordinary small/predicate registers
+and compatible small actuals to `.param` formals remain legal. See
+[parameter declarations](parameter_declarations.md) for the complete boundary.
+
+Instruction-root spellings remain ordinary identifiers in explicit declaration
+name roles under the [contextual keyword interpretation](lexer_design.md).
+The official `bar` object/function examples preclude a blanket name exclusion;
+this is a normative interpretation and regression clarification, not an added
+missing-predicate fix. Source validation checks name leaves and AST-free owned
+validation checks actual bound symbol names with the shared character grammar.
+Diagnostic reference spellings do not reconstruct authoritative identity. All
+independent declaration-role, type, ABI and prior-visibility restrictions remain.
+
+The public `declaration_semantics::languageCode(std::string_view)` in
+`ptx_declaration_semantics.hpp` synchronously borrows exactly one original operand
+token and returns `optional<uint64_t>` without retaining the view. It is the one
+decoder used by source item checks, ordered redeclaration compatibility and owned
+function integrity. Quoted names `unknown`, `ptx`, `nvvm`, `cuda c++`, `cuda c++ tile`,
+`tile ir`, `python-cutile`, `fortran`, `optix` map to 0,3,4,5,6,7,8,9,10 and compare
+with deterministic ASCII case folding. Complete unsigned integer tokens 0..10
+(including Reserved 1/2) accept existing radices and U suffixes. There is no trim,
+expression evaluation, quoted-number coercion or unquoted-name alias. Outer
+quotes are removed but inner escape bytes are not decoded into new name aliases;
+this preserves the frontend decoder boundary, not a general PTX escape ban.
+Omitted directive/default `ptx` handling belongs to the caller; an empty token
+returns no code. Raw list order/quotes/case remain owned data, not a decoded cache.
+
+
+## Historical entry body inputs
+
+PTX 1.0–1.3 entry body `.param` declarations have the owning `LegacyEntryInput`
+role in the sole `parameter_declarations` table, including scoped/group/array
+identities. The function signature remains syntactic header ABI only, so an empty
+header signature does not imply no host inputs. Lexical metadata order assigns
+no launch addresses or packing. Resolution needs a version only for ambiguous
+entry body roles; it reports `MissingValidationContext` without guessing from SM.
+Typed modules retain their role when context is missing.
+
+The optional `ResolvedSymbolRef::parameter_role` cache is derived from the actual
+record while keeping structural `CallParameter`. Address/MOV/tensor projections
+share input/return/call-slot directions. Both validators rejoin current records
+and caches and enforce read-only entry-frame access, direct call-actual exclusion,
+shape/scope and logical capacity before context skips. Legacy input LD is not
+call-return staging; MOV preserves `.param`. Modern BodyLocal staging is unchanged.
+The checked sum of per-member bytes times compact count has the known32764-byte
+global ceiling; no double axes/vector multiplication or invented256 legacy cap.
+`D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` remains qualified for exact historical
+physical launch packing. See the [parameter contract](parameter_declarations.md)
+for context windows, intrinsic guarantees and preserved limitations.
+
+
+### Deprecated maximum-CTA hint
+
+Entry headers accept `.maxnctapersm ncta` from PTX ISA 1.3 on every recognized
+source target, including PTX 2.0 and later. Deprecation does not impose an upper
+version bound. The distinct `MaxNctaPerSm` AST/owned kind is an optimization hint:
+additional CTAs may still execute, so it is not a hard runtime occupancy cap.
+`.maxntid` is optional, and `.minnctapersm` may coexist as a separate resource.
+
+One complete unsigned integer token is checked before projection into the existing
+`uint32_t` resource value, including zero and `UINT32_MAX`; overflowing values do
+not wrap. This is the frontend's modeled resource capacity. The published grammar
+does not specify this bit width, and validation does not prove hardware occupancy
+or driver feasibility. CST/AST leaves retain written radix/suffix/ranges while
+alive; owning contracts retain only kind, normalized values, explicit count and
+range, with no parallel raw spelling field.
+
+Both validators check current payload shape, entry placement and known range
+containment. Known PTX context below 1.3 rejects even without a complete target;
+missing version defers availability under `AvailableContext` while intrinsic
+checks continue. The source-aware route uses the supplied effective version.
+Coherent current numeric edits remain valid; changing written resource kind or
+value in a replacement AST retains the existing source-association rule.
+
+Source reference: [PTX ISA maximum-CTA directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#performance-tuning-directives-maxnctapersm).

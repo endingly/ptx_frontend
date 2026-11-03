@@ -123,8 +123,6 @@ TEST(SetHalfCompleteness, RejectsIllegalControlsAndPredicateSources) {
            "set.lt.f16.b16 %h0, %b0, %b1;",
            "set.lo.f16.u32 %h0, %u0, %u1;",
            "set.nan.bf16.s32 %b0, %s0, %s1;",
-           "set.eq.ftz.f16.b16 %h0, %b0, %b1;",
-           "set.eq.ftz.f16.f64 %h0, %d0, %d1;",
            "set.eq.ftz.bf16.f16 %b0, %h0, %h1;",
            "set.eq.ftz.bf16x2.bf16x2 %r0, %r1, %r2;",
            "set.eq.and.f16.f16 %h0, %h1, %h2;",
@@ -209,9 +207,9 @@ TEST(SetHalfCompleteness, ChecksPackedResultContainers) {
       {"set.eq.bf16x2.bf16x2 %u0, %b1, %b2;", false},
       {"set.eq.bf16x2.bf16x2 %b0, %hx1, %b2;", false},
       {"set.eq.u32.f16x2 %u0, %b1, %b2;", true},
-      {"set.eq.u32.f16x2 %hx0, %b1, %b2;", true},
+      {"set.eq.u32.f16x2 %hx0, %b1, %b2;", false},
       {"set.eq.u32.bf16x2 %u0, %b1, %b2;", true},
-      {"set.eq.u32.bf16x2 %hx0, %b1, %b2;", true},
+      {"set.eq.u32.bf16x2 %hx0, %b1, %b2;", false},
   };
   for (const auto& [source, accepted] : cases) {
     SCOPED_TRACE(source);

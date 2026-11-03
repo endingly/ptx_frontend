@@ -7,11 +7,15 @@ compatibility. It is not enum identity: bit-size registers can carry compatible
 same-width integer or floating operands, and signed/unsigned integer declarations
 can be interchanged at the same width. Integer/float substitutions remain errors.
 `mul.wide.u32` and `mad.wide.u32` still require 32-bit multiplicands and a 64-bit
-result (and 64-bit addend for `mad`). No wider-register relaxation is introduced.
+result (and 64-bit addend for `mad`). These same-width operands reject wider
+registers.
 
 `exact` retains its existing enum-identity meaning. It is appropriate for
 explicit declaration-format requirements, not ordinary arithmetic merely because
-its width is fixed. `equal_or_wider` and immediate conversion are unchanged.
+its width is fixed. `equal_or_wider` admits compatible wider bit carriers through
+`.b128` for applicable `ld`/`st`/`cvt` operands under PTX ISA 9.3 Tables 27/28.
+Declaration eligibility is checked centrally; instruction, format, PTX-version,
+and SM gates still apply. Immediate conversion is unchanged.
 Resolution still builds the same IR; generated checking applies the descriptor
 policy to bound register declarations. Resolving a module alone is not a claim
 that its instructions pass checking.
@@ -73,17 +77,27 @@ decisions are:
 | Consumers | Policy decision |
 | --- | --- |
 | `mul/mad.wide.u32`, `popc/clz`, `bfind/bfe`, ordinary `mad/div/min/max` float forms | Same-width fundamental compatibility; keep each operand's original width |
-| `neg.f16x2` | Require exact `.b32` storage for both operands; native `.f16x2` registers are not admitted |
-| packed `cvt` destination | Require expected `f16x2` with `same_width`, accepting `.f16x2`/`.b32`, not arbitrary 32-bit storage |
-| `cvt` ordinary f32 operands, `mapa/getctarank`, `isspacep` | Same-width compatibility; address shape/state-space checks remain independent |
+| `neg.f16x2` | Native `.f16x2` or `.b32` for both operands, with same-width compatibility |
+| native packed `cvt` data | Native `.f16x2` or compatible Bit carrier; converted-data widening remains independent |
+| `cvt` ordinary f32 operands | Equal-or-wider compatible registers |
+| `mapa/getctarank`, `isspacep` | Address shape/state-space checks remain independent |
 | `vote/match/redux/elect/activemask`, mbarrier counts/parity/hints, decoded cluster CTA IDs | Same-width compatibility; masks, ranges, and target checks remain independent |
 | Alternate-format FMA (`bf16`, `bf16x2`, `f32x2`, mixed bf16 sources) | Retain exact bit-container requirements |
 | Opaque mbarrier state and cluster cancellation response | Retain exact token/response storage and shape requirements |
 | Mbarrier opaque report value | Retain existing exact `.b8` model; the audited manual does not independently establish that declaration width |
 
-This is not a full audit of wider-register `cvt` behavior. The affected f32
-operands now accept compatible **same-width** declarations; further widening
-under PTX section 9.4.1 and the `cvt` instruction rules is outside this correction.
+For `cvt`, the selected instruction-only floating/fixed format requires Bit
+storage even when the operand model records a physical Bit width. Native F16x2
+permits native or Bit declarations. Compatible converted-data Bit carriers can
+widen through B128, with exact BF16/BF16x2 source/destination and TF32 destination
+exceptions. Intrinsic register types obey the same kind/width checks. Scale
+factors require Bit independently, while random-bit auxiliaries retain ordinary
+bit-compatible types. Under the adopted inclusive reading of the CVT source note,
+factors admit Bit registers at least 16 bits wide and randomness admits compatible
+registers at least 32 bits wide, through B128. Only the low logical 16/32 bits
+contribute; data-format exact-width exceptions remain per data role. This is the
+broad note's interpretation, not an auxiliary-specific sentence. See the paired
+[conversion contract](converage/conversion_coverage.md#logical-formats-and-register-carriers).
 
 The regression suite links the real parser, resolver, compatibility helper, and
 generated checker. An independent type matrix and declaration-substitution tests
@@ -124,3 +138,14 @@ out/build/ci-linux-gcc-debug/submod/resolved_ir/test_resolved_ir --gtest_brief=1
 out/build/ci-linux-gcc-debug/submod/resolved_ir/test_modern_operand_codegen --gtest_brief=1
 PYTHONPATH=python .venv/bin/python -m unittest discover -s python/tests -t python -p 'test_*.py' -q
 ```
+
+Native packed `.f16x2` is a fundamental 32-bit floating value. Table 9's explicit
+`.f16x2`/`.b32` declaration alternatives apply to the register data roles of
+`mul.f16x2`, `neg.f16x2` and both predicate-pair `setp.f16x2` forms. Mixed native
+and bit carriers are legal; same-width `.f32/.s32/.u32`, other widths, whole vectors
+and nonfundamental alternate formats do not join this closed carrier set. Explicit
+scalar components retain their real vector declaration and compact-member provenance.
+Shared BF16x2/other alternate-format exact-B32 contracts remain unchanged.
+These slots remain register-only; no packed numeric literal bits/splat/zero
+representation or ordinary scalar-F16 conversion is added. Existing modifier,
+predicate, layout and PTX/target availability contracts remain unchanged.

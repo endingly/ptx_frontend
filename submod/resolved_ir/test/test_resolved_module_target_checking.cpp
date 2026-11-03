@@ -667,7 +667,29 @@ prototype: .callprototype _ .noreturn .abi_preserve 1 .abi_preserve_control 1;
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
   const auto sm30 = checkModuleAvailability(*parsed_module_2, *resolved);
   ASSERT_FALSE(sm30.has_value());
-  ASSERT_EQ(sm30.error().size(), 4u);
+  ASSERT_EQ(sm30.error().size(), 6u);
+  // Current metadata and supplied syntax retain independent source extents.
+  const auto& supplied_function =
+      std::get<syntax_ast::AstFunction>(parsed_module_2->items[3]);
+  const auto& supplied_prototype =
+      std::get<syntax_ast::AstCallPrototype>(supplied_function.body.front());
+  const auto& retained_prototype = resolved->functions[1].call_prototypes[0];
+  const std::array expected_ranges{
+      supplied_function.abi_preserve->range,
+      supplied_function.abi_preserve_control->range,
+      supplied_prototype.abi_preserve->range,
+      supplied_prototype.abi_preserve_control->range,
+      retained_prototype.abi_preserve->range,
+      retained_prototype.abi_preserve_control->range};
+  for (const auto range : expected_ranges)
+    EXPECT_EQ(std::ranges::count_if(sm30.error(),
+                                    [&](const auto& diagnostic) {
+                                      return diagnostic.kind ==
+                                                 checker::CheckDiagnosticKind::
+                                                     UnsupportedAvailability &&
+                                             diagnostic.range == range;
+                                    }),
+              1);
   for (const auto& diagnostic : sm30.error()) {
     EXPECT_EQ(diagnostic.kind,
               checker::CheckDiagnosticKind::UnsupportedAvailability);
@@ -783,4 +805,237 @@ TEST(ResolvedModule, OwnsEveryAddedGenericTargetProfile) {
     EXPECT_TRUE(validateModule(*owned));
   }
 }
+/** Construct a nonempty lawful legacy entry without unrelated modern directives. */
+std::string maxNctaSource(std::string version = "1.3",
+                          std::string target = "sm_13",
+                          std::string resources = ".maxnctapersm 0x4U ") {
+  return (version.empty() ? "" : ".version " + version + "\n") +
+         (target.empty() ? "" : ".target " + target + "\n") + ".entry k() " +
+         resources + "{.reg .u32 %r;mov.u32 %r,1;ret;}";
+}
+/** Return owning normalized resource data after syntax and source lifetimes end. */
+auto maxNctaOwned(std::string text) {
+  PtxSyntaxParser p(text);
+  auto a = p.parseModule();
+  if (!a || !a.diagnostics.empty())
+    return std::expected<ResolvedModule, ModuleResolveDiagnostics>{
+        std::unexpected(ModuleResolveDiagnostics{})};
+  return resolveAndValidateModule(*a);
+}
+/** Deprecated spelling has a minimum, independent of target architecture or the optional maxntid hint. */
+TEST(DeprecatedMaxNctaPerSm, SourceWindowsAndDistinctHints) {
+  for (auto [version, target] : {std::pair{"1.2", "sm_12"},
+                                 {"1.3", "sm_12"},
+                                 {"1.3", "sm_13"},
+                                 {"1.5", "sm_13"},
+                                 {"2.0", "sm_20"},
+                                 {"9.3", "sm_90"}}) {
+    auto text = maxNctaSource(version, target);
+    auto m = maxNctaOwned(text);
+    SCOPED_TRACE(text);
+    EXPECT_EQ(bool(m), std::string_view(version) != "1.2");
+    if (m) {
+      ASSERT_EQ(m->functions[0].contract.resources.size(), 1u);
+      auto& r = m->functions[0].contract.resources[0];
+      EXPECT_EQ(r.kind, ResolvedKernelResourceKind::MaxNctaPerSm);
+      EXPECT_EQ(r.values, (std::vector<uint32_t>{4}));
+      EXPECT_EQ(r.explicit_value_count, 1);
+      EXPECT_TRUE(validateModule(*m));
+    }
+  }
+  EXPECT_TRUE(maxNctaOwned(
+      maxNctaSource("1.3", "sm_13", ".maxntid 256 .maxnctapersm 4 ")));
+  auto combined = maxNctaOwned(
+      maxNctaSource("2.0", "sm_20", ".maxnctapersm 4 .minnctapersm 4 "));
+  ASSERT_TRUE(combined);
+  ASSERT_EQ(combined->functions[0].contract.resources.size(), 2u);
+  EXPECT_NE(combined->functions[0].contract.resources[0].kind,
+            combined->functions[0].contract.resources[1].kind);
+  EXPECT_FALSE(maxNctaOwned(
+      maxNctaSource("1.3", "sm_13", ".maxnctapersm 4 .maxnctapersm 4 ")));
+  for (auto text :
+       {".maxnctapersm 4 .entry k(){ret;}", ".func f() .maxnctapersm 4 {ret;}",
+        ".entry k(){.maxnctapersm 4 ret;}"}) {
+    PtxSyntaxParser parser(text);
+    auto parsed = parser.parseModule();
+    EXPECT_TRUE(!parsed || !parsed.diagnostics.empty());
+  }
+}
+/** Complete integer projection checks the existing modeled u32 capacity and retains raw AST leaves separately. */
+TEST(DeprecatedMaxNctaPerSm, CompleteIntegerDomainAndRawSyntax) {
+  for (auto [literal, value] : {std::pair{"0", 0u},
+                                {"0x4U", 4u},
+                                {"04u", 4u},
+                                {"0b100", 4u},
+                                {"4294967295U", UINT32_MAX}}) {
+    auto text = maxNctaSource("1.3", "sm_13",
+                              std::string(".maxnctapersm ") + literal + " ");
+    PtxSyntaxParser p(text);
+    auto a = p.parseModule();
+    ASSERT_TRUE(a);
+    auto& f = std::get<syntax_ast::AstFunction>(a->items.back());
+    ASSERT_EQ(f.resources.size(), 1u);
+    EXPECT_EQ(f.resources[0].kind,
+              syntax_ast::AstKernelResourceKind::MaxNctaPerSm);
+    ASSERT_EQ(f.resources[0].values.size(), 1u);
+    EXPECT_EQ(f.resources[0].values[0].text, literal);
+    auto m = resolveAndValidateModule(*a);
+    ASSERT_TRUE(m);
+    EXPECT_EQ(m->functions[0].contract.resources[0].values[0], value);
+  }
+  for (auto literal :
+       {"4294967296U", "18446744073709551616U", "-1", "1.0", "1+1", "1,2"})
+    EXPECT_FALSE(maxNctaOwned(maxNctaSource(
+        "1.3", "sm_13", std::string(".maxnctapersm ") + literal + " ")));
+}
+/** Current authoritative values survive copies and permit coherent numeric edits; shape and placement remain intrinsic. */
+TEST(DeprecatedMaxNctaPerSm, CurrentPayloadAndOwningLifetimes) {
+  auto text = maxNctaSource();
+  PtxSyntaxParser p(text);
+  auto a = p.parseModule();
+  ASSERT_TRUE(a);
+  auto m = maxNctaOwned(text);
+  ASSERT_TRUE(m);
+  auto copy = *m;
+  ResolvedModule assigned;
+  assigned = copy;
+  auto moved = std::move(assigned);
+  auto fn = moved.functions[0];
+  moved.functions[0] = fn;
+  for (auto& i : moved.functions[0].body)
+    i = i->clone();
+  EXPECT_TRUE(validateModule(moved));
+  EXPECT_TRUE(validateModule(*a, moved));
+  EXPECT_EQ(moved.functions[0].contract.resources[0].range,
+            m->functions[0].contract.resources[0].range);
+  auto numeric = *m;
+  numeric.functions[0].contract.resources[0].values[0] = 5;
+  EXPECT_TRUE(validateModule(numeric));
+  EXPECT_TRUE(validateModule(*a, numeric));
+  for (int edit = 0; edit < 8; ++edit) {
+    auto bad = *m;
+    auto& f = bad.functions[0];
+    auto& r = f.contract.resources[0];
+    if (edit == 0)
+      r.values.clear();
+    if (edit == 1)
+      r.values.push_back(5);
+    if (edit == 2)
+      r.explicit_value_count = 0;
+    if (edit == 3)
+      r.explicit_value_count = 2;
+    if (edit == 4)
+      r.kind = static_cast<ResolvedKernelResourceKind>(255);
+    if (edit == 5)
+      r.range = {{0, 1}, {1, 2}};
+    if (edit == 6)
+      r.range = {{100, 1}, {100, 2}};
+    if (edit == 7)
+      f.is_entry = false;
+    for (auto policy : {ModuleValidationPolicy::AvailableContext,
+                        ModuleValidationPolicy::RequireCompleteContext})
+      for (auto result :
+           {validateModule(bad, policy), validateModule(*a, bad, policy)}) {
+        SCOPED_TRACE(edit);
+        ASSERT_FALSE(result);
+        EXPECT_TRUE(std::ranges::any_of(result.error(), [](auto& d) {
+          return d.kind == checker::CheckDiagnosticKind::ModuleSourceMismatch;
+        }));
+      }
+  }
+  EXPECT_TRUE(validateModule(*m));
+  EXPECT_TRUE(validateModule(*a, *m));
+  for (auto resource : {".minnctapersm 0x4U ", ".maxnctapersm 5 "}) {
+    auto replacement = maxNctaSource("2.0", "sm_20", resource);
+    PtxSyntaxParser q(replacement);
+    auto b = q.parseModule();
+    ASSERT_TRUE(b);
+    auto result = validateModule(*b, *m);
+    ASSERT_FALSE(result);
+    EXPECT_TRUE(std::ranges::any_of(result.error(), [](auto& d) {
+      return d.kind == checker::CheckDiagnosticKind::ModuleSourceMismatch;
+    }));
+  }
+}
+/** Known optional version is sufficient for the minimum; supplied effective context governs current hint data. */
+TEST(DeprecatedMaxNctaPerSm, PartialContextAndEffectiveVersion) {
+  auto text = maxNctaSource();
+  auto m = maxNctaOwned(text);
+  ASSERT_TRUE(m);
+  for (auto version : {"1.2", "1.3", ""}) {
+    auto provided = maxNctaSource(version, "");
+    PtxSyntaxParser p(provided);
+    auto a = p.parseModule();
+    ASSERT_TRUE(a);
+    auto r = validateModule(*a, *m, ModuleValidationPolicy::AvailableContext);
+    EXPECT_EQ(bool(r), std::string_view(version) != "1.2");
+    if (std::string_view(version) == "1.2") {
+      ASSERT_FALSE(r);
+      EXPECT_TRUE(std::ranges::any_of(r.error(), [](auto& d) {
+        return d.kind ==
+                   checker::CheckDiagnosticKind::UnsupportedAvailability &&
+               d.message.find(".maxnctapersm") != std::string::npos;
+      }));
+    }
+    // Produce absent target provenance coherently rather than clearing a written target's payload.
+    auto partial_text =
+        maxNctaSource(std::string_view(version) == "1.2" ? "1.3" : version, "");
+    PtxSyntaxParser partial_parser(partial_text);
+    auto partial_ast = partial_parser.parseModule();
+    ASSERT_TRUE(partial_ast);
+    auto draft = resolveModuleOnly(*partial_ast);
+    ASSERT_TRUE(draft);
+    auto partial = std::move(*draft);
+    if (std::string_view(version) == "1.2") {
+      for (auto& region : partial.header.regions)
+        region.version = checker::PtxVersion{1, 2};
+      for (auto& function : partial.functions)
+        function.source_version = checker::PtxVersion{1, 2};
+    }
+    auto current =
+        validateModule(partial, ModuleValidationPolicy::AvailableContext);
+    EXPECT_EQ(bool(current), std::string_view(version) != "1.2");
+    if (std::string_view(version) == "1.2") {
+      ASSERT_FALSE(current);
+      EXPECT_TRUE(std::ranges::any_of(current.error(), [](auto& d) {
+        return d.kind ==
+                   checker::CheckDiagnosticKind::UnsupportedAvailability &&
+               d.message.find(".maxnctapersm") != std::string::npos;
+      }));
+    }
+    if (std::string_view(version).empty()) {
+      auto strict = validateModule(
+          partial, ModuleValidationPolicy::RequireCompleteContext);
+      ASSERT_FALSE(strict);
+      EXPECT_TRUE(std::ranges::any_of(strict.error(), [](auto& d) {
+        return d.kind == checker::CheckDiagnosticKind::MissingValidationContext;
+      }));
+      auto bad = partial;
+      bad.functions[0].contract.resources[0].explicit_value_count = 0;
+      for (auto checked :
+           {validateModule(bad, ModuleValidationPolicy::AvailableContext),
+            validateModule(*a, bad,
+                           ModuleValidationPolicy::AvailableContext)}) {
+        ASSERT_FALSE(checked);
+        EXPECT_TRUE(std::ranges::any_of(checked.error(), [](const auto& d) {
+          return d.kind == checker::CheckDiagnosticKind::ModuleSourceMismatch;
+        }));
+      }
+      auto source_strict = validateModule(
+          *a, *m, ModuleValidationPolicy::RequireCompleteContext);
+      ASSERT_FALSE(source_strict);
+      EXPECT_TRUE(std::ranges::any_of(source_strict.error(), [](const auto& d) {
+        return d.kind == checker::CheckDiagnosticKind::MissingValidationContext;
+      }));
+    }
+  }
+  auto modern = maxNctaOwned(maxNctaSource("9.3", "sm_90"));
+  ASSERT_TRUE(modern);
+  auto old = maxNctaSource();
+  PtxSyntaxParser p(old);
+  auto a = p.parseModule();
+  ASSERT_TRUE(a);
+  EXPECT_TRUE(validateModule(*a, *modern));
+}
+
 }  // namespace ptx_frontend::resolved_ir

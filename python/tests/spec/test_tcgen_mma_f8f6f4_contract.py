@@ -55,7 +55,7 @@ class TcgenMmaF8F6F4ContractTests(unittest.TestCase):
         self.assertEqual({item.token for item in mma.modifiers
                           if item.name == "kind"}, {".kind::f8f6f4"})
         self.assertEqual({layout.name for layout in mma.operand_layouts}, {
-            "shared_mask", "shared_no_mask", "tensor_mask", "tensor_no_mask"
+            "shared_mask", "tensor_mask"
         })
         for layout in mma.operand_layouts:
             names = tuple(item.name for item in layout.operands)
@@ -66,7 +66,7 @@ class TcgenMmaF8F6F4ContractTests(unittest.TestCase):
             self.assertNotIn("scale_a", names)
             self.assertNotIn("scale_b", names)
         for group, count in ((1, 4), (2, 8)):
-            for placement, mask in product(("shared", "tensor"), (None, count)):
+            for placement, mask in product(("shared", "tensor"), (count,)):
                 with self.subTest(group=group, placement=placement, mask=mask):
                     source = normalize_f8f6f4_source_topology({
                         "group": group, "a_placement": placement,
@@ -74,9 +74,9 @@ class TcgenMmaF8F6F4ContractTests(unittest.TestCase):
                     self.assertEqual((source.group, source.a_placement,
                                       source.mask_count),
                                      (group, placement, mask))
-        base = {"group": 1, "a_placement": "shared", "mask_count": None}
+        base = {"group": 1, "a_placement": "shared", "mask_count": 4}
         for changed in ({"group": 3}, {"a_placement": "global"},
-                        {"mask_count": 0}, {"mask_count": 5},
+                        {"mask_count": None}, {"mask_count": 0}, {"mask_count": 5},
                         {"scale_source_value": 0}, {"saturate": True},
                         {"block_scale": True}):
             with self.subTest(changed=changed), self.assertRaises(ValueError):
@@ -193,7 +193,9 @@ class TcgenMmaF8F6F4ContractTests(unittest.TestCase):
                               ("sm_100a", True, 8, 6, False),
                               ("sm_100f", False, 8, 8, False),
                               ("sm_110a", True, 9, 0, False),
-                              ("sm_110f", False, 9, 0, False)})
+                              ("sm_110f", False, 9, 0, False),
+                              ("sm_101a", True, 8, 6, False),
+                              ("sm_101f", True, 8, 8, False)})
         header = emitter.render_tcgen_mma_header()
         source = emitter.render_tcgen_mma_source()
         self.assertIn("TcgenF8F6F4ShapeRow", header)

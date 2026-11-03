@@ -32,13 +32,13 @@ operand_patterns:
 
   set_half_result_f16:
     - {name: dst, kind: reg, role: dst, access: write, type: f16, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16, register_width: same_width}
 
   set_half_result_f16_boolean:
     - {name: dst, kind: reg, role: dst, access: write, type: f16, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16, register_width: same_width}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   set_bfloat_result_scalar:
@@ -54,35 +54,35 @@ operand_patterns:
 
   set_bfloat_result_f16:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: exact}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16, register_width: same_width}
 
   set_bfloat_result_f16_boolean:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: exact}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16, register_width: same_width}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   set_integer_result_f16:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16, register_width: same_width}
 
   set_integer_result_f16_boolean:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16, register_width: same_width}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   set_integer_result_bf16:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: b16, register_width: exact}
-    - {name: src2, kind: reg, role: src2, access: read, type: b16, register_width: exact}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: bf16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: bf16, register_width: same_width}
 
   set_integer_result_bf16_boolean:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: b16, register_width: exact}
-    - {name: src2, kind: reg, role: src2, access: read, type: b16, register_width: exact}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: bf16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: bf16, register_width: same_width}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   set_native_f16x2:
@@ -97,12 +97,12 @@ operand_patterns:
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   set_integer_result_f16x2:
-    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
     - {name: src1, kind: reg, role: src1, access: read, type: f16x2, register_width: same_width}
     - {name: src2, kind: reg, role: src2, access: read, type: f16x2, register_width: same_width}
 
   set_integer_result_f16x2_boolean:
-    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
     - {name: src1, kind: reg, role: src1, access: read, type: f16x2, register_width: same_width}
     - {name: src2, kind: reg, role: src2, access: read, type: f16x2, register_width: same_width}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
@@ -119,12 +119,12 @@ operand_patterns:
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   set_integer_result_bf16x2:
-    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
     - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
     - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: exact}
 
   set_integer_result_bf16x2_boolean:
-    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
     - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
     - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: exact}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
@@ -153,35 +153,46 @@ operand_patterns:
 
   setp_f16_single:
     - {name: dst, kind: pred, role: dst, access: write, type: pred}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16, integer_immediate_type: b16}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16, integer_immediate_type: b16}
 
   setp_f16_single_boolean:
     - {name: dst, kind: pred, role: dst, access: write, type: pred}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16, integer_immediate_type: b16}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16, integer_immediate_type: b16}
+    - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
+
+  setp_f16x2_pair:
+    - {name: dst, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16x2, register_width: same_width, integer_immediate_type: b32}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16x2, register_width: same_width, integer_immediate_type: b32}
+
+  setp_f16x2_pair_boolean:
+    - {name: dst, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16x2, register_width: same_width, integer_immediate_type: b32}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16x2, register_width: same_width, integer_immediate_type: b32}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   setp_packed_pair:
     - {name: dst, kind: pred_pair, role: dst, access: write, type: pred}
-    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
-    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: exact}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: bf16x2, register_width: same_width, integer_immediate_type: b32}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: bf16x2, register_width: same_width, integer_immediate_type: b32}
 
   setp_packed_pair_boolean:
     - {name: dst, kind: pred_pair, role: dst, access: write, type: pred}
-    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
-    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: exact}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: bf16x2, register_width: same_width, integer_immediate_type: b32}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: bf16x2, register_width: same_width, integer_immediate_type: b32}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   setp_bf16_single:
     - {name: dst, kind: pred, role: dst, access: write, type: pred}
-    - {name: src1, kind: reg, role: src1, access: read, type: b16, register_width: exact}
-    - {name: src2, kind: reg, role: src2, access: read, type: b16, register_width: exact}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: bf16, register_width: same_width, integer_immediate_type: b16}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: bf16, register_width: same_width, integer_immediate_type: b16}
 
   setp_bf16_single_boolean:
     - {name: dst, kind: pred, role: dst, access: write, type: pred}
-    - {name: src1, kind: reg, role: src1, access: read, type: b16, register_width: exact}
-    - {name: src2, kind: reg, role: src2, access: read, type: b16, register_width: exact}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: bf16, register_width: same_width, integer_immediate_type: b16}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: bf16, register_width: same_width, integer_immediate_type: b16}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
   selp_u32:
     - name: dst
@@ -329,7 +340,7 @@ instructions:
         modifiers:
           - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne]}
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
-          - {name: ftz, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
           - {name: stype, kind: type, domain: scalar_types, presence: required, values: [b16, b32, b64]}
         operands: $set_half_result_scalar
@@ -338,7 +349,7 @@ instructions:
         modifiers:
           - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne]}
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
-          - {name: ftz, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
           - {name: stype, kind: type, domain: scalar_types, presence: required, values: [b16, b32, b64]}
         operands: $set_half_result_scalar_boolean
@@ -347,7 +358,7 @@ instructions:
         modifiers:
           - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge]}
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
-          - {name: ftz, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
           - {name: stype, kind: type, domain: scalar_types, presence: required, values: [u16, u32, u64, s16, s32, s64]}
         operands: $set_half_result_scalar
@@ -356,7 +367,7 @@ instructions:
         modifiers:
           - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge]}
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
-          - {name: ftz, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
           - {name: stype, kind: type, domain: scalar_types, presence: required, values: [u16, u32, u64, s16, s32, s64]}
         operands: $set_half_result_scalar_boolean
@@ -401,7 +412,7 @@ instructions:
         modifiers:
           - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
-          - {name: ftz, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
           - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f64}
         operands: $set_half_result_scalar
@@ -410,7 +421,7 @@ instructions:
         modifiers:
           - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
-          - {name: ftz, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
           - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f64}
         operands: $set_half_result_scalar_boolean
@@ -739,7 +750,7 @@ instructions:
           - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
-        operands: $setp_packed_pair
+        operands: $setp_f16x2_pair
 
       - name: setp_f16x2_boolean
         availability: {ptx: "4.2", sm: 53}
@@ -748,7 +759,7 @@ instructions:
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
           - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
-        operands: $setp_packed_pair_boolean
+        operands: $setp_f16x2_pair_boolean
 
       - name: setp_bf16
         availability: {ptx: "7.8", sm: 90}

@@ -26,6 +26,7 @@ class UnaryFloatCompletenessTests(unittest.TestCase):
             set(self.instructions["rcp"]),
             {
                 "rcp_implicit_f32",
+                "rcp_implicit_f64",
                 "rcp_approx_f32",
                 "rcp_rn_f32",
                 "rcp_directed_f32",

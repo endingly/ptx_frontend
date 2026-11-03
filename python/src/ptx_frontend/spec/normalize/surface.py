@@ -174,9 +174,10 @@ def validate_surface_variant(opcode: str, variant: VariantSpec) -> None:
     if contract.vector_arity == 4 and 'b64' in types:
         raise ValueError('surface vectors cannot exceed 128 bits')
     narrow = bool(types & {'b8', 'b16'})
-    expected_width = OperandRegisterWidthPolicy.EQUAL_OR_WIDER if narrow else OperandRegisterWidthPolicy.SAME_WIDTH
-    if (narrow and not types <= {'b8', 'b16'}) or data.register_width_policy is not expected_width:
-        raise ValueError('surface widening belongs only to a separate narrow dtype group')
+    if narrow and not types <= {'b8', 'b16'}:
+        raise ValueError('surface narrow dtype group must remain separate')
+    if data.register_width_policy is not OperandRegisterWidthPolicy.SAME_WIDTH:
+        raise ValueError('surface data requires same-width register carriers')
     if contract.vector_arity != 1 and (data.vector_type_policy is not OperandVectorTypePolicy.ELEMENT or data.vector_allow_sink):
         raise ValueError('surface data vectors require ordinary nonsink element lanes')
     if not types or not types <= allowed:

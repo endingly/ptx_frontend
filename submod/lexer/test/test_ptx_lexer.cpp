@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 
 #include <string>
 #include <string_view>
@@ -141,7 +142,7 @@ TEST(PtxLexerNew, FormFeedInsideStringsAndComments) {
 
 /** Other ASCII controls remain bounded errors with normal byte positions. */
 TEST(PtxLexerNew, FormFeedDoesNotAdmitOtherControlWhitespace) {
-  for (const char control : {'\v', '\x01', '\x1f'}) {
+  for (const char control : {'\x01', '\x1f'}) {
     PtxLexer lexer(std::string(".global") + control + ".u32");
     EXPECT_EQ(lexer.next().kind, TokenKind::DotGlobal);
     const auto error = lexer.next();
@@ -151,6 +152,201 @@ TEST(PtxLexerNew, FormFeedDoesNotAdmitOtherControlWhitespace) {
     EXPECT_EQ(error.range.start.column, 8u);
     EXPECT_EQ(error.range.end.column, 9u);
     EXPECT_EQ(lexer.next().text, ".u32");
+    EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
+  }
+}
+
+/** The six ASCII terminals retain exact bytes and physical byte-column ranges. */
+TEST(PtxLexerNew, SixAsciiWhitespaceTerminalsAndRanges) {
+  for (const char separator : {' ', '\t', '\n', '\v', '\f', '\r'}) {
+    SCOPED_TRACE(static_cast<unsigned>(separator));
+    const std::string byte(1, separator);
+    PtxLexer lexer(".global" + byte + ".u32" + byte + "x;");
+    const auto global = lexer.next();
+    const auto type = lexer.next();
+    const auto name = lexer.next();
+    const auto semicolon = lexer.next();
+    const auto eof = lexer.next();
+    const bool newline = separator == '\n' || separator == '\r';
+    EXPECT_EQ(global.kind, TokenKind::DotGlobal);
+    EXPECT_EQ(global.text, ".global");
+    EXPECT_EQ(global.range, (SourceRange{{1, 1}, {1, 8}}));
+    EXPECT_TRUE(global.leading_trivia.empty());
+    EXPECT_EQ(type.kind, TokenKind::DotIdent);
+    EXPECT_EQ(type.text, ".u32");
+    EXPECT_EQ(type.range, (newline ? SourceRange{{2, 1}, {2, 5}}
+                                   : SourceRange{{1, 9}, {1, 13}}));
+    ASSERT_EQ(type.leading_trivia.size(), 1u);
+    EXPECT_EQ(type.leading_trivia[0].kind, TriviaKind::Whitespace);
+    EXPECT_EQ(type.leading_trivia[0].text, byte);
+    EXPECT_EQ(
+        type.leading_trivia[0].range,
+        (newline ? SourceRange{{1, 8}, {2, 1}} : SourceRange{{1, 8}, {1, 9}}));
+    EXPECT_EQ(name.kind, TokenKind::Ident);
+    EXPECT_EQ(name.text, "x");
+    EXPECT_EQ(name.range, (newline ? SourceRange{{3, 1}, {3, 2}}
+                                   : SourceRange{{1, 14}, {1, 15}}));
+    ASSERT_EQ(name.leading_trivia.size(), 1u);
+    EXPECT_EQ(name.leading_trivia[0].kind, TriviaKind::Whitespace);
+    EXPECT_EQ(name.leading_trivia[0].text, byte);
+    EXPECT_EQ(name.leading_trivia[0].range,
+              (newline ? SourceRange{{2, 5}, {3, 1}}
+                       : SourceRange{{1, 13}, {1, 14}}));
+    EXPECT_EQ(semicolon.kind, TokenKind::Semicolon);
+    EXPECT_EQ(semicolon.text, ";");
+    EXPECT_EQ(semicolon.range, (newline ? SourceRange{{3, 2}, {3, 3}}
+                                        : SourceRange{{1, 15}, {1, 16}}));
+    EXPECT_EQ(eof.kind, TokenKind::Eof);
+    EXPECT_TRUE(eof.text.empty());
+    EXPECT_TRUE(eof.leading_trivia.empty());
+    EXPECT_EQ(eof.range, (newline ? SourceRange{{3, 3}, {3, 3}}
+                                  : SourceRange{{1, 16}, {1, 16}}));
+  }
+}
+
+/** VT groups with existing whitespace and remains one byte before tokens and EOF. */
+TEST(PtxLexerNew, VerticalTabLeadingMixedTrailingAndNewlineBoundaries) {
+  PtxLexer lexer("\v.global \t\v\f.u32\vvalue;\v");
+  const auto global = lexer.next();
+  const auto type = lexer.next();
+  const auto value = lexer.next();
+  EXPECT_EQ(global.range, (SourceRange{{1, 2}, {1, 9}}));
+  ASSERT_EQ(global.leading_trivia.size(), 1u);
+  EXPECT_EQ(global.leading_trivia[0].text, "\v");
+  EXPECT_EQ(global.leading_trivia[0].range, (SourceRange{{1, 1}, {1, 2}}));
+  EXPECT_EQ(type.range, (SourceRange{{1, 13}, {1, 17}}));
+  ASSERT_EQ(type.leading_trivia.size(), 1u);
+  EXPECT_EQ(type.leading_trivia[0].text, " \t\v\f");
+  EXPECT_EQ(type.leading_trivia[0].range, (SourceRange{{1, 9}, {1, 13}}));
+  EXPECT_EQ(value.text, "value");
+  EXPECT_EQ(value.range, (SourceRange{{1, 18}, {1, 23}}));
+  ASSERT_EQ(value.leading_trivia.size(), 1u);
+  EXPECT_EQ(value.leading_trivia[0].text, "\v");
+  EXPECT_EQ(lexer.next().kind, TokenKind::Semicolon);
+  const auto eof = lexer.next();
+  EXPECT_EQ(eof.kind, TokenKind::Eof);
+  EXPECT_EQ(eof.range, (SourceRange{{1, 25}, {1, 25}}));
+  ASSERT_EQ(eof.leading_trivia.size(), 1u);
+  EXPECT_EQ(eof.leading_trivia[0].kind, TriviaKind::Whitespace);
+  EXPECT_EQ(eof.leading_trivia[0].text, "\v");
+  EXPECT_EQ(eof.leading_trivia[0].range, (SourceRange{{1, 24}, {1, 25}}));
+  for (const auto& bytes : {std::string("\r\n\v"), std::string("\r\v\n")}) {
+    PtxLexer lines("a" + bytes + "b");
+    EXPECT_EQ(lines.next().text, "a");
+    const auto b = lines.next();
+    EXPECT_EQ(b.kind, TokenKind::Ident);
+    EXPECT_EQ(b.text, "b");
+    ASSERT_EQ(b.leading_trivia.size(), 1u);
+    EXPECT_EQ(b.leading_trivia[0].text, bytes);
+    const bool crlf = bytes == "\r\n\v";
+    EXPECT_EQ(b.range, (crlf ? SourceRange{{2, 2}, {2, 3}}
+                             : SourceRange{{3, 1}, {3, 2}}));
+    EXPECT_EQ(b.leading_trivia[0].range, (crlf ? SourceRange{{1, 2}, {2, 2}}
+                                               : SourceRange{{1, 2}, {3, 1}}));
+  }
+}
+
+/** VT separates identifiers and punctuation without joining or rewriting spellings. */
+TEST(PtxLexerNew, VerticalTabIdentifierAndInitializerBoundaries) {
+  PtxLexer identifiers("a\vb");
+  EXPECT_EQ(identifiers.next().text, "a");
+  const auto b = identifiers.next();
+  EXPECT_EQ(b.kind, TokenKind::Ident);
+  EXPECT_EQ(b.text, "b");
+  EXPECT_EQ(b.range, (SourceRange{{1, 3}, {1, 4}}));
+  ASSERT_EQ(b.leading_trivia.size(), 1u);
+  EXPECT_EQ(b.leading_trivia[0].text, "\v");
+  PtxLexer punctuation(".global\v.u32\vx\v=\v1\v;\v");
+  const std::vector<std::pair<TokenKind, std::string>> expected{
+      {TokenKind::DotGlobal, ".global"},
+      {TokenKind::DotIdent, ".u32"},
+      {TokenKind::Ident, "x"},
+      {TokenKind::Eq, "="},
+      {TokenKind::Decimal, "1"},
+      {TokenKind::Semicolon, ";"},
+      {TokenKind::Eof, ""}};
+  const int columns[] = {1, 9, 14, 16, 18, 20, 22};
+  for (size_t i = 0; i < expected.size(); ++i) {
+    const auto token = punctuation.next();
+    EXPECT_EQ(token.kind, expected[i].first);
+    EXPECT_EQ(token.text, expected[i].second);
+    EXPECT_EQ(token.range.start, (SourcePos{1, columns[i]}));
+    EXPECT_EQ(token.range.end,
+              (SourcePos{1, columns[i] + static_cast<int>(token.text.size())}));
+    if (i) {
+      ASSERT_EQ(token.leading_trivia.size(), 1u);
+      EXPECT_EQ(token.leading_trivia[0].text, "\v");
+    }
+  }
+}
+
+/** Physical VT remains opaque in strings and both comment forms; no escape is added. */
+TEST(PtxLexerNew, VerticalTabQuotedAndCommentBoundaries) {
+  PtxLexer lexer("\"a\vb\"/*c\vd*///e\vnot_a_token\r\nret;\v");
+  const auto string = lexer.next();
+  EXPECT_EQ(string.kind, TokenKind::String);
+  EXPECT_EQ(string.text, "\"a\vb\"");
+  EXPECT_EQ(string.range, (SourceRange{{1, 1}, {1, 6}}));
+  const auto ret = lexer.next();
+  EXPECT_EQ(ret.text, "ret");
+  EXPECT_EQ(ret.range, (SourceRange{{2, 1}, {2, 4}}));
+  ASSERT_EQ(ret.leading_trivia.size(), 3u);
+  EXPECT_EQ(ret.leading_trivia[0].kind, TriviaKind::BlockComment);
+  EXPECT_EQ(ret.leading_trivia[0].text, "/*c\vd*/");
+  EXPECT_EQ(ret.leading_trivia[0].range, (SourceRange{{1, 6}, {1, 13}}));
+  EXPECT_EQ(ret.leading_trivia[1].kind, TriviaKind::LineComment);
+  EXPECT_EQ(ret.leading_trivia[1].text, "//e\vnot_a_token");
+  EXPECT_EQ(ret.leading_trivia[1].range, (SourceRange{{1, 13}, {1, 28}}));
+  EXPECT_EQ(ret.leading_trivia[2].text, "\r\n");
+  EXPECT_EQ(ret.leading_trivia[2].range, (SourceRange{{1, 28}, {2, 1}}));
+  EXPECT_EQ(lexer.next().kind, TokenKind::Semicolon);
+  const auto eof = lexer.next();
+  ASSERT_EQ(eof.leading_trivia.size(), 1u);
+  EXPECT_EQ(eof.leading_trivia[0].text, "\v");
+  EXPECT_EQ(eof.range, (SourceRange{{2, 6}, {2, 6}}));
+  PtxLexer escaped("\"a\\vb\"");
+  const auto escaped_token = escaped.next();
+  EXPECT_EQ(escaped_token.kind, TokenKind::String);
+  EXPECT_EQ(escaped_token.text, "\"a\\vb\"");
+  EXPECT_NE(escaped_token.text, string.text);
+}
+
+/** Non-whitespace controls and multibyte spaces stay exact located outside-token errors. */
+TEST(PtxLexerNew, AsciiWhitespaceDoesNotExpandToOtherControlsOrUnicode) {
+  const std::vector<std::pair<std::string, std::string>> controls{
+      {"NUL", std::string(1, '\0')},
+      {"SOH", "\x01"},
+      {"BEL", "\x07"},
+      {"BS", "\x08"},
+      {"US", "\x1f"},
+      {"ESC", "\x1b"},
+      {"DEL", "\x7f"},
+      {"NBSP", "\xc2\xa0"},
+      {"EMSPACE", "\xe2\x80\x83"}};
+  for (const auto& [label, bytes] : controls) {
+    SCOPED_TRACE(label);
+    PtxLexer lexer("a" + bytes + "b");
+    EXPECT_EQ(lexer.next().text, "a");
+    std::string errors;
+    for (size_t count = 0; count < bytes.size(); ++count) {
+      const auto error = lexer.next();
+      ASSERT_EQ(error.kind, TokenKind::Error);
+      ASSERT_FALSE(error.text.empty());
+      EXPECT_TRUE(error.leading_trivia.empty());
+      EXPECT_EQ(error.range.start,
+                (SourcePos{1, 2 + static_cast<int>(errors.size())}));
+      errors += error.text;
+      EXPECT_EQ(error.range.end,
+                (SourcePos{1, 2 + static_cast<int>(errors.size())}));
+      if (errors.size() == bytes.size())
+        break;
+    }
+    EXPECT_EQ(errors, bytes);
+    const auto b = lexer.next();
+    EXPECT_EQ(b.kind, TokenKind::Ident);
+    EXPECT_EQ(b.text, "b");
+    EXPECT_EQ(b.range, (SourceRange{{1, 2 + static_cast<int>(bytes.size())},
+                                    {1, 3 + static_cast<int>(bytes.size())}}));
     EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
   }
 }
@@ -861,4 +1057,29 @@ TEST(PtxLexerNew, PeekDoesNotConsume) {
 
   auto c3 = lexer.consume();
   EXPECT_EQ(c3.kind, TokenKind::Eof);
+}
+
+/** Exact deprecated directive spelling remains distinct from the minimum and generic dot names. */
+TEST(PtxLexer, RecognizesDeprecatedMaximumCtaHint) {
+  auto tokens = lex_all(".maxnctapersm 0x4U .minnctapersm 2 .maxnctapersmx");
+  ASSERT_EQ(tokens.size(), 5u);
+  EXPECT_EQ(tokens[0].kind, TokenKind::DotMaxnctapersm);
+  EXPECT_EQ(tokens[0].text, ".maxnctapersm");
+  EXPECT_EQ(tokens[1].text, "0x4U");
+  EXPECT_EQ(tokens[2].kind, TokenKind::DotMinnctapersm);
+  EXPECT_NE(tokens[4].kind, TokenKind::DotMaxnctapersm);
+}
+
+/** The exact legacy marker does not alter dotted longest-match or predicate tokenization. */
+TEST(PtxLexer, RecognizesLegacyDwarfMarkerAndDottedWidth) {
+  PtxLexer lexer("@@DWARF .4byte .4 4byte @%p");
+  EXPECT_EQ(lexer.next().kind, TokenKind::AtAtDwarf);
+  auto width = lexer.next();
+  EXPECT_EQ(width.kind, TokenKind::DotIdent);
+  EXPECT_EQ(width.text, ".4byte");
+  EXPECT_EQ(lexer.next().kind, TokenKind::F64);
+  EXPECT_NE(lexer.next().kind, TokenKind::DotIdent);
+  auto wrong = lex_all("@@dwarf .byte 0x1");
+  EXPECT_FALSE(std::ranges::any_of(
+      wrong, [](const auto& t) { return t.kind == TokenKind::AtAtDwarf; }));
 }

@@ -9,9 +9,8 @@ encodings; the known-operation query never reads live descriptor registers.
 The canonical order is
 `tcgen05.mma.cta_group::{1,2}.kind::f8f6f4 [d-tmem], a, b-desc,
 idesc, {disable-output-lane}, enable-input-d`. A is a shared descriptor
-register or bracketed Tensor Memory address. The optional mask contains
-four or eight 32-bit bit-registers for group 1 or 2. Four A-placement/mask
-layouts and two located group values yield eight typed source topologies.
+register or bracketed Tensor Memory address. The required mask contains
+four or eight 32-bit bit-registers for group 1 or 2. Two A-placement layouts and two located group values yield four typed source topologies.
 There is no source `scale-input-d`, `.satfinite`, or block-scale operand in this ordinary form. The frontend accepts the printed canonical modifier
 order; the adjacent `.mma.kind::f8f6f4.cta_group` spelling is excluded.
 
@@ -64,13 +63,11 @@ Tensor Memory word, but the known query cannot inspect actual matrix bytes,
 allocation, completion or numerical GPU behavior. A report with no supplied
 fact violations can still have unresolved obligations.
 
-The current target catalogue gives four ordinary unscaled branches:
-exact `sm_100a` from PTX 8.6, enabled `sm_100f` family from 8.8, exact
-`sm_110a` from 9.0, and enabled `sm_110f` family from 9.0. Target context
-is an explicit profile identity and feature intersection, not a numeric SM
-comparison. The manual's historical `sm_101a`/`sm_101f` spellings lack
-entries in the current catalogue; they are not silently mapped to `sm_110`.
-The i8 exact-only exclusion and f16/tf32 D-scale gates do not apply here.
+The modern100/110 unscaled target branches retain their original version floors.
+Explicit historical rows add 101A from PTX8.6 and 101F from PTX8.8, preserving
+exact source identity while matching the catalog's 110 validation-feature level.
+Family membership remains the canonical `sm_110f` label; Generic101 gains no
+A/F grant. i8 A-only and f16/tf32 D-scale restrictions remain separate.
 
 This is a bounded source and known-facts representation. Scaled MX kinds,
 sparse and WS forms, convolution, physical low-bit
@@ -79,3 +76,5 @@ remain outside it. TMA and MMA can coexist in one module, but this slice does no
 execution or cross-instruction completion.
 
 The current ordinary non-WS dense and sparse forms also support [typed A collector and ashift controls](tcgen_mma_a_collector_coverage.md); their caller-known history checks remain conditional.
+
+The [descriptor-carrier interpretation](matrix_reference_interpretations.md#logical-descriptor-carriers-and-fundamental-bit-data) distinguishes exact-width B/U/S descriptor roles from ordinary `SameWidth` bit data: F64/F32 are rejected for those roles, while `mov.b64`/`mov.b32` bit copies remain valid. TCGEN `idesc` is a 32-bit instruction descriptor, not TMA im2col. Lane-mask F32 and actual `.b64` mbarrier arrival-state data retain separate policies; runtime descriptor contents remain unproved.

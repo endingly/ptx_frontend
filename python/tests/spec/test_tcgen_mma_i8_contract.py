@@ -23,8 +23,8 @@ from ptx_frontend.spec.resources import packaged_spec_dir
 class TcgenI8ContractTests(unittest.TestCase):
     """Separate canonical source admission from known-word operation checks."""
 
-    def test_closed_source_has_four_unscaled_layouts(self) -> None:
-        """Both typed groups share four layouts without scale or saturation syntax."""
+    def test_closed_source_has_two_unscaled_layouts(self) -> None:
+        """Both typed groups share two masked layouts without scale or saturation syntax."""
 
         raw = load_yaml(packaged_spec_dir() /
                         "tensor_memory_data_movement.yaml")
@@ -32,11 +32,11 @@ class TcgenI8ContractTests(unittest.TestCase):
         mma = next(item for item in tcgen.variants
                    if item.name == "tcgen05_mma_i8")
         self.assertIs(mma.rule, SemanticRule.TENSOR_MEMORY_MMA)
-        self.assertEqual(len(mma.operand_layouts), 4)
+        self.assertEqual(len(mma.operand_layouts), 2)
         self.assertEqual(mma.modifier_order_aliases,
                          (("mma", "kind", "cta_group", "ashift", "collector"),))
         self.assertEqual({layout.name for layout in mma.operand_layouts}, {
-            "shared_mask", "shared_no_mask", "tensor_mask", "tensor_no_mask"
+            "shared_mask", "tensor_mask"
         })
         self.assertEqual({item.name for item in mma.modifiers},
                          {"mma", "cta_group", "kind", "ashift", "collector"})
@@ -48,11 +48,11 @@ class TcgenI8ContractTests(unittest.TestCase):
             self.assertNotIn("saturate", names)
             self.assertEqual(names[:4], ("d", "a", "b", "idesc"))
             self.assertEqual(names[-1], "enable_input_d")
-        base = {"group": 1, "a_placement": "shared", "mask_count": None}
-        self.assertIsNone(normalize_i8_source_topology(base).mask_count)
+        base = {"group": 1, "a_placement": "shared", "mask_count": 4}
+        self.assertEqual(normalize_i8_source_topology(base).mask_count, 4)
         for group, count in ((1, 4), (2, 8)):
             for placement in ("shared", "tensor"):
-                for mask_count in (None, count):
+                for mask_count in (count,):
                     with self.subTest(group=group, placement=placement,
                                       mask_count=mask_count):
                         source = normalize_i8_source_topology({
@@ -62,7 +62,7 @@ class TcgenI8ContractTests(unittest.TestCase):
                                           source.mask_count),
                                          (group, placement, mask_count))
         for changed in ({"group": 3}, {"a_placement": "global"},
-                        {"mask_count": 0}, {"mask_count": 5},
+                        {"mask_count": None}, {"mask_count": 0}, {"mask_count": 5},
                         {"scale_source_value": 0}, {"saturate": True}):
             with self.subTest(changed=changed), self.assertRaises(ValueError):
                 normalize_i8_source_topology({**base, **changed})
@@ -161,7 +161,8 @@ class TcgenI8ContractTests(unittest.TestCase):
         self.assertEqual({(row.feature, row.exact, row.ptx_major,
                            row.ptx_minor) for row in rules.I8_TARGET_GATES}, {
                                ("sm_100a", True, 8, 6),
-                               ("sm_110a", True, 9, 0)})
+                               ("sm_110a", True, 9, 0),
+                               ("sm_101a", True, 8, 6)})
         header = emitter.render_tcgen_mma_header()
         source = emitter.render_tcgen_mma_source()
         self.assertIn("TcgenI8ShapeRow", header)

@@ -4,9 +4,10 @@ from ptx_frontend.spec.model import (
     OperandLayoutSpec,
     OperandLayoutKind,
     OperandSpec,
+    OperandVectorTypePolicy,
 )
 from .availability import normalize_availability
-from ptx_frontend.spec.synatax_shapes import operand_syntax_shapes
+from ptx_frontend.spec.synatax_shapes import OperandSyntaxShape, operand_syntax_shapes
 from .operands import normalize_operand
 
 
@@ -178,8 +179,26 @@ def _modern_pack_interval(operand: OperandSpec) -> tuple[int, int] | None:
     return operand.minimum_elements, operand.maximum_elements
 
 
+def _named_aggregate_scalar_disjoint(left: OperandSpec, right: OperandSpec) -> bool:
+    """Match runtime whole-vector versus scalar declaration eligibility."""
+    def named_aggregate(operand: OperandSpec) -> bool:
+        """Identify descriptor-authorized ordinary named aggregate vectors."""
+        return (operand.kind is OperandKind.REGISTER_VECTOR
+                and operand.vector_allow_named
+                and operand.vector_type_policy is OperandVectorTypePolicy.AGGREGATE)
+
+    scalar_kinds = {OperandKind.REGISTER, OperandKind.REGISTER_OR_IMMEDIATE,
+                    OperandKind.MOV_SCALAR_SOURCE}
+    return ((named_aggregate(left) and right.kind in scalar_kinds)
+            or (named_aggregate(right) and left.kind in scalar_kinds))
+
+
 def _flat_slot_overlap(left: OperandSpec, right: OperandSpec) -> bool:
-    if not (operand_syntax_shapes(left) & operand_syntax_shapes(right)):
+    shared_shapes = operand_syntax_shapes(left) & operand_syntax_shapes(right)
+    if not shared_shapes:
+        return False
+    if (shared_shapes == OperandSyntaxShape.IDENTIFIER_REF
+            and _named_aggregate_scalar_disjoint(left, right)):
         return False
     left_interval = _modern_pack_interval(left)
     right_interval = _modern_pack_interval(right)

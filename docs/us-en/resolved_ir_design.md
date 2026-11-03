@@ -13,7 +13,7 @@ not GPU execution, broadcast/truncation semantics or assembler parity.
 | v2 u32 constant-expression MOV → alias/overlap MOV → ST | Folded typed values, parameterized register members and source form survive ownership transfer. Destination aliases of one lane are duplicates; repeated sources and source/destination overlap remain legal. |
 | Named v2 f64 NC/LDU → MOV → ST | Memory and MOV retain their own type policies. Existing availability remains distinct: NC needs PTX 3.1 / SM 32, generic LDU PTX 2.0 / SM 20, explicit-global LDU PTX 2.0 plus f64 SM 13, and f64 MOV SM 13. |
 | Named-array constant address → vector LD → MOV → ST | A declared `.v4 .f32 A[]` still has scalar index stride four bytes, not sixteen. `A[4]` contributes sixteen bytes and can satisfy v4 alignment; a dynamic index reduces the known alignment to `gcd(base alignment, 4)`, so the same vector access is rejected when only four-byte alignment is guaranteed. |
-| Adjacent unsupported combinations | Atom/red remain brace-only; scalar bit pack/unpack retains its sink and B128 gates and does not admit named aggregates, float packing or scalar-to-scalar B128. Modern 256-bit memory uses legal scalar brace lanes, not oversized ordinary named declarations or widened vector MOV. |
+| Adjacent unsupported combinations | Atom/red remain brace-only; scalar bit pack/unpack accepts exact-width named ordinary aggregates and retains its sink and B128 gates; floating instruction types and scalar-to-scalar B128 remain excluded. Modern 256-bit memory uses legal scalar brace lanes, not oversized ordinary named declarations or widened vector MOV. |
 
 Owned revalidation checks complete source forms, component origin/order, actual
 declaration width, type/arity and source ownership, with located failures for
@@ -51,19 +51,22 @@ only with u32/s32/b32 and their existing availability. No fourth scalar hardware
 selector is invented. Sinks, predicate lanes, nested whole vectors, addresses,
 functions and symbols are not source lanes. Bare scalar vector sources such as
 `mov.v2.u32 V, 1` remain an unsupported frontend subset, not an ISA-invalid claim
-or a broadcast/truncation promise. Scalar `.b16/.b32/.b64/.b128` pack/unpack stays
-brace-only, including the B128 PTX 8.3 / SM 70 gates. No named scalar aggregate,
-floating pack or scalar-to-scalar B128 form is added. Other family fences and
+or a broadcast/truncation promise. Scalar `.b16/.b32/.b64/.b128` pack/unpack
+accepts braces or a complete ordinary named vector with exactly matching total
+width, retaining B128 PTX 8.3 / SM 70 gates. Floating instruction types and
+scalar-to-scalar B128 forms remain excluded. Other family fences and
 modern 256-bit brace memory forms are unchanged. Owned validation rejoins complete
 base/lane declarations and source ownership after source release/copy/move.
 
 ## Named array addresses
 
-Dedicated address-source MOV and ordinary LD (ISA §9.7.9.8) / ST (§9.7.9.11)
-accept `A[index]`. LDNC, LDU, ST.async/bulk, atom/red, cp.async, prefetch,
-matrix, tensor and texture families remain outside this supported subset;
-this is not a claim that their PTX ISA syntax is invalid. Admission is selected
-from the final variant's canonical metadata and independently rechecked on owned IR.
+Dedicated address-source MOV and generic address operands accept `A[index]`,
+including LDNC/LDU, atomic/reduction, cache, asynchronous-copy, barrier, tensor-map,
+response-object and fabric local-memory addresses. Admission follows each typed
+binding: explicit register-only async data addresses remain restricted, independently
+of generic barrier-object siblings. Tensor operands, fabric handles and texture/surface
+accesses retain their separate grammars. Generated source and owned checks use the
+same role policy; existing target, state-space, alignment and control rules still apply.
 The named form does not compose with a `.unified` suffix. Known unified storage
 still requires the existing bracket-qualified LD path and remains read-only for
 ST; MOV may take its address, including named indexing, without dereferencing it.
@@ -73,7 +76,8 @@ exact bound scalar register, optional integer displacement, written operator,
 scalar byte stride and source ranges. It is mutually exclusive with the old
 byte offset. `A[1]` scales by the declaration's scalar base element size:
 u32, v2.u32 and multidimensional u32 arrays all use four bytes, while u64 uses
-eight. Array shape comes from owned storage/parameter records keyed by SymbolId;
+eight. Instruction data types, transfer granules and opaque object sizes do not
+determine this scalar stride. Array shape comes from owned storage/parameter records keyed by SymbolId;
 standalone resolution without that context fails explicitly. Negative and
 out-of-bounds constants are not rejected merely for array bounds.
 
@@ -128,7 +132,7 @@ alignment checks bound data symbols with constant byte offsets and absolute
 immediate addresses; register and standalone unresolved addresses stay unknown.
 Other source forms, remaining qualifier extensions, CFG/SSA, and target
 lowering remain later work. `ResolvedIndirectCallee` provides descriptor-
-independent identity for a non-predicate `.reg` indirect target or a bound
+independent identity for a scalar General integer/bit `.reg` indirect target or a bound
 function-local `.callprototype`/`.calltargets` label. Its enclosing
 `ResolvedFunction` owns the matching ordered metadata payload and normalized
 ABI separately, so an operand remains compact without making the metadata
@@ -277,10 +281,11 @@ explicitly cataloged `sm_<number>[a|f]` profile, `compute_<number>[a|f]` is a
 synonym with the same architecture, flavor, enabled family features and
 capabilities. Both lexical parsing and owned source regions preserve the written
 prefix; semantic availability and explicit checker-target comparisons use
-architecture and flavor. `TargetIdentity::operator==` still compares retained
+validation-feature architecture and flavor through the explicit catalog rename
+correspondence. `TargetIdentity::operator==` still compares retained
 source spelling as well, so source-provenance consistency checks remain exact.
-Unknown numbers and unsupported flavors, including `compute_101a` and
-`compute_101f`, do not acquire catalog profiles. Texture-mode
+Unknown numbers and unsupported flavors, including `compute_102a` and
+`compute_102f`, do not acquire catalog profiles. Texture-mode
 selection is checked for repetition and module conflicts. This contract adds neither
 DWARF content checks nor floating-point instruction conversion. These source forms follow the archived
 [PTX ISA 9.3 target directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target).
@@ -402,7 +407,7 @@ Instruction ranges/opcodes and all owned records are semantic provenance. The
 frontend retains `.language` and function ABI/resource contracts; `.file`,
 `.loc`, `.section`, and `.pragma` remain syntax/debug or advisory metadata and
 are not executable resolved payloads. The owned symbol table retains `.file` declaration payloads for debug identity validation. There is no promise of stable generated
-C++ struct layout or binary ABI. Raw module directives still require an AST;
+C++ struct layout or binary ABI. Other raw module directives still require an AST;
 the owned model is a semantic handoff for the documented subset, not a complete
 source serialization contract.
 
@@ -445,6 +450,43 @@ the original. Bound `.debug_str` identities also validate `.loc` metadata, but
 `.file`, `.loc`, `.section`, and `.pragma` add no executable Resolved IR nodes or
 instruction attachment.
 
+A present `file_size` is one checked unsigned64 integer token, including zero
+(unavailable) and UINT64_MAX. Decimal, leading-zero octal, binary, hexadecimal and
+optional `u`/`U` suffixes use the existing checked integer-magnitude decoder;
+overflow, signs, floating values, expressions and noninteger leaves reject without
+truncation. Its raw text/range and absence remain owned; no decoded-size cache is
+added. Current symbol-table sizes and supplied/rebound sizes are checked
+independently before optional context gates. Invalid current data cannot be
+masked by valid replacement metadata, while independently valid different `.file`
+datasets retain debug-neutral source identity. Timestamp's separate `time_t`
+domain and existing index, filename, optional-pair, range and reference rules are
+unchanged.
+
+`ResolvedModule::pragmas` owns source-traversal-ordered `ResolvedPragma` values:
+`placement` (`Module`, `EntryHeader`, or `Statement`), `scope_id`, raw owning
+`AstSyntax` string leaves and the whole directive `range`. Module placement uses
+module scope; header placement uses the actual entry declaration occurrence;
+statement scopes reach an actual function definition through its lexical blocks,
+not a canonical symbol's first prototype scope. Pragma strings create no names
+and have no frontend backend/loop/execution interpretation. Empty quoted content
+is valid; a retained empty list, unquoted leaf, invalid scope/placement or invalid
+whole/leaf range is not. Known current and supplied module ranges each contain
+their own records; an all-zero owner range defers containment. Within-list order is checked; records are not sorted or
+joined to historical text. Grouped spellings/ranges do not replace exact CST
+comma/trivia serialization.
+
+Copies, assignments and moves own the complete vector alongside the module table.
+Function-only copies do not acquire module advisory metadata. Current records are
+intrinsically checked in both validation APIs. Supplied AST projection is checked
+independently; its version selects the PTX 2.0 introduction, so valid neutral
+replacement may remove pragmas and lower to PTX 1.5 without an old-presence veto.
+AST-free availability uses the current module version. Known old versions reject
+even without target context; only unknown version defers under `AvailableContext`.
+Invalid current data cannot be masked by valid replacement, or vice versa. This
+public layout addition requires consumer rebuild. The explicit public
+`ptx_syntax_sections.hpp` value dependency supplies `AstSyntax` while `AstModule`
+and `AstInstruction` remain incomplete through the module-only header boundary.
+
 Explicit `.file` timestamp/file-size metadata (including `0, 0`) requires PTX ISA
 3.2 or later; plain `.file` has no such gate. This presence-based check has no SM
 or debug-option requirement and rejects a known older version even without a
@@ -458,11 +500,11 @@ versions are checked together. See [PTX ISA 9.3 §11.5.3](https://docs.nvidia.co
 declarations: return formals first, input formals next, then body-local declarators
 in lexical traversal order (including nested blocks). Each
 `ResolvedParameterDeclaration` retains its `symbol_id`, `scope_id`, role
-(`EntryInput`, `DeviceInput`, `DeviceReturn`, or `BodyLocal`), fundamental
+(`EntryInput`, `DeviceInput`, `DeviceReturn`, `BodyLocal`, or `LegacyEntryInput`), fundamental
 `scalar_type`, effective byte `alignment`, `explicit_alignment`, `vector_width`,
 outer-to-inner `array_extents`, checked `byte_extent`, and optional pointee
 properties. Scalar shapes have no array extents; supported unsized device input
-arrays have a null extent and no byte extent. The owning function and symbol
+arrays retain a null outer axis and checked known inner axes, with no byte extent. The owning function and symbol
 table preserve lexical identity even for shadowed local names. Values remain
 inspectable after source text and Syntax AST destruction. A non-pointer has no
 pointer properties; a pointer with no pointed state space is generic, and omitted
@@ -480,6 +522,17 @@ formal-typed literals, and enforces function-local `.param` qualification,
 predication, and staging adjacency. The generated checker remains responsible
 for one resolved instruction and target-aware descriptor rules.
 
+Complete-module direct calls require a prior declaration or definition of the actual
+bound device-function SymbolId. The shared source/owned pass uses retained lexical
+events and declaration occurrences at exactly one positive target range inside its
+call; unknown or ambiguous ordering is rejected. Compatible prior prototypes and
+modern self-recursion work. Alias visibility uses the alias identity, not an earlier
+canonical target. Copied/cloned owned calls may retarget to another compatible
+already-declared function at that event without rejoining diagnostic spelling;
+later-only targets and malformed use locations fail. Source association remains
+independent. Instruction fragments retain partial-context resolution, while indirect
+register/metadata/table calls keep their separate rules.
+
 `<ptx_frontend/semantic/ptx_function_contract.hpp>` exposes the canonical
 function-signature contract without a Syntax AST dependency. Its parameter
 contracts use semantic state-space and pointer-space enums, `ScalarType` and a
@@ -489,21 +542,104 @@ keys. Direct-call ABI validation consumes those normalized values without
 reparsing alignment text or the former array-extent string protocol; invalid
 structural data is never silently replaced by a default.
 
-Call-staging adjacency follows the executable instruction sequence within the
-current lexical body. Ordinary variable declarations, `.loc`, and `.pragma` do
-not interrupt argument stores before a call or return loads after it. Labels,
-nested blocks, and call/branch metadata remain scan boundaries; nested bodies
-are checked separately with their own symbol scope. Actual intervening
-instructions and predicated staging accesses remain invalid. The declaration's
-placement does not change which bound parameter identity the call must use.
+Call-staging adjacency follows the owned executable instruction sequence. Variable
+and debug directives, metadata declarations, bare labels and lexical braces are
+transparent. Transfers through a nested block may use the same still-visible outer
+object; distinct shadowed declarations and out-of-scope actuals remain invalid.
+Every intervening instruction interrupts adjacency, and transfers cannot be
+predicated; the call itself may be predicated. Both resolution and AST-free
+validation derive the same bound object/member identity from byte-address and
+named-array forms, including symbolic indices. Offsets do not change which local
+object the call must use. This check does not prove runtime index bounds, byte
+initialization coverage or correctness across arbitrary incoming control paths.
+
+Parameter records also retain fundamental `.f16x2` and legal `.param` v2/v4 shapes,
+with lane-aware extents, natural vector alignment and AST-free padded entry limits.
+The [parameter declaration contract](parameter_declarations.md) distinguishes packed
+scalar dtype from explicit vector lanes and the numeric packed-literal reference gap.
+
+The owned symbol table also retains ordered `.loc` events, without creating
+executable instructions or function-local duplicate payloads. A common validator
+checks both current owned records and independently rebound replacement records.
+An `inlined_at` triple must match an earlier **base** triple in module lexical
+order; the current base is inserted only after checking its reference. Nested
+blocks, function boundaries and target regions do not reset that stream. Physical
+ranges check ownership and within-record field order, never event sorting. Actual
+function-definition occurrence scopes, not a canonical function's first owned
+scope, associate records with bodies. Both datasets must be intrinsically valid;
+different valid debug datasets remain compatible with debug-neutral source identity.
+Numeric triples compare unsigned magnitudes across radices and suffixes, including
+zero line/column and full uint64 values. This is frontend capacity, not a DWARF
+width claim. File indices must independently bind to `.file`; function names must
+bind to current typed `.debug_str` identities. Basic `.loc` requires PTX 1.0 and
+inline attributes require PTX 7.2, with no architecture floor. Absent version may
+defer availability under `AvailableContext`, never numeric, identity or precedence
+failures. No instruction attachment, decoded line table or string-address execution
+is implied.
+
+A private iterative SCC check recomputes current canonical local-definition call
+relations on each validation. Direct cycles are syntactic recursion; cycles that
+need consumed finite target-set/table alternatives are statically possible
+recursion. Both require independently known PTX 2.0 / SM 20 at every participating
+caller's selected context; source-aware validation substitutes supplied context
+while keeping the current owned graph. An original acyclic AST cannot mask a
+coherent current callee edit. Copies and cloned calls retain no stale graph state.
+Call identity/ABI/table joins precede the graph, and non-call instruction lanes
+are not walked for edge collection. No public graph/cache is retained. Open
+external/prototype/dynamic edges preclude whole-program acyclicity claims, and
+`AvailableContext` deferral is not an acyclic certificate. This is no CFG or
+runtime stack/linker execution model.
+
+Current weak linkage in canonical symbols, storage occurrence records and
+function contracts requires known PTX 3.1, independently of target context.
+Every Weak symbol, including a symbol-only function, and storage record uses the
+common module version guaranteed by the existing equality of all region versions.
+Function occurrence contracts also use each exact selected region. Either retained function contract or canonical weak symbol is
+sufficient, including unused prototypes. Source-aware validation checks current
+facts under supplied context and independently checks every supplied weak
+occurrence; weak qualifiers remain nonneutral source identity. Missing version
+alone may defer under `AvailableContext`, while strict context and unknown-target
+diagnostics remain. Copies retain existing typed facts; no cache-equality,
+historical qualifier registry, public layout or linker simulation is added.
+
+Current retained `.branchtargets` and `.calltargets` each require PTX 2.1 / SM 20,
+including unused and nested declarations. Their availability reuses the same
+minimum-only mechanism below: exact selected-region context when AST-free,
+supplied active context for current records and independently supplied typed
+nodes when source-aware. Known failing prerequisites reject before full context
+is available. Target-list payload remains nonneutral source identity; these
+checks add no CFG, execution, public layout or new member/signature policy.
+
+Current retained call prototypes are checked even when unused or nested. Their
+base requires PTX 2.1 / SM 20, `.noreturn` requires PTX 6.4 / SM 30, and either
+ABI-preservation suffix requires PTX 9.0 / SM 80. AST-free validation uses exactly
+the function's validated selected region. Source-aware validation checks current
+prototype fields and independently supplied prototype syntax with the supplied
+active context; version/target retargeting adds no historical payload veto.
+These four conjunctive minimum-only rules evaluate known version and recognized
+profile independently: a known failure rejects even if the other fact is absent.
+Only unknown prerequisites defer under `AvailableContext`; strict missing-context
+checks and unknown-target diagnostics remain. Target events clear the active
+recognized profile, and no guessed version, target number or generic partial-DNF
+interpretation is introduced. Ordinary function/instruction availability retains
+its full-context gates. Counts, variants, identities and signatures retain their
+existing contracts; this does not prove physical register preservation.
 
 ## Named memory-vector sources
 
 Ordinary `ld`/`st`, `ld.global.nc`, and `ldu` accept a named ordinary `.reg .v2`
 or `.reg .v4` data operand alongside braces. Declaration width must equal arity,
 with at most 128 declared bits; memory equal-or-wider element rules remain.
-Modern 256-bit vectors, asynchronous stores, atomic/reduction, matrix, texture
-and scalar pack/unpack operands remain brace-only.
+Modern 256-bit vectors, asynchronous stores, atomic/reduction, matrix and texture
+operands retain their separate brace restrictions. Scalar bit pack/unpack also
+admits named ordinary vectors through its exact aggregate-width policy below.
+
+At the common checker boundary, an effective scalar `Register` operand cannot
+carry a whole-vector `ResolvedRegisterRef::vector_width`. An explicit component
+remains scalar: its effective width is absent and its component metadata retains
+the owning declaration width. Actual `Vector` operands keep their whole base and
+ordered lane provenance under their dedicated checks. These rules also apply to
+AST-free copies and instruction clones.
 
 `ResolvedRegisterVector::elements` retains the lanes. Its owned `ResolvedVectorSource`
 distinguishes `BraceList`/`NamedVector`, saves the full written range, and only for
@@ -519,8 +655,8 @@ and each lane; AST-free owned validation rejoins declarations and source ownersh
 Actual braces always retain their full range. Legacy standalone manual braces may
 omit it, but malformed supplied ranges reject; owned validation requires full
 provenance and instruction/lane containment. Named provenance is always mandatory.
-This data-source opt-in does not widen array-address policy: LDNC/LDU named-array
-addresses remain excluded. No GPU execution or assembler parity is claimed.
+Data-source admission is independent of the generic array-address role policy.
+No GPU execution or assembler parity is claimed.
 
 ## Locations and primitive values
 
@@ -547,6 +683,12 @@ strings. Operand primitives include `ResolvedRegisterRef`, `ResolvedImmediate`,
 and `ScalarType`. Integer forms also retain evaluated 64-bit source bits and
 numerical signed-negativity, so fixed-control checks never reinterpret literal
 text or trust a narrowed value.
+When original integer source bits are present, a true negative flag requires bit63
+of that original word to be set, after use-width bits are checked against the
+source. A false flag with bit63 set can represent an unsigned source. A negative
+original value may narrow to positive use-width bits; neither the destination
+type nor the narrowed sign reconstructs source signedness. Cache-absent scalar
+legacy inputs retain their existing behavior.
 
 Owned constant-expression operands are evaluated through the shared semantic
 evaluator before conversion at their numeric use site. Integer source bits and
@@ -576,19 +718,35 @@ strict conversion explicitly. Call literals checked against formal parameter
 types and address offsets retain strict target-width representability. A signed
 `-0` is numerically zero,
 whereas floating negative zero retains its IEEE sign bit. Decimal floats
-currently convert to `F32` and `F64`; a single leading `+` is normalized only
-at decimal decoding, while a leading `-`, signed zero, and exponent signs retain
-their normal floating semantics. Raw `0f`/`0d` bit-pattern rules are unchanged.
+convert to `F32`, `F64`, and equal-source-width `B64`; a single leading `+`
+is normalized at decimal decoding, while a leading `-`, signed zero, and exponent signs retain
+their normal floating semantics. Exact-F32 `0f` literals reject parentheses
+and both unary signs, including lexer-compacted signed spellings. Exact-F64
+`0d` literals admit unary signs through the shared numeric conversion, preserving negative zero.
 `0f<8 hex>` and `0d<16 hex>` are raw IEEE bit patterns for `F32` and `F64`
-respectively. Other floating formats require explicit quantization rules and
-must not silently take the integer path.
+respectively. Scalar data slots that already admit constants also accept
+unsigned direct exact-F32 into `B32`, and decimal/exact-F64 literals or
+supported binary64 expressions into `B64`. This uses source precision rather
+than arbitrary floating conversion: exact-F32 into `B64`, binary64 sources into
+`B32`, and floating sources into `B8`/`B16`/`B128` are rejected. Typed immediates
+retain their bit destination and raw payload without integer-source provenance;
+owned call literal revalidation retains lexical source kind and spelling.
+Integer-only controls and register-only slots keep their role requirements.
+Exact-F32 operators remain excluded, including unselected branches. Other
+floating formats require explicit quantization rules and must not silently take
+the integer path.
 
 `ResolvedRegisterRef` owns the complete source spelling and its
 `ResolvedRegisterClass`. During module resolution it also stores the
 declaration `SymbolId`, optional parameterized-member index, and declared
 `ScalarType`, giving named registers such as `%tmp` and `name<count>` members a
 stable identity. A numbered-register index remains an optional convenience,
-not an identity. An ordinary `.xyzw/.rgba` selection retains this same base
+not an identity. A known bound register family requires its semantic member;
+current spelling must resolve in the actual declaration scope to that same
+`SymbolId` and member. A plain nonfamily reference needs no member. Clearing a
+numbered convenience index does not change identity, and coherent current
+spelling/member retargeting does not require rewriting retained source identity
+or the supplied original AST. An ordinary `.xyzw/.rgba` selection retains this same base
 identity and parameterized member, with owned `ResolvedRegisterComponent`
 metadata: canonical lane, actual declaration width, base spelling/range, full
 component range and written selector spelling/range. Its effective shape is
@@ -598,11 +756,33 @@ scalar element type. `same_register_storage` compares base/member/lane, making
 checking require valid `ExplicitSelector` provenance tied to actual operand
 locations. `NamedProjection` metadata is not admitted by these source
 forms and carries no fabricated written selector. Owned validation rejoins the
-base identity, declaration shape/type and source ranges. Calls, address bases
-and named-array indices do not admit new component syntax or transplanted
-component references; Fabric handles retain their separate identifier-only
-grammar and reject either component origin. Hardware components remain a distinct registry-backed
-domain with only its existing selectors.
+base identity, declaration shape/type and source ranges. Ordinary address bases
+and named-array register indices accept explicit `.xyzw/.rgba` scalar selections
+through this same carrier. For example, `[V.x+4]` retains a byte displacement,
+while `A[V.x-1]` retains the array's scalar-element stride and written subtraction.
+The array object remains a data identifier. The selected owner must be a real
+General `.reg .v2/.v4` declaration, within its existing 128-bit total-width cap;
+its scalar element must satisfy the existing integer/bit address role no wider
+than 64 bits. Group member identity and lane identity remain independent.
+Dynamic alignment, checked scaled memory offsets, and MOV's wider offset domain
+are unchanged; no runtime address, index bounds, layout or allocation is inferred.
+
+This applies ordinary scalar-element inheritance to existing address/index
+roles, rather than claiming that the manual explicitly illustrates these source
+spellings. The public CST/AST variants append the existing member alternative,
+so public producers and consumers must rebuild together. Exact written selector
+aliases retain different source identities. Coherent current owned alias/lane
+edits remain valid without authenticating producer history; malformed current
+metadata cannot be hidden by a valid supplied AST. Component leaf ranges must
+remain inside their address and instruction, and the selected physical owner
+keeps its 128-bit cap, even when target checks defer. `AvailableContext` retains
+the existing deferral of full instruction role checks when target context is
+missing; it is not complete validation.
+Calls admit explicit ordinary selected scalar inputs, returns and indirect register targets. Fabric, opaque-resource and tensor-map
+roles retain their separate semantic exclusions despite shared address-child
+parsing. `NamedProjection` does not impersonate an explicit scalar selector.
+Hardware components remain a distinct registry-backed domain with only its
+existing selectors.
 The context-free standalone resolver preserves its previous
 boundary: it accepts numbered registers and leaves symbol/type fields empty.
 Owned-module validation traverses generated operand references structurally,
@@ -674,6 +854,16 @@ predicate special registers. Neither shape admits floating constants.
 Standalone resolution continues to accept numbered predicate registers without
 declaration context.
 
+Predicate constants, logical `!`, and WGMMA scale-d numeric controls require an
+integer result source before truth or range conversion. A `B64` conversion
+carrier does not establish integer origin: decimal/exact-F64 literals and
+floating-valued expressions remain invalid in these roles, even with payload
+zero or one. Floating comparisons that return an integer, and `!` of that
+integer result, remain valid. Equal-width floating `B64` bit-data operands keep
+their separate compatibility rule. Owned predicate constants contain only a
+canonical Boolean; validation does not reconstruct source syntax erased by
+normalization.
+
 `MovScalar` owns the scalar dynamic type modifier
 `.b16/.u16/.s16`, `.b32/.u32/.s32/.f32`, and `.b64/.u64/.s64/.f64`, including
 the established `.b16/.b32/.b64` pack and unpack layouts.
@@ -684,6 +874,19 @@ destination-only `_` sink. Resolution and checking require a bit-size
 instruction type, equal total vector/instruction widths, no source sink, at
 least one real destination register, and no sub-byte element.
 `MovB128PackUnpack` carries PTX 8.3 / SM 70 availability.
+
+The existing aggregate layouts accept ordinary named `.reg .v2`/`.v4` vectors
+alongside braces. Arity comes from the bound declaration, not an implicit MOV
+modifier. Named source metadata retains the real whole base and canonical
+`NamedProjection` lanes with identical identifier ranges, declaration type,
+`SymbolId` and parameterized-member identity; no explicit component selectors or
+synthetic brace syntax are introduced. Layout selection uses declaration shape
+only at descriptor-authorized aggregate/scalar alternatives. Unknown names and
+context-free inputs never imply a named aggregate; existing scalar behavior and
+diagnostics remain, including declaration-free scalar symbol-address sources.
+Width/type and target errors do not retry another layout. Scalar and modifier-typed ordinary vector MOV keep
+their existing layouts. Source form, opcode, type and source identity survive
+owned module copy and instruction cloning.
 
 `ResolvedFunctionRef` retains source spelling, a stable function `SymbolId`,
 and the `.func`/`.entry` classification. A device-function address uses the
@@ -742,18 +945,25 @@ vectors use element type policy: each register element is checked against the
 instruction type, with `EqualOrWider` register width accepted. Legacy payloads
 are capped at 128 bits; the generated cross constraint adds only exact 256-bit
 `.v8` × 32-bit and `.v4` × 64-bit forms at PTX 8.8/SM 100, global when known,
-with partial sinks. The default register-width policy is `SameWidth`, preserving
-`mov/add/sub`, immediate, and special-register behavior. Only `ld` destination
-and `st` source register descriptors select `EqualOrWider`, so the declared
+with partial sinks and load destinations that contain only sinks. The default register-width policy is `SameWidth`, preserving
+`mov/add/sub`, immediate, and special-register behavior. `ld` destination
+and `st` source register descriptors, together with applicable `cvt` data
+operands, select `EqualOrWider`, so the declared
 register may be at least as wide as the instruction type. After that size
 check, either side being a bit type is compatible, signed/unsigned fundamental
 integers are mutually compatible, floats require the exact type/size, and
 integer/float combinations remain incompatible. This covers wider load
-destinations and store sources through 64-bit declared registers, including
-store truncation. A wider actual `.b128` register is deliberately rejected by
-the `EqualOrWider` policy for a narrower selected instruction; an exact `.b128`
-declaration is accepted for a selected `.b128` memory instruction. Exact
-`.b128` compatibility remains unchanged for existing `mov` vector consumers.
+destinations, store sources (including truncation), and applicable conversion
+operands through `.b128` declared bit registers, following PTX ISA 9.3 Tables
+27/28. Central declaration semantics classifies `.b128` as fundamental while
+rejecting instruction-only declaration formats and register vectors over 128
+bits. Declaration eligibility does not bypass instruction, format, PTX-version,
+or SM gates: selected `.b128` memory instructions still require PTX 8.3 / SM 70.
+The unsuffixed `isspacep` address-source role instead selects `WordOrDoubleword`
+with a fixed u64 use type: ordinary B/S/U32 and B/S/U64 registers are legal,
+independently of module address size; wider, floating and packed containers remain
+excluded. This finite address-role rule does not restrict general data carriers.
+Exact `.b128` compatibility remains unchanged for existing `mov` vector consumers.
 The focused [LD coverage](converage/ld_coverage.md) and [ST coverage](converage/st_coverage.md)
 documents define the current memory subset.
 
@@ -806,7 +1016,16 @@ and applies the global/shared, `volatile.local` PTX 9.1, and scalar
 `.mmio.relaxed.sys` rules. A generated `memory_vector` cross constraint detects
 arity > 4, payload > 128, or sinks; it requires a 256-bit payload, global space
 when known, and PTX 8.8/SM 100. Partial sinks are valid only for those modern
-load/store vectors; all-sink and legacy sinks remain invalid. Static natural
+load/store vectors. Ordinary write-only load destinations also accept fully
+represented brace tuples containing only sinks, with a selected `.v8` type
+`.b32/.s32/.u32/.f32` or `.v4` type `.b64/.s64/.u64/.f64`. The private grant
+joins actual owning null lanes, exact selected type/arity, complete brace/lane
+ranges, and consistent borrowed projections. It adds no public descriptor flag
+and does not infer type from null lanes. All-sink stores, legacy sinks, named
+roots, MOV and texture results retain their existing restrictions. The global,
+32-byte alignment and PTX 8.8/SM 100 checks still apply. Incomplete-context
+`AvailableContext` success retains its existing instruction-check deferral and
+is not a feature-availability guarantee. Static natural
 alignment covers scalar, legacy `.v2/.v4`, and modern 256-bit total access sizes
 when the address is known.
 
@@ -1264,8 +1483,8 @@ Implementation entry points are
 Direct/indirect-call ABI plus function-local call-argument `.param` memory, qualified
 `::entry`/`::func` forms, and call adjacency/predication constraints are covered
 by module resolution. Scalar `.b128` is rejected by the generated `MovScalar`
-type domain; declaration-type availability for wider `.b128` registers remains
-outside this slice. Legacy scalar/vector `ld`/`st` cache operators, PTX 8.8 modern memory
+type domain; wider `.b128` carriers use the central register declaration rules
+and the selected instruction's width policy. Legacy scalar/vector `ld`/`st` cache operators, PTX 8.8 modern memory
 vectors, static memory-address alignment, and memory-consistency qualifiers are
 covered here.
 
@@ -1290,20 +1509,18 @@ and current metadata remain unchanged; contextual availability applies per check
 
 ## Historical omitted floating controls
 
-For `1.0 <= PTX < 1.4`, twelve exact forms preserve omitted source controls:
+For `1.0 <= PTX < 1.4`, thirteen exact forms preserve omitted source controls:
 `div.f32`, `rcp.f32`, `sqrt.f32`, `rsqrt.f32`, `sin.f32`, `cos.f32`, `lg2.f32`,
 and `ex2.f32` have `FloatingPointDefault::ApproximateFlushToZero`; `div.f64`,
-`sqrt.f64`, and `mad.f64` have `RoundNearestEven`; `rsqrt.f64` has `Approximate`
+`rcp.f64`, `sqrt.f64`, and `mad.f64` have `RoundNearestEven`; `rsqrt.f64` has `Approximate`
 without FTZ. Their final classes expose `inline static constexpr
 floating_point_default` and no source mode/rounding/FTZ members. DIV also omits
 `.full`. Resolution never inserts explicit modifiers or rewrites the opcode.
 
 FP32 forms keep the existing all-target rule. FP64 forms need SM >= 13; only
-`div.f64` and `sqrt.f64` additionally accept exact generic `sm_10`, `sm_11`, or
+`div.f64`, `rcp.f64`, and `sqrt.f64` additionally accept exact generic `sm_10`, `sm_11`, or
 `sm_12` with `map_f64_to_f32`. That option does not admit `rsqrt.f64` or `mad.f64`
-on these targets. `rcp.f64` remains excluded: the manual describes an old omitted-mode default,
-while CUDA 13.3.33 rejects the reproduced form. This documented manual/current-assembler
-discrepancy does not widen the supported inventory. Existing implicit `mad.f32` has its own contract.
+on these targets. `RcpImplicitF64` is distinct from `RcpRnF64`; its RN default is a static interpretation, never a fabricated written control. Native SM13 requires a PTX1.2+ source header, while mapped SM10/11 permit PTX1.0 and SM12 requires PTX1.2. The historical CUDA 13.3.33 assembler discrepancy is evidence rather than a normative override of the pinned manual. Existing implicit `mad.f32` has its own contract.
 
 Availability metadata uses optional `ptx_before: "1.4"` as an exclusive bound,
 in plain requirements and each DNF clause. Missing bounds remain unbounded;
@@ -1347,3 +1564,712 @@ without changing the form identity. Integer saturation and BF16, TF32, FP64 and
 other MMA families are unchanged. These are syntax and static validation
 contracts; numerical GPU execution is not validated. See the
 [CUDA 13.3 PTX 9.3 WMMA MMA reference](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-wmma-mma).
+
+Header numeric parameter records retain every ordered `array_extents` axis and
+checked `byte_extent`. Their own signature axes must match exactly, while ABI
+comparison across declarations/calls uses total count. Name-only
+`ResolvedOpaqueEntryParameter::array_extents` replaces its old `is_array` and
+`array_extent`; it retains sized axes without assigning opaque bytes. Function
+copies own these vectors and clone body instructions independently. See the
+[public parameter migration](parameter_declarations.md).
+
+Ordinary register-vector operands and fixed-cardinality vector/tensor tuples
+contain scalar register leaves. This role is independent of whether arity comes
+from a modifier, an allowed-arity list, or fixed tuple bounds, and applies to both
+element and aggregate policies. An owned whole-vector register cannot replace
+one leaf even when its element dtype matches. Checking reports the offending
+lane range, with the operand/instruction range as fallback. Explicit scalar
+components and genuine named-vector projections retain absent effective vector
+width and remain legal under their existing source contracts. The enclosing
+named MOV/memory vector root keeps its own whole-vector shape; that root is not
+a scalar leaf. Value-vector sources retain their existing scalar-register and
+immediate/provenance checks. This changes no cardinality, dtype/carrier policy,
+named-source permission or immediate range.
+
+[Block-scaled MMA scale selectors](converage/mma_scale_selector_coverage.md) use
+U16 logical values with closed B16/S16/U16 register carriers. Their two scalar
+leaves, byte masks, separate A/B thread limits and unsigned literal conversion
+remain independent of whole-vector shape and runtime register contents.
+
+Selected multimem data vectors, SULD destinations, and root `st.async` v2/v4 sources accept ordinary named register vectors alongside braces. A sole fixed Element arity is taken from the binding when no vector modifier supplies it. The existing whole-base identity and canonical `NamedProjection` lanes remain owned together. MM/SULD require matching element widths; root `st.async` retains its wider-carrier rule. Every named declaration remains v2/v4 and at most 128 bits; MM v8 remains brace-only. SUST value-vector sources use the source contract below.
+
+`ResolvedValueVector` now owns `ResolvedVectorSource source` alongside ordered `RegOrImm` elements. Its default remains BraceList with no whole base; complete brace sources preserve mixed values, explicit components, and the full brace range. The 78 opted SUST v2/v4 bindings also accept ordinary named declarations. A named source has exactly one whole declaration authority in `source.whole_base`; every lane is a canonical General-register `NamedProjection` derived from that real SymbolId/member/type/width and the complete identifier range. Immediates, sinks, special registers, and independent scalar projections cannot form a named source. `valid_value_vector_source` reuses register-vector provenance validation; legacy standalone empty brace ranges remain compatible unless complete provenance is requested. Owned module validation requires the complete source and rejoins the base and each lane after syntax destruction.
+
+Public ABI migration: rebuild consumers of `ResolvedValueVector` and `checker::OperandView`. The latter adds a borrowed `const ResolvedValueVector* value_vector`, valid only during the synchronous check and pointing to the actual owned payload. Generated projections verify arity, lane kinds, and register/immediate pointers against that payload before named permission or type checks. Copy, equality, assignment, and instruction clone include the owned source; `IReferenceObserver::value_vector` keeps its signature. Other value-vector permissions stay default false, without a blanket claim that every such ISA role forbids named syntax. No RegOrImm domain or numeric conversion rule changed.
+
+`checker::OperandDescriptor::mbarrier_state_token_form` is now `std::optional<MbarrierStateTokenForm>` with an absent default, replacing the former unconditional Register default. Rebuild public consumers for this member type/default migration. Absence means a non-token descriptor; all 93 generated typed-token bindings explicitly engage their existing Register, RegisterOrSink, or Sink policy, including Register inputs. The existing optional register payload and observer signature are unchanged. The private common checker reconciles actual Register shape, sink flag, borrowed reference, and optional declared-type cache before enforcing presence policy. Sink-capable policies require write destinations. Other scalar type/width/component/declaration and availability rules remain independent; unknown declaration type is not made globally mandatory. Generic register/predicate/SHFL sinks with no token policy retain their existing rules. Caller-supplied absence chooses non-token checking and does not authenticate a token. Owned copies and clones enforce the same form after source destruction; neither this policy nor a B64 carrier proves runtime phase contents, progress, or token authenticity.
+
+A scalar `Register` view claims a General register. The common checker rejects a known non-General class in either the actual borrowed reference or its class cache, and rejects known predicate type facts under that claim. The same rule applies to scalar Register leaves after valid register-vector cardinality is established, with lane-range diagnostics. Genuine named-vector whole bases are not scalar leaves; General explicit components and canonical `NamedProjection` lanes retain their existing rules. Predicate and special-register views keep their own shape contracts. Unknown General types and legacy views without actual facts still defer to existing checks: this rule adds no required SymbolId or declared type, universal type-cache equality, or general instruction-only declaration eligibility check. Contextualized numeric types remain governed by their existing conversion rules. Class validation does not prove runtime register contents.
+
+Mbarrier register carrier typing is role-specific even though the written instruction modifier remains `.b64`. Opaque arrival/arrival-drop outputs and the opaque `pending_count` state input accept fundamental B64/S64/U64/F64 declarations of exactly 64 bits. Non-parity test/try-wait state inputs have semantic U64 type and accept B64/S64/U64, rejecting F64 and every other width. The frontend retains each actual declared type, SymbolId, member/component, and range; it performs no numeric floating conversion and proves no runtime token contents or prior operation. The aligned shared-memory `.b64` object is distinct from the register carrier. CTA RegisterOrSink and cluster mandatory Sink policies and availability remain independent.
+
+Report-value outputs retain the frontend's qualified logical B8 model, with same-size B8/S8/U8 carriers. The pinned PTX 9.3 text does not unambiguously map this heterogeneous report operand to a normative width/type; later official uint8 examples corroborate the retained model but do not close that fixed-reference gap. Report carrier tests establish this retained model, not unconditional ISA-width certification. Opaque F64 acceptance follows the adopted fixed-reference type interpretation; supplementary assembler rejection is documented tool divergence, not a new frontend type restriction.
+
+Scalar F16 numeric constants use IEEE binary16 conversion at the use site. Decimal and evaluated floating expressions, exact F64 bits, and bare unsigned exact F32 literals round once to nearest, ties to even. Binary64 bits convert directly to binary16; an exact F32 input widens exactly first. Signed zero, gradual subnormals, overflow to signed infinity and quiet NaNs with retained sign/high payload follow the deterministic frontend literal policy, independently of instruction rounding, FTZ or saturation. This does not simulate a CVT result. Integer-origin values remain distinct from floating constants. Exact F32 signs, parentheses and operators remain rejected; Bit16 does not inherit numeric half conversion, and F16/F16x2 data initializers remain forbidden.
+
+Twenty fields in eleven existing generated classes migrate from `WithLocs<ResolvedRegisterRef>` to `WithLocs<RegOrImm>`; rebuild public consumers and use `std::get_if<ResolvedRegisterRef>` or `std::get_if<ResolvedImmediate>` on `.value`. Variant names, shared F16/BF16 add/sub domains, selector order and all width/availability rules are unchanged.
+
+| Generated class | Migrated fields |
+| --- | --- |
+| `AddMixedF32`, `SubMixedF32` | `src` each |
+| `FmaMixedF32F16` | `src1`, `src2` |
+| `SetHalfF16F16`, `SetHalfF16F16Boolean` | `src1`, `src2` each |
+| `SetHalfBf16F16`, `SetHalfBf16F16Boolean` | `src1`, `src2` each |
+| `SetHalfIntegerF16`, `SetHalfIntegerF16Boolean` | `src1`, `src2` each |
+| `SetpF16`, `SetpF16Boolean` | `src1`, `src2` each |
+
+A canonical current F16/BF16 immediate is a low16 word with no integer-source provenance or integer-negative flag. Ordinary instruction IR retains the current typed word, so a coherent in-range word edit can be valid without recovering the original literal. Shared mixed BF16 fields accept numeric BF16 sources and canonical typed BF16 words under the scalar conversion contract below. Calls retain the original lexical input or preconversion F64 expression value and recompute the half word during owned validation. Every otherwise eligible scalar Reg/Param input uses that common conversion; modern narrow Register-formal ABI restrictions, vector no-splat and missing-context requirements remain independent. The four scalar F16 SETP sources additionally require an explicit raw Bit16 route in a separate typed-policy delivery; their current numeric path is not a claim that raw integers are normatively forbidden. Packed numeric construction and additional source permissions remain separate scope.
+
+The ordinary `cvt.pack.sat` S32 inputs accept integer constants and expressions as well as same-width B32/S32/U32 registers. The existing 64-bit evaluator narrows each input to its low32 S32 word and retains original64-bit integer bits/sign metadata; `0x100000001U` therefore has use word1 without a target-range requirement. The frontend does not saturate inputs to the destination lane width or precompute the packed result. Floating-valued inputs remain incompatible with S32; an expression whose final category is Integer, including an FP comparison, follows the integer route. Independent B32 carry sources keep their existing literal/precision contract, including same-width unsigned direct0f bit data; this does not admit literals in register-only stochastic `rbits`. Carry topology, destination widths and target boundaries remain unchanged.
+
+Public ABI migration: `src1` and `src2` in `CvtPackSatU8S32B32`, `CvtPackSat16S32` and `CvtPackSatSmallS32B32` change from `WithLocs<ResolvedRegisterRef>` to `WithLocs<RegOrImm>`. Rebuild consumers and inspect `.value` with `std::get_if<ResolvedRegisterRef>` or `std::get_if<ResolvedImmediate>`. Six fields change in place; no class, modifier domain or selector order changes. Copied/assigned/cloned instructions retain typed words, source caches, declaration identities and locations. Ordinary current IR word/reference edits are checked against current facts; source association remains a separate retained-syntax check.
+
+The three stochastic quad classes `CvtRsSatfiniteF8x4F32`, `CvtRsSatfiniteF4x4F32`, and `CvtRsSatfiniteF6x4F32` expose `src.value` as `ResolvedValueVector`, replacing `ResolvedRegisterVector`; consumers must rebuild and inspect each `RegOrImm` alternative. Brace sources retain the complete written range and lane order while numeric floating sources use the common F32 conversion. Integer-origin sources remain incompatible, and exact F32 constants retain the bare unsigned literal rule. This conversion computes source F32 words only; it does not execute stochastic conversion, saturation, or the packed result. Named V4 F32/B32 sources use `source.whole_base` as the sole declaration authority and canonical `NamedProjection` lanes, with the existing General class, arity, binding, and 128-bit declaration limits. Copies and clones own both provenance and lanes. A borrowed `OperandView.value_vector` must point to the actual payload and match its lane pointers, types, ranges, and descriptor permission; default-false named permission remains effective. The destination carrier policy and independent register-only `rbits` rule, including its widening policy, remain unchanged.
+
+Ordinary register declaration eligibility uses the actual physical declaration type and the central `ScalarTypeMetadata::register_declaration_usage` classification. Known General-register reference types must be Fundamental, including when reached through explicit components, named projections, or vector register leaves; absent standalone declaration facts retain their existing deferral. Logical BF16/TF32/packed instruction formats and canonical typed immediate words are independent of physical register declarations. Contextual operand type caches do not replace the actual declaration type. Owned validation separately checks every concrete ordinary `SymbolKind::Variable` in Register state space, including unused declarations; missing or unrecognized concrete types cannot establish eligibility. Predicate declarations and native scalar F16x2 remain Fundamental. Retained source identity records historical syntax association and does not exempt a current mutated binding table from declaration legality. Copies must validate within a module that owns the relevant symbol table.
+
+### Owning debug section values
+
+`ResolvedModule.sections` owns source-ordered section fragments. The public
+`ResolvedDebugSection` alias reuses `syntax_ast::AstSectionDirective` and its
+small value-only variants: every string/range is copied, without AST/CST/source
+borrows or numeric caches. Default module copy/assignment/move/swap therefore
+include nonempty integer and relocation payloads. This public CST/AST/Module
+migration changes source and binary layout; consumers must rebuild.
+
+A shared checker decodes already-tokenized integer magnitudes and applies original
+B8/B16/B32/B64 intervals `[-2^(w-1), 2^w-1]`. Full UINT64_MAX and negative 2^63
+survive; U suffixes do not relax ranges. The manual's `.b16 -65535` example
+conflicts with its explicit interval and is rejected in favor of that interval.
+B32/B64 symbolic data retains unresolved single addresses, signed byte addends
+(including checked `label-integer` shorthand), and differences of unique known
+labels/section bases in one logical section. Equal section names join fragments;
+linked addresses and relocation results remain unknown. Strings, arbitrary
+expressions and mixed symbol/integer lists are not inferred productions.
+
+Known PTX gates are section 2.0, label addend 3.2, B16 data 6.0, label definition
+7.2, label difference and negative values 7.5; minus zero is mathematically zero.
+Missing context follows existing validation policies. AST-free checks revalidate
+current owning records; source-aware checks independently validate both current
+and supplied section values with the supplied effective context and rebind its
+debug labels. Valid changed section data does not cause executable source-identity
+mismatch. Invalid current data cannot be hidden by valid replacement sections.
+This checks the bounded source grammar and static locality, not DWARF decoding,
+linked byte values, target-debug DWARF recognition or GPU execution.
+
+### Target debug absence and recognition boundary
+
+The file-wide `.target debug` requirement applies if any target directive selects
+`debug`, including earlier or later regions. Known `debug` with zero owning modern section records AND zero legacy records
+is a determinate violation, even under `AvailableContext` with
+missing version information. `.file`, `.loc`, or retained debug-string symbol
+identities cannot replace serialized debug records. The existing PTX 3.0 option gate and complete
+context requirements remain independent. Source-aware validation applies the same
+private absence rule separately to current owned options/modern sections/legacy records and supplied AST
+options/modern sections/legacy records; neither dataset can conceal the other's definite absence or
+invalid typed payload. Valid differing datasets retain section-neutral source
+association. No presence cache, recognition enum or decoder is added.
+
+**D-DEBUG-DWARF-PRESENCE-RECOGNITION remains a reference boundary, not a code PASS.**
+The pinned [target clause](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
+and [section grammar](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-section)
+do not specify a sufficient recognition criterion for arbitrary names, empty
+sections, label-only sections or nonempty typed data. A `.debug_` prefix, whitelist,
+nonempty payload or mandatory `.debug_info`/`.debug_abbrev` pair would invent such a
+criterion. The paired witness is one structural control, not a universal minimum
+or a decoder. Validation success for nonzero structurally valid section or legacy records
+therefore does not certify that actual DWARF information was found. The finite
+debug-off/on boundary tests record this qualification explicitly; full recognition
+and linked/binary authenticity are not claimed.
+
+Current owned `.language` values are context-independent intrinsic data: an
+absent optional denotes omission/default `ptx`; an engaged vector must be nonempty
+and every raw token must satisfy the shared public semantic decoder. Multiple
+values and duplicates retain exact order and spelling. Both module validation
+APIs recheck current values at the owning function range, even without version or
+target; legal supplied source cannot hide invalid current words. Valid current
+name/code/list edits or optional removal do not require historical equality.
+Replacement AST identity remains raw and ordered: changing `"ptx"` to `3` or
+reordering a valid list can still produce the existing source-association
+mismatch, while ordered decoded aliases remain compatible for redeclarations.
+Presence requires PTX 9.3 on all targets; a known old selected/supplied version
+rejects even with no target, and only missing version may defer availability under
+`AvailableContext`. Domain checking never defers; strict context requirements stay
+unchanged. The new decoder is an additive exported semantic function; clients
+must use the matching installed header/library. No payload layout or backend
+language execution guarantee is added.
+
+Owned entry-input `.ptr` availability is derived from the existing parameter
+record and checked against PTX 2.2 before requiring complete target context.
+A coherent version retarget updates the selected region and function metadata;
+copies and instruction clones preserve the same check after AST destruction.
+Source-aware validation instead applies its supplied effective version to current
+pointer presence, without treating the historical cached version as a veto.
+Existing pointer type, shape, alignment and pointee-space checks remain separate;
+the availability diagnostic uses the established function-range fallback.
+
+Parameter modifier metadata uses the exact typed identity
+`(MemoryStateSpace::Parameter, ParameterAddressQualifier)`. The domain and
+availability descriptors append a `parameter_qualifier` member defaulting to
+`Default`; `ModifierValueView` appends an optional member with an engaged
+`Default`. Existing positional aggregate initializers keep their meaning, but
+these public layouts change ABI: rebuild consumers with matching headers and
+libraries. An unknown projection (`nullopt`), invalid enum, or qualified
+non-Parameter space rejects independently of target and spelling presence.
+A non-default Parameter qualifier is semantically present even after locations
+are cleared. Plain Parameter therefore cannot select an 8.3 qualified row.
+
+Generated views use the current direct address or selected direct symbol tied
+to the same normalized modifier binding. Nested symbol defaults do not supply
+a second written qualifier. Fixed forms use their unique canonical identity;
+register alternatives need no qualifier payload. Associated faithful written
+qualifiers must agree. The existing typed parameter-address preservation policy
+can derive an Entry frame qualifier from a fixed plain modifier; that frame
+fact is validated separately and does not change the fixed modifier identity.
+Existing frame, readonly, declaration, source identity, and Shared/atomic
+qualifier guards continue to apply.
+
+Current-owned Parameter address checks run before missing version/target context
+can skip instruction validation, in both `validateModule` overloads. Exact
+variant/layout operand descriptors provide closed address-space domains and
+current associated state-space equality. Empty domains stay unconstrained;
+unknown runtime register pointees are not inferred. Device formal address
+materialization still uses its existing policy and may produce Local space.
+Known entry inputs cannot supply an explicitly writable operand or a Return
+parameter operand. `OperandAccess::Read` describes operand value access and
+never classifies memory effects; MOV address acquisition and tensor-map reads
+remain legal.
+
+`detail::IReferenceObserver::operand_context` is an appended default no-op
+virtual callback. A nonnull descriptor brackets the immediately following
+address-bearing top-level payload callback; nullptr resets the context.
+Descriptors and spans are borrowed synchronously. Collectors copy needed
+scalar/domain facts and retain no borrowed descriptor. Existing payload
+callbacks and their order stay unchanged. Existing derived source observers
+need no new override, but the added virtual slot changes ABI: rebuild observers
+and producer libraries against matching headers.
+
+
+## Historical entry body inputs
+
+PTX 1.0–1.3 entry body `.param` declarations have the owning `LegacyEntryInput`
+role in the sole `parameter_declarations` table, including scoped/group/array
+identities. The function signature remains syntactic header ABI only, so an empty
+header signature does not imply no host inputs. Lexical metadata order assigns
+no launch addresses or packing. Resolution needs a version only for ambiguous
+entry body roles; it reports `MissingValidationContext` without guessing from SM.
+Typed modules retain their role when context is missing.
+
+The optional `ResolvedSymbolRef::parameter_role` cache is derived from the actual
+record while keeping structural `CallParameter`. Address/MOV/tensor projections
+share input/return/call-slot directions. Both validators rejoin current records
+and caches and enforce read-only entry-frame access, direct call-actual exclusion,
+shape/scope and logical capacity before context skips. Legacy input LD is not
+call-return staging; MOV preserves `.param`. Modern BodyLocal staging is unchanged.
+The checked sum of per-member bytes times compact count has the known32764-byte
+global ceiling; no double axes/vector multiplication or invented256 legacy cap.
+`D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` remains qualified for exact historical
+physical launch packing. See the [parameter contract](parameter_declarations.md)
+for context windows, intrinsic guarantees and preserved limitations.
+
+
+The shared current operand-domain pass classifies both actual `EntryInput` and
+`LegacyEntryInput` records as read-only entry objects. It uses current typed
+layout/field requirements before context skips, including non-LD/ST consumers;
+MOV address acquisition stays legal, while an explicit writable operand rejects.
+Legacy readonly diagnostics use their original label and instruction range;
+only identical local causes merge. No opcode-specific writer classification or
+new historical instruction permission is inferred.
+
+## Exclusive numeric SM availability bound
+
+Plain availability and each `any_of` clause accept optional `sm_before: 70`. Together with `sm: 30` this means `30 <= SM < 70`; a missing lower bound means zero and an omitted upper bound means unbounded. The field must be a strict uint32 integer greater than the minimum; zero, booleans, floats, strings, explicit null, overflow and empty/reversed intervals are rejected by typed normalization and rendering. JSON Schema applies integer/range constraints; the typed boundary also rejects integral floating values. The existing maximum of six ordered alternatives and prohibition on mixing `any_of` with plain fields remain. No target intersection solver is introduced.
+
+`AvailabilityClause::sm_before` and `AvailabilityDescriptor::sm_before` append disengaged `std::optional<uint32_t>` members after `ptx_before`; rebuild public consumers for this aggregate layout change. The predicate compares concrete `TargetInfo::sm_version`, independently of profile spelling or flavor, while all existing exact-target, family, capability and mapping requirements remain conjunctive. Plain failures produce located `UnsupportedSmVersion` in variant, layout, modifier, operand-value, parameter-address and memory-vector paths; DNF failures retain `UnsupportedAvailability`.
+
+Legacy SHFL uses `any_of: [{ptx: "3.0", ptx_before: "6.4", sm: 30}, {ptx: "3.0", sm: 30, sm_before: 70}]`. Source modules still require recognized profiles and legal profile/version headers. Under `AvailableContext`, missing version or recognized target continues to defer whole-instruction availability, even if another known fact appears incompatible; such success is not full ISA certification. Strict validation reports `MissingValidationContext`; an explicit unknown profile remains `UnknownTarget`. No partial DNF evaluator or opcode-specific context rule is added.
+
+## Historical 101 source profiles and validation features
+
+`sm_101`/`compute_101` and their A forms begin at PTX8.6; F forms begin at PTX8.8. They remain admitted at PTX9.0/9.3, with no rename-imposed upper window. The corresponding 110 source profiles still begin at PTX9.0. `TargetIdentity` retains architecture101, flavor and exact written spelling. `same_target_identity` compares source architecture/flavor, so101A and110A remain distinct.
+
+The additive base function `target_feature_architecture(identity)` consults explicit private catalog data: the three101 keys project to feature architecture110; other keys retain their architecture. Uncataloged typed keys do not become recognized. Public `TargetProfile` and `TargetInfo` layouts are unchanged. Source/owned/semantic factories use this feature level for numeric SM, retain source identity, and pass the existing110 baseline capabilities `cluster`, `aggregate_smem`, `reserved_smem`, `graph_exec`. Generic101 has no family; 101A/F enable only canonical `sm_110f`, with no100f/103f inheritance or FP64 mapping option. This bounded correspondence follows the published rename and family relation; it is not a physical hardware/driver guarantee.
+
+Availability singular and span exact-target requirements compare validation-feature architecture plus exact flavor through that helper. This matching relation differs from source identity and stored-key equality. A manually supplied `TargetInfo::sm_version` remains the caller's concrete feature fact and is never overwritten by the checker. Source profile introductions, instruction/PTX floors, capabilities and shape constraints remain independent.
+
+Historical instruction data changes only the adopted231 parents:219 preserve existing100A clauses and add101A, with101F only where an original110F branch exists;12 block-selector parents append an8.8 historical101A/F clause. All854 original110 conditions and their floors remain, the DNF limit stays six, and the25 restricted cluster gather4/im2col-W parents remain unchanged. TCGEN closed rows retain kind, scaled-D and explicit scale-vector restrictions: written block16/32 historical gates require8.8, while100-only vector and scaled-D paths remain100-only. Generated operational queries first validate the exact source profile and its minimum version, then apply feature matching. Unknown words and addresses remain unresolved obligations, not facts inferred from live registers.
+
+Both module validators independently join current function `source_region`, `source_version` and exact `source_target` to the current owned region. A valid replacement AST cannot mask contradictory caches. Intrinsically coherent101/110 contexts may be retargeted through a supplied header when the current payload is legal under that effective context; retained availability is not a historical veto. Missing full instruction context still follows the existing `AvailableContext` deferral and strict `MissingValidationContext` policy.
+
+
+### Deprecated maximum-CTA hint
+
+Entry headers accept `.maxnctapersm ncta` from PTX ISA 1.3 on every recognized
+source target, including PTX 2.0 and later. Deprecation does not impose an upper
+version bound. The distinct `MaxNctaPerSm` AST/owned kind is an optimization hint:
+additional CTAs may still execute, so it is not a hard runtime occupancy cap.
+`.maxntid` is optional, and `.minnctapersm` may coexist as a separate resource.
+
+One complete unsigned integer token is checked before projection into the existing
+`uint32_t` resource value, including zero and `UINT32_MAX`; overflowing values do
+not wrap. This is the frontend's modeled resource capacity. The published grammar
+does not specify this bit width, and validation does not prove hardware occupancy
+or driver feasibility. CST/AST leaves retain written radix/suffix/ranges while
+alive; owning contracts retain only kind, normalized values, explicit count and
+range, with no parallel raw spelling field.
+
+Both validators check current payload shape, entry placement and known range
+containment. Known PTX context below 1.3 rejects even without a complete target;
+missing version defers availability under `AvailableContext` while intrinsic
+checks continue. The source-aware route uses the supplied effective version.
+Coherent current numeric edits remain valid; changing written resource kind or
+value in a replacement AST retains the existing source-association rule.
+
+Source reference: [PTX ISA maximum-CTA directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#performance-tuning-directives-maxnctapersm).
+
+
+### Legacy debug serialization
+
+The case-sensitive `@@DWARF` marker introduces one closed production at module,
+function-body or nested-block statement scope. It is supported for PTX ISA
+**[1.2, 2.0)** on every recognized source target. Function headers do not admit it.
+The forms are `.byte` unsigned hexadecimal lists (0..255), `.4byte` lists
+(0..UINT32_MAX) and `.quad` lists (0..UINT64_MAX). Lists are nonempty. The two wider
+forms also admit one ordinary or singly dotted symbolic label, retained unlinked;
+there is no ordinary PTX symbol-resolution requirement for that label.
+
+`0x`/`0X` with optional `U`/`u` follows existing PTX integer token inheritance;
+this suffix choice is derived rather than explicit wording of the legacy syntax.
+Signs, decimal/octal/binary values, mixed symbol/numeric lists, addends,
+differences, label definitions and arbitrary host assembly are outside this model.
+The published example's header is supported as `.section name, "", @progbits`.
+Generalizing its name to an ordinary or singly dotted identifier is derived from
+the example; flags remain exactly empty and the type remains exactly `progbits`.
+
+Whitespace, comments and newlines separate tokens without ending a record. One
+structurally complete payload and an optional semicolon end it. The next token is
+handled by ordinary PTX grammar; malformed records preserve following markers,
+blocks and functions through structural recovery. Lossless CST tokens retain
+comments and source text. Owning AST values retain exact marker/word/header
+spellings and within-record ranges, including separate `@` and `progbits` leaves.
+
+`ptx_syntax_legacy_dwarf.hpp` contains only small owning values. It does not expose
+module, instruction or expression AST definitions. One shared `AstLegacyDwarfRecord`
+is used in module/body variants, and `ResolvedModule::legacy_dwarf_records` is the
+sole ordered stream of `{value, scope_id}` wrappers. Actual declaration-occurrence
+and block scopes come from the module's symbol table; a canonical function's
+preferred owned scope does not replace its definition occurrence. Metadata creates
+no executable node, label slot or instruction-provenance index. Module and function
+source identities exclude it while ordinary program constructs remain relevant.
+
+Both current and supplied datasets validate their own typed words, ranges, scope
+ownership and format windows. Source-aware validation uses the supplied effective
+version for both datasets; AST-free validation uses current module context. Known
+out-of-window versions reject without a complete target. Missing version under
+`AvailableContext` defers only the format window; intrinsic checks continue and
+strict missing-context checks remain. Coherent current metadata edits and differing
+valid datasets do not require old source-byte equality. Cross-format replacement
+requires removal or reconstruction of current incompatible format data.
+
+For `.target debug`, definite absence means **zero modern sections AND zero legacy
+records**, independently in each dataset. An unknown linked label, a header or
+nonempty bytes only avoid this definite-absence result. They do not certify actual
+DWARF recognition, decoding, linked addresses or binary authenticity. A known full
+legacy context cannot combine the pre-2.0 format with the PTX-3.0 debug option;
+missing-version tests are partial-context controls only.
+
+References: [legacy debug marker](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-atatdwarf)
+and [legacy-format window](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives).
+
+
+### Indirect function-address carriers
+
+An indirect function address uses a General `.reg` effective scalar with a
+fundamental signed, unsigned or bit type of 8, 16, 32 or 64 bits. Floating types,
+packed/alternate instruction-only types, `.b128`, predicates, special registers
+and whole vectors do not satisfy this role. A selected ordinary component uses
+the same element-type rule and retains its real owner identity, selector ranges
+and the 128-bit vector-declaration limit. Written call components use the same invariant as typed public register-component values.
+
+This is a **derived** address-carrier interpretation of
+[PTX §6.4.1](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#addresses-as-operands)
+and the function-address-register requirement in
+[§9.7.13.5](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-instructions-call),
+not a claim that `call` explicitly enumerates all twelve carrier types. Address
+value widths of 32/64 bits do not impose a 32-bit register minimum or require a
+64-bit register under `.address_size 64`. Eligibility does not prove that a
+narrow register actually contains a representable function address, a linked
+code address or a member of a runtime target set.
+
+Source resolution, direct typed checks and both module validation APIs apply
+the role before missing version/target can defer it. Owned checks rejoin actual
+symbol declarations and reject lying or erased type caches; valid supplied
+source cannot mask bad current data. Generated views borrow the active RegRef
+alternative without reinterpreting metadata/table alternatives. Completely
+unknown standalone facts retain their existing unknown/context behavior.
+Formal input/return ABI rules and ordinary floating call inputs remain separate.
+
+
+### Selected scalar call operands
+
+Call inputs and the single parenthesized return accept ordinary `.xyzw/.rgba`
+register selections. The target accepts an identifier or an explicitly selected
+indirect register; final prototype/target-set/table metadata stays identifier-only.
+Anonymous brace actuals and direct function projections remain unsupported.
+`ResolvedCallParameterRef::component` is a default-disengaged owning optional;
+null preserves the whole-variable contract and old aggregate construction.
+
+Source and both owned-module validation routes first join the real General
+`.reg` v2/v4 declaration, SymbolId, parameterized member, element type/state,
+physical 128-bit owner bound and explicit selector provenance. Only then does
+the existing call ABI comparison see an effective scalar. Arrays, pointer,
+size and alignment constraints are retained. Deleting or contradicting a cache
+cannot hide a known declaration. The return's outer parenthesized range stays
+in `WithLocs`; its selected leaf remains contained inside the group and instruction.
+Copied observer values, module copies and instruction clones own the selection.
+
+Modern register-formal minimum width remains a formal ABI rule, not a global
+component minimum: matching legal subword `.param` formals use the existing
+scalar actual policy. Whole named-vector actuals, constants and parameter-memory
+staging retain their existing rules. This is derived scalar-element inheritance,
+not pointer execution, hidden moves or synthetic scalar declarations. Coherent
+current edits remain legal; written source identity is checked independently.
+Public CST/AST variants and the owning call reference require matching producer
+and consumer rebuilds. No instruction schema, generated layout or callback changes.
+
+### Alternate scalar literal conversion
+
+Scalar BF16, E4M3 and E5M2 numeric conversion uses the existing literal helper and evaluated F64 route, with integer-bit round-to-nearest, ties-to-even directly from binary64. Bare unsigned exact F32 literals widen exactly first. Signed zero and gradual subnormals are retained. BF16 overflows to signed infinity at `(2-2^-8)*2^127`; E5M2 does so at 61440. Their NaNs retain sign and high payload bits and set the quiet bit. E4M3 has no infinity: the exact 464 tie rounds to finite 448, while every larger finite magnitude and infinity becomes signed `0x7f` NaN; NaNs also become signed `0x7f`. These are adopted deterministic frontend literal choices, independent of runtime rounding, FTZ or saturation; they do not execute a GPU conversion.
+
+The returned immediate keeps its logical format, a low16 BF16 or low8 FP8 word, and no integer-origin or integer-negative metadata. All in-width current words remain valid, including signaling NaNs; converter quieting does not impose literal history on later current-word edits. Integer-origin inputs, narrow Bit carriers and packed formats do not gain scalar floating conversion. Existing exact F32 sign, wrapper and expression restrictions remain. No public types, signatures or source permissions change.
+
+The current source model admits BF16 numeric input in exactly five fields: mixed ADD/SUB `src`, and the source of `CvtF32Bf16`, `CvtF32Bf16Ftz` and `CvtNonF32BaseFromBf16`. The mixed result and other input stay F32; selected rounding, width and availability checks remain independent. E4M3/E5M2 have no admitted scalar opcode source here: helper and generic checker coverage does not establish source/module-clone support. Other BF16 register-only, vector, packed, call and storage permissions remain separate. Calls still recompute supported F16 values from preserved preconversion sources. Partial-target instruction deferral remains unchanged.
+
+### Packed32 exact words and native call formals
+
+The exact-word contract covers exactly F16x2, BF16x2, E4M3x4 and E5M2x4 through the existing literal helper. A bare unsigned direct `0f` literal without an evaluated `source_value` retains its entire 32-bit payload and selected logical type, including raw sign and signaling-NaN-looking bits. It performs no component conversion, rounding, quieting, saturation or splat. Integer origins, decimal/F64 numeric packing, signed or wrapped exact F32 expressions, and truncation to packed16 do not gain a producer. Underdefined numeric one-to-many mappings remain a reference boundary, rather than a blanket normative packed-literal ban.
+
+An ordinary current packed word is in width, has absent integer-source metadata (including no optional zero), and has no integer-negative flag. Coherent in-width current edits do not authenticate erased literal history. A call literal differs because it already retains spelling/kind or evaluated input: an otherwise eligible scalar native F16x2 Reg/Param formal must recompute that retained direct word through the same helper. Typed-word-only or integer-origin edits reject; editing retained direct spelling and typed bits coherently may remain valid, with saved AST identity checked separately. The four existing direct/prototype/target-list/storage-function-list signature routes share this rule. Vector formals, return-actual grammar, formal ABI readiness and instruction-only BF16x2 classification are unchanged.
+
+This private helper contract does not grant literals to the nine multimem vector fields, six adjacent scalar packed fields, or atomic fields. Existing scalar alternate RNE/NaN policies and the integer-origin distinction remain independent. Public structures, metadata and generated fields do not change. Current Debug, installed-only consumer checks and independent actual-diff acceptance are required before recording delivery completion.
+
+### Referenced debug function-name bytes
+
+The function-name reference contract adds a bounded check over current typed `.debug_str` payloads, independent of target/version availability. Same-name fragments concatenate in retained order; labels mark byte positions, not implicit terminators. The label or section base plus its checked unsigned64 offset selects the first byte. Known B8 integer leaves are interpreted only after their original signed/unsigned range checks. The selected known ASCII prefix must end with an explicit zero before the known logical-section end; empty names are allowed. A known byte128..255 before zero, a known ended nonzero sequence, or a selected position at/beyond the known end is a RuleViolation at the label or selecting offset range. A found zero finishes this reference proof, so later unrelated bytes are irrelevant to it.
+
+Range-valid B16/B32/B64 numeric words contribute order-independent facts from their exact width-bounded bit patterns. Byte-count summaries distinguish zero, nonzero ASCII and high-bit chunks without selecting serialization. Nonzero ASCII words continue toward later data; an all-zero selected suffix or a whole ASCII word containing zero terminates; a whole zero-free word with high-bit data is invalid. A suffix is known to contain a zero when more zero chunks exist than were skipped. ASCII-only suffixes which might already have terminated retain both possibilities, so a later known NUL can finish every active alternative. If every remaining ordering is invalid but the reason differs, the content diagnostic states the combined ASCII/NUL failure.
+
+Genuinely order-dependent zero/high-bit words and suffixes which may have skipped all zeros remain not-proven. Symbolic/relocated byte values are also unknown, although checked extents still prove bounds. The frontend does not pick endianness, replace unknown values by zero, build a dense image, or decode DWARF. Unknown content cannot certify a valid linked string, and cannot excuse an earlier definite violation. A proved NUL makes later data irrelevant to that reference. Neither a label nor a fragment boundary supplies a missing NUL; another section or external object cannot be assumed to finish the name.
+
+Both current-owned sections/table and supplied replacement sections/rebound table are checked independently. Coherent current byte edits and independently valid different debug datasets remain allowed without original-content replay. Missing context cannot mask a known content violation. Full unsigned64 location leaves still parse and bind; an offset outside a known finite section is a stronger byte-bounds failure, not numeric overflow. An original source rejected before ownership has no owned/copy/clone/lifetime success; separate legal terminated sources establish those owner checks. Public structures, source identity, location precedence, section locality/ranges/version rules and generated metadata remain unchanged. Source acceptance and current validation apply this predicate through the same private reference check.
+
+### Floating value-vector source contract
+
+Exactly nine existing `src` fields use `WithLocs<ResolvedValueVector>`: weak and ordered floating stores, and floating add reductions, at v2/v4/v8. The classes, selector/layout identities, element type domains, arities, defaults, availability and addresses remain unchanged. This is a public field/factory/observer payload migration from `ResolvedRegisterVector`; downstream consumers must rebuild with matching generated headers and libraries. Wrap each old register lane in `RegOrImm`, preserve locations and `ResolvedVectorSource`, and inspect alternatives with `std::get_if`. A former null register element is not an immediate or a newly permitted sink.
+
+All64 selected type branches have typed value carriers. Exactly32 have one-value numeric producers (15 F16/F32 and17 BF16/E4M3/E5M2), and20 have an exact whole32-bit bare unsigned direct `0f` producer (F16x2/BF16x2/E4M3x4/E5M2x4). The12 E4M3x2/E5M2x2 branches have no exact16 lexical producer or adopted numeric packing constructor: literal-source and literal-source-lifetime positives remain Source_N_A. Their real register controls and independently constructed canonical low16 typed words remain valid evidence; source absence is not a typed-data ban. Numeric scalar conversion reuses the existing single-round binary64 policy; packed32 retains every written word bit without splat, quantization or quieting. Integer-valued source expressions remain incompatible with logical Float lanes.
+
+Mixed braces may contain registers and immediates. The50 v2/v4 named branches retain actual General whole-base declaration identity, exact NamedProjection lanes, element SameWidth and the16-byte declaration cap. The14 v8 branches remain brace-only; the existing128-element projection buffer and256-bit generic capacity are unchanged, and this cohort needs at most8 lanes/128 bits. Immediate projection is not a user sink. Synchronous observers receive actual payloads and all lane ranges, including lane8, and must not retain callback references. Copies/assignments/clones reacquire views from their own owners.
+
+Ordinary typed words require the selected logical type, in-width bits and absent integer-origin/negative flags; coherent current edits do not replay erased floating source history. Current payload/pointer/range/provenance checks and retained source-identity checks remain independent. Address alignment, selected type/modifier/target gates and incomplete-context deferral still apply. This contract does not widen the six scalar packed branches, atomic inputs, packed numeric constructors or load destinations, and makes no runtime multimem mapping or GPU execution claim. Current generation, Debug, fresh installed public-consumer and independent actual-diff evidence remain required before delivery completion.
+
+## Explicit scalar Bit16 sources
+
+The implementation has passed full-model/default audits, normal generation, focused
+Debug checks and a matching installed public consumer. Independent final acceptance
+remains pending. The `integer_immediate_type` descriptor member is
+an optional trailing `ScalarType`, absent by default. Exactly eight existing
+scalar SETP source rows engage B16: src1/src2 on the plain and Boolean F16/BF16
+forms. Four BF16 source members migrate from register references to `RegOrImm`,
+with logical BF16 and SameWidth; the four F16 members keep their existing kind,
+logical type and width. The descriptor ABI requires rebuilding all consumers.
+
+The source is evaluated once. An integer result chooses the explicit raw B16 arm:
+`1` is word `0x0001`, and `0x10001` narrows to the same word while retaining its
+64-bit integer origin. A floating result uses the existing logical converter:
+`1.0` gives F16 `0x3c00` or BF16 `0x3f80`. Direct unsigned `0f` keeps its existing
+root route and lexical precision; no wrapper or trial conversion classifies it.
+Ordinary logical floating operands with absent policy still reject integer
+origin, including the packed formats. The scalar B16 support does not itself extend atomic, storage, call or other
+scalar permissions. The separate packed SETP extension is described below.
+
+Current immediates select their arm by their actual type. Both words fit 16 bits;
+numeric logical words have no integer origin or integer negative flag. B16
+origin is optional; if present its mask/sign consistency remains checked, and a
+cache-free word requires a false negative flag. Coherent word/arm edits do not
+authenticate erased source history. Changed supplied syntax still has its
+existing separate source association. Complete target context is required for
+instruction-check proof; AvailableContext deferral is not a legality certificate.
+Actual F16 carriers remain B16 or F16; BF16 carriers remain actual B16, with the
+existing intrinsic declaration/class guards. No Base compatibility rule changes.
+
+
+## Packed SETP raw and exact words
+
+The prepared extension uses the existing trailing optional
+`integer_immediate_type`; its finite pairs are F16/BF16 with B16 and
+F16x2/BF16x2 with B32. It adds no descriptor field or immediate payload.
+Exactly src1/src2 of plain and Boolean `SetpF16x2`/`SetpBf16x2` become
+`WithLocs<RegOrImm>` (eight public members). The four BF16x2 bindings use
+logical BF16x2 and SameWidth instead of physical B32 and Exact. F16x2 logical
+type and width, predicate-pair destinations, Boolean combine operands,
+comparison domains, FTZ rules and target minima remain unchanged.
+
+A source is evaluated once: an Integer result takes raw B32 under the existing
+narrowing/range policy and retains evaluated 64-bit source/sign facts. `1` is
+word `0x00000001`, and narrowing `0x100000001` yields the same low word.
+A bare unsigned direct `0f3fc03fc0` takes logical F16x2 or BF16x2 and preserves
+all 32 bits through the shared packed-word helper. It performs no numeric
+packing, splat, rounding or NaN quieting. Decimal/F64 numeric packed
+constructors have no adopted producer; signed, wrapped or arithmetic `0f`,
+`0h`, and F64 truncation do not gain one through this policy.
+
+The Integer-source B32 arm retains source64/sign facts consistent with its low32 word.
+This preparation does not classify a cache-free current Bit32 word by analogy
+with the separate scalar F16/Bit16 decision: its exact current flags and outcomes
+remain pending bounded actual-parent evidence. Genuine logical packed-word
+current edits use independent direct-word producers. Logical packed words have
+no integer-origin cache (even optional zero) or integer-negative flag. Coherent
+current typed-word edits do not authenticate erased source history; supplied
+source association remains independent. Actual register carriers are B32 or
+native F16x2 for F16x2, and B32 for BF16x2; declaration/class/whole-container
+checks remain in force. Missing-context deferral does not certify legality.
+The existing eight scalar B16 policies and all absent-policy sources are unchanged.
+
+Focused checks cover the finite source-policy pairs, source categories, current
+values, declaration references, generated views, and owning copy/clone behavior.
+Consumers must rebuild against matching generated headers and libraries. These
+frontend checks do not establish GPU execution behavior or full PTX coverage.
+
+### Named matrix fragments
+
+Eligible MMA fragments, WGMMA destinations/register-A fragments, and WMMA MMA
+A/B/C fragments accept an ordinary declared `.reg.v2` or `.reg.v4` whole
+identifier where the exact role has two or four physical registers. Element
+policy checks each physical lane type; logical matrix element types and existing
+cardinality remain independent. The complete declaration must fit within 128 bits.
+This does not add named v1/v8/v128 syntax or a legal `.v4.f64` declaration.
+
+Owned IR retains the whole declaration SymbolId and each ordered NamedProjection,
+including source ranges. Current validation checks those facts after source/AST
+release and after copy, assignment, or clone. A permission flag alone cannot
+replace provenance. Existing legal large brace fragments remain supported.
+
+When WGMMA register-A and shared-descriptor forms share identifier syntax, the
+private resolver uses actual lexical declaration shape with paired typed
+descriptors: whole vectors choose the authorized fragment path and scalar
+registers choose the descriptor path. Wrong vector count/type remains an error;
+unknown declarations do not prove scalarity. The public syntax-only selector
+keeps its context-free contract and can report ambiguity. Selection never chooses
+by target availability or by trial resolution. WMMA load/store operands and WMMA MMA destinations,
+address/descriptors, scale IDs, sparse metadata, and other excluded roles retain
+their existing brace/scalar/tuple rules. GPU scheduling and runtime resource
+validity remain outside frontend validation.
+
+The specification loader admits declaration-separable overlap only when every
+layout cross-pair proves separation. The added proof uses an IdentifierRef-only
+intersection, explicit named Element permission, an exact existing two/four-lane
+count and a scalar SharedMatrixDescriptor competitor. Missing facts, Aggregate
+policy, generic scalar roles or another shared syntax alternative supply no proof.
+Targets and defaults do not resolve overlap. This validation proof preserves the
+public selector's exact ambiguity diagnostic at the instruction range.
+
+### Scalar components in shared matrix descriptor carriers
+
+The existing `SharedMatrixDescriptor` source kind admits either an identifier or an explicit ordinary vector member. A legal `.reg .v2 .b64 A` declaration occupies128bits; `A.x`/`A.y` (or `.r`/`.g`) selects one scalar64-bit descriptor-register carrier. This is component extraction, not a whole-vector descriptor or register-A fragment. The same kind rule covers the existing dense/sparse shared A/B and register-A B descriptor roles; it is not an opcode- or A-position special case. No YAML type/domain or public payload/API changes are involved.
+
+Binding still requires the real General declaration, its physical integer/Bit64 type where already allowed, actual SymbolId and family index, in-range explicit selector, base/leaf/outer ranges and effective scalar width. Known F64/otherFloat, wrong width/class or InstructionOnly declarations are not converted into Bit words. `.v4.b64` exceeds the ordinary128-bit declaration limit. `A<2>` declares suffixed variables rather than bareA: scalarA1 and vector-familyA1.x are distinct explicit cases, with no implicit first element/index. Source components require existing declaration context; no standalone width/SymbolId is guessed.
+
+The syntax overlap between a shared scalar descriptor (`IdentifierRef|VectorMember`) and a whole named matrix fragment (`IdentifierRef|VectorPack`) remains only IdentifierRef. Public syntax-only ambiguity, the separately established for-all layout-pair certificate and private real-declaration selection remain independent. A wrong whole vector or32-bit component cannot fall through and be rescued as a scalar64 descriptor. Other scalar/member mappings, fragment member permissions, partial-context priorities and target policies are unchanged.
+
+Current owned validation rejoins actual component facts and declarations; valid coherent retargets are data edits, while contradictory facts fail even beside healthy supplied syntax. Saved source identity independently rejects a genuinely different legal operand AST. Existing descriptor views/collectors and synchronous observers carry the actual RegRef/ranges through source destruction, copies/assignments/moves/function copies and instruction clones, with fresh borrows per owner. This source-admission contract does not establish runtime descriptor bits, shared addressing, synchronization or matrix arithmetic. Actual current-parent Debug/generated syntax/public-link evidence and independent actual-diff acceptance are still required before recording delivery completion.
+
+Current module validation also checks the full selected register owner against the existing 128-bit declaration ceiling before availability-context skips. A coherent 256-bit current owner fails with a capacity-specific diagnostic at the component range through both module validation APIs; missing target context cannot hide that known failure. The existing actual SymbolTable join still rejects contradictory or missing cached facts. This adds no standalone instruction-check guarantee.
+
+### TCGEN mandatory named output-lane masks
+
+Exactly24 existing ordinary unscaled, non-WS dense/sparse MMA mask layouts admit a named source alongside braces. Their common physical carrier list is ordered B32/U32/S32/F32/F16x2, with native F16x2 appended for both forms. This changes only named permission and that common carrier list. The required `disable_output_lane` member remains `WithLocs<ResolvedRegisterVector>`, with the same kind, type B32, Element policy, layout identities and syntax arity1..8. No removed mask-omission layout returns, no zero/default mask is synthesized, and no descriptor-word or execution result is inferred from mask registers.
+
+Named Element lowering uses the separately established actual-declaration-width inference: an ordinary General `.reg .v2/.v4` whole declaration, compatible physical type, <=128-bit extent, full source range and exact NamedProjection lanes. It does not guess4, select by opcode/target, add ordinary namedv8 or change fixed Element/Aggregate behavior. Existing CTA-group checking still requires exactly4 entries for group1 and8 for group2. Group1 `.v4` is legal; group1 `.v2` and group2 ordinary named `.v4` fail the full check. A lowering draft or missing-context deferral is not group legality. Group2 remains eight-brace-only for ordinary declaration syntax.
+
+Current actual payloads, whole-base SymbolId/type/class/width and all4/8 lane provenance/ranges remain authoritative; callbacks borrow synchronously and reacquire each copied/assigned/cloned owner. Coherent retargeting to another real compatible declaration may pass current validation while a different saved operand AST still has an independent source-identity mismatch. Special/predicate/array/component-as-whole/InstructionOnly/wrong-width declarations and null sink lanes gain no permission. Matrix named machinery is a separately accepted prerequisite; this mask facet does not introduce it. Other masks, WS/MX/collector/ashift/scaled roles, target DNF/profile windows and required-presence/cardinality logic remain unchanged. Actual current Debug and fresh unique installed-seven-library consumer evidence plus independent actual-diff acceptance are required before recording delivery completion.
+
+### Ordinary BF16 FMA/SET source members
+
+`FmaMixedF32Bf16`, `SetHalfIntegerBf16`, and
+`SetHalfIntegerBf16Boolean` expose `src1` and `src2` as
+`WithLocs<RegOrImm>`. Existing class names, identities and field order remain;
+C++ consumers must rebuild against matching headers and libraries and use
+`std::get_if<ResolvedRegisterRef>` or `std::get_if<ResolvedImmediate>` on `.value`.
+
+These six sources accept numeric Float literals and Float-result expressions.
+The existing logical BF16 converter maps `1.5`, `1.0+0.5`,
+`0d3ff8000000000000` and `0f3fc00000` to type BF16 and word `0x3fc0`.
+FMA uses its fixed `input_type` modifier; SET uses fixed logical BF16.
+Integer literals and Integer-result expressions remain excluded, including an
+optional integer-origin value of zero. This grant has no integer-immediate policy.
+The accepted actual register declaration remains the ordinary scalar `.b16`
+carrier; SameWidth does not admit `.f16/.u16/.s16`, special registers, whole
+vectors or standalone instruction-only `.bf16` declarations.
+
+Owned validation reads current logical type, low sixteen bits and flags. It
+requires no floating lexical history; coherent canonical current-word edits can
+validate after source/AST destruction, copying, assignment or cloning. Retained
+bad type, high bits, integer origin or negative metadata remain errors. Source
+association still checks the provided AST against retained syntax identity.
+This scalar numeric conversion adds no packed pair/splat or truncation rule;
+packed exact-word and constructor policies remain separate. Instruction rounding,
+saturation, comparison, predicate combination and execution are not evaluated.
+Targets, destinations, other sources and all packed SET forms keep their contracts.
+
+
+### Scalar F16 atomic source members
+
+`AtomGlobalAddNoftzF16::src` and `RedGlobalAddNoftzF16::src` use
+`WithLocs<RegOrImm>` in both the ordinary and cache-policy layouts. Rebuild
+consumers and select `ResolvedRegisterRef` or `ResolvedImmediate` with `get_if`
+or `visit`; the existing class identities, field locations and layout order do
+not change. The cache policy remains a separate B64 register operand, and the
+atomic destination retains its register-or-sink contract.
+
+Only these four scalar F16 source roles inherit floating constant use. They keep
+logical F16 and SameWidth: actual B16/F16 general registers and their existing
+legal components remain supported. Numeric floating expressions use the common
+binary16 converter (`1.5` produces F16 word `0x3e00`); an integer-origin source
+is not a floating permission. Current canonical F16 words need no floating
+lexical history, but require low16 bits, no integer-origin cache and no floating
+negative metadata. IEEE sign and NaN payload bits remain data. This is scalar
+numeric conversion, not a packed raw-word, pair or splat constructor.
+
+The existing same-width Bit compatibility rule also accepts a canonical current
+B16 word such as `0x3e00` without integer-origin or negative metadata. This is
+inherited current-data compatibility, independent of the original AST spelling;
+it adds no Bit literal-source permission and does not change the F16 producer or
+its integer-source exclusion. Other Bit flag and packed-format rules are unchanged.
+
+The ordinary form keeps PTX6.3/SM70 availability; the global cache-policy layout
+keeps PTX7.4/SM80 availability. Address, alignment, ordering, scope, `noftz`,
+source identity and existing AvailableContext/RequireCompleteContext rules remain
+independent. Packed F16x2, BF16/BF16x2, atomic vectors, compare/swap and all other
+source permissions remain unchanged. Frontend checks do not certify GPU runtime
+behavior or opaque cache-policy contents.
+
+### Scalar BF16 atomic source members
+
+`AtomGlobalAddNoftzBf16::src` and `RedGlobalAddNoftzBf16::src` use
+`WithLocs<RegOrImm>` in both `no_hint` and `with_policy` layouts. Consumers
+must rebuild with matching headers/libraries and inspect `.value` through
+`std::get_if<ResolvedRegisterRef>` or `std::get_if<ResolvedImmediate>`.
+The two existing class identities and member names remain. Atomic destinations
+remain B16/Exact register-or-sink values; cache policies remain B64 registers.
+Addresses, alignment, qualifiers, modifier order and target floors are independent
+of this source permission. Scalar F16, packed and vector atomic cohorts retain
+their separately defined contracts.
+
+The four source keys use logical BF16 and SameWidth with the existing converter.
+Numeric Float sources `1.5`, `1.0+0.5`, `0d3ff8000000000000` and
+`0f3fc00000` produce the existing BF16 `0x3fc0` golden. Actual register sources
+still require the ordinary scalar B16 declaration under intrinsic type and
+bit-compatibility rules; SameWidth does not admit F16/U16/S16, standalone BF16,
+special registers or whole vectors. Integer-origin literals/expressions are
+excluded; no integer-immediate policy or new conversion path is introduced.
+
+The producer stores logical BF16. Logical BF16 current words require low sixteen
+bits and clean origin/negative flags; this grant does not change pre-existing
+current Bit-carrier compatibility. Floating lexical history is unnecessary, so a coherent canonical word can
+validate after AST destruction, copy, assignment and clone. Stale high bits,
+type/origin/class/provenance or range facts remain errors. Source association
+checks the supplied AST against retained syntax independently of current-word
+retargeting. Synchronous observers borrow the actual member and ranges only for
+the traversal. These scalar numeric rules add no packed pair/splat/truncation
+permission. The frontend validates representation and availability; it does not
+execute an atomic update, memory ordering, cache behavior or BF16 arithmetic.
+
+Current family references retain a real declaration/member identity: erasing a
+required family index or contradicting its current spelling is invalid. Coherent
+current spelling/member retargets and erasing only the numbered convenience
+cache remain valid; validation does not authenticate old operand spelling.
+Known reference contradictions are checked under partial context, while the
+existing whole-instruction deferral remains. Required delivery evidence includes
+actual generated views and real borrowed callbacks, not a manual projection.
+
+## Packed32 atomic source members
+
+Exactly four existing public `src` members migrate from `WithLocs<ResolvedRegisterRef>` to `WithLocs<RegOrImm>`: `AtomGlobalAddNoftzF16x2`, `AtomGlobalAddNoftzBf16x2`, `RedGlobalAddNoftzF16x2`, and `RedGlobalAddNoftzBf16x2`. Each member covers both `no_hint` and `with_policy`, giving eight source keys. Consumers must rebuild with matching current headers and seven frontend archives; an older prefix cannot certify this generated member change. Existing class identities, factories, field order and optional cache-policy storage remain intact.
+
+Use `std::get_if<ResolvedRegisterRef>(&form.src.value)` or `std::get_if<ResolvedImmediate>(&form.src.value)` and consume the actual alternative. BF16x2 sources carry logical BF16x2/`SameWidth`; their accepted declared register remains B32, while BF16x2 destinations keep B32/`Exact`. Native F16x2 sources keep F16x2/B32 compatibility. The B64 cache-policy register, address/target/modifier rules, declaration guard and component provenance are independent.
+
+Only bare unsigned direct `0f` supplies packed words; all32 bits, including signs and NaNs, survive. Numeric pair/splat/new `0h`/`0d` truncation producers are Source_N_A / reference-qualified. The source converter produces the selected logical packed type. Canonical low32 F16x2/BF16x2 current-word positives with no integer origin and false floating-negative metadata are valid without lexical history. Existing current Bit-carrier compatibility remains unchanged; these examples do not narrow inherited `SameWidth` policy or establish a new B32 rule. Copies, assignment and clones own their words, SymbolIds and locations. Borrowed `OperandView` and synchronous `reg_or_imm` observer values must refer to the current owner; callbacks must not retain them or mutate/reenter the owner. Source/AST lifetime and supplied-source identity remain distinct checks. See [atomic coverage](converage/atomic_reduction_coverage.md#packed32-source-words-and-member-migration); this payload migration provides no runtime atomic or numeric packed-construction proof.
+
+### Scalar packed32 source members
+
+The existing classes `MultimemStFloatPackedNoneScalarDefaultWeak`,
+`MultimemStFloatPackedNoneScalarDefaultOrdered` and
+`MultimemRedFloatPackedAddScalarDefaultRed` expose `src` as
+`WithLocs<RegOrImm>`. Consumers must rebuild with matching installed headers and
+libraries and inspect `.value` with `std::get_if<ResolvedRegisterRef>` or
+`std::get_if<ResolvedImmediate>`. These are three changed source fields, each
+retaining the existing `modifier(type)` domain F16x2/BF16x2 and SameWidth policy.
+Variant identities, member names, controls, address/global/alignment and target
+contracts remain; the nine prior ValueVector source fields retain their API.
+
+Each of the six branches admits a bare unsigned direct `0f` packed32 word through
+the existing shared helper. All 32 bits are data, including encoded sign and
+signaling/quiet NaN-looking patterns: no quantization, splat or NaN quieting occurs.
+F16x2 retains ordinary B32/native F16x2 register carriers; BF16x2 retains B32.
+Existing scalar component provenance rules remain. No whole vector or new tuple
+source is granted. Integer-origin literals/results, unary signs, parentheses,
+operators, decimal/F64 packed constructors, numeric pairs and implicit packing
+remain excluded. There is no low-word `0d` truncation or new lexical format.
+
+The source converter produces the selected logical packed type. Canonical current-word
+positives use that type, at most 32 bits, absent integer origin (optional zero is still
+present) and `is_negative=false`. Existing current Bit-carrier compatibility remains
+unchanged; these examples do not narrow inherited `SameWidth` policy or establish a
+new B32 rule. Canonical current-word edits do not authenticate erased producer history. Copy/assignment/
+clone and AST-free checks retain actual member/range/provenance; supplied AST
+association independently checks retained syntax identity. Synchronous observers
+borrow the real owner only during traversal. The frontend does not execute
+multimem mappings, stores, reductions, ordering or GPU behavior.
+
+The scalar packed tests establish selected logical F16x2/BF16x2 canonical words. Compatibility of a Bit-typed B32 **current** word is a separate inherited-policy question and remains unproved here; scalar F16 Bit16 controls do not decide it. This qualification grants no additional source literal or constructor.
+
+### Atomic vector value sources
+
+The 26 existing `AtomVector*`/`RedVector*` classes expose `src` as
+`WithLocs<ResolvedValueVector>` in both preserved layouts. Consumers must rebuild
+against matching headers/libraries and inspect each `RegOrImm` lane with
+`std::get_if<ResolvedRegisterRef>` or `std::get_if<ResolvedImmediate>`. Destinations
+remain register vectors; optional B64 cache policies and exact class identities,
+field names, arity/type domains, qualifiers and target gates retain their contracts.
+The source clauses remain brace-only: no whole named vector or source sink grant.
+
+All 128 type/arity/layout branches accept floating immediate lanes, mixed with
+existing physical register carriers where appropriate. The 80 F16/BF16/F32 numeric
+branches reuse the existing logical converter; the 48 F16x2/BF16x2 branches accept
+bare unsigned direct `0f` exact32 words. Packed words retain every bit, including
+encoded sign and NaN payloads, with no quantization, splat or quieting. Integer
+literals/results remain excluded for all floating source lanes. Packed decimal,
+F64, unary/wrapped/operator or pair constructors remain reference-qualified
+unavailable; typed current-word capacity is not a numeric source constructor.
+
+Logical immediate type is separate from physical register type. Explicit Element
+allowlists retain B16/F16/U16/S16 for F16, B16 for BF16, B32/F16x2 for F16x2,
+B32 for BF16x2 and B32/F32/U32/S32 for F32. Membership cannot waive physical lane
+width, General/scalar class, intrinsic declaration eligibility, component, owner
+or provenance checks. Without an explicit list, existing compatibility applies.
+Bit register lanes are neutral; integer and floating register families cannot mix,
+and immediate Float lanes do not participate in that register-family test.
+Scalar operand compatibility is unchanged.
+
+Canonical current logical Float lanes are checked for in-width bits, absent
+integer origin (optional zero still counts as present), and clean negative metadata.
+This does not decide current Bit16/Bit32 arms for other logical formats from a
+scalar F16 rule; those cases need their own format-specific evidence. Coherent canonical edits need no erased floating lexical history.
+Source association separately checks provided AST identity. Actual ValueVector
+owner pointers and all shape/type/register/immediate/bit/range mirrors must agree;
+synchronous observers borrow that actual owner only during traversal. Real AST
+release, copy/assignment/function copy/clone preserve ownership. Register sinks,
+whole containers and stale mirrors cannot substitute for read-only scalar lanes.
+These frontend contracts do not execute atomic arithmetic, ordering, cache effects
+or runtime global-memory behavior.

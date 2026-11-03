@@ -84,12 +84,13 @@ TEST(TcgenMmaF8F6F4, CanonicalTopologiesAndSourceExclusions) {
             ".kind::f8f6f4 [%d], " + (shared_a ? "%ad" : "[%a]") + ", %bd, %i" +
             (mask ? ", " + lanes : "") + ", %p;";
         SCOPED_TRACE(instruction);
-        EXPECT_TRUE(accepts_f8f6f4(f8f6f4_source(instruction)));
+        EXPECT_EQ(accepts_f8f6f4(f8f6f4_source(instruction)), mask);
       }
     }
   }
-  auto group_two_ast = parse_f8f6f4(f8f6f4_source(
-      "tcgen05.mma.cta_group::2.kind::f8f6f4 [%d], %ad, %bd, %i, %p;"));
+  auto group_two_ast = parse_f8f6f4(
+      f8f6f4_source("tcgen05.mma.cta_group::2.kind::f8f6f4 [%d], %ad, %bd, %i, "
+                    "{%i, %i, %i, %i, %i, %i, %i, %i}, %p;"));
   ASSERT_TRUE(group_two_ast);
   auto group_two_owned = resolveAndValidateModule(*group_two_ast);
   ASSERT_TRUE(group_two_owned.has_value());
@@ -104,17 +105,20 @@ TEST(TcgenMmaF8F6F4, CanonicalTopologiesAndSourceExclusions) {
   ASSERT_TRUE(group_two_view);
   EXPECT_EQ(group_two_view->group, TcgenCtaGroup::Two);
   for (std::string_view bad : {
-           "tcgen05.mma.kind::f8f6f4.cta_group::1 [%d], %ad, %bd, %i, %p;",
+           "tcgen05.mma.kind::f8f6f4.cta_group::1 [%d], %ad, %bd, %i, {%i, %i, "
+           "%i, %i}, %p;",
            "tcgen05.mma.cta_group::1.kind::f8f6f4 [%d], %ad, %bd, %i, "
            "{}, %p;",
-           "tcgen05.mma.cta_group::1.kind::f8f6f4 [%d], %ad, %bd, %i, %p, "
-           "0;",
-           "tcgen05.mma.cta_group::1.kind::f8f6f4.satfinite "
-           "[%d], %ad, %bd, %i, %p;",
-           "tcgen05.mma.cta_group::1.kind::f8f6f4.block_scale "
-           "[%d], %ad, %bd, %i, %p;",
-           "tcgen05.mma.cta_group::1.kind::f8f6f4 [%d], 0, %bd, %i, %p;",
-           "tcgen05.mma.cta_group::1.kind::f8f6f4 [%d], %ad, %bd, 0, %p;",
+           "tcgen05.mma.cta_group::1.kind::f8f6f4 [%d], %ad, %bd, %i, {%i, %i, "
+           "%i, %i}, %p, 0;",
+           "tcgen05.mma.cta_group::1.kind::f8f6f4.satfinite [%d], %ad, %bd, "
+           "%i, {%i, %i, %i, %i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::f8f6f4.block_scale [%d], %ad, %bd, "
+           "%i, {%i, %i, %i, %i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::f8f6f4 [%d], 0, %bd, %i, {%i, %i, "
+           "%i, %i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::f8f6f4 [%d], %ad, %bd, 0, {%i, %i, "
+           "%i, %i}, %p;",
            "tcgen05.mma.cta_group::1.kind::f8f6f4 [%d], %ad, %bd, %i, "
            "{%m0, %m1, %m2}, %p;",
        }) {
@@ -136,7 +140,7 @@ TEST(TcgenMmaF8F6F4, OwnedTruthMaskAndRestoration) {
     {
       auto ast = parse_f8f6f4(
           f8f6f4_source(std::string("tcgen05.mma.cta_group::1.kind::f8f6f4 "
-                                    "[%d], %ad, %bd, %i, ") +
+                                    "[%d], %ad, %bd, %i, {%i, %i, %i, %i}, ") +
                         text + ";"));
       ASSERT_TRUE(ast);
       auto result = resolveAndValidateModule(*ast);
@@ -154,7 +158,8 @@ TEST(TcgenMmaF8F6F4, OwnedTruthMaskAndRestoration) {
     EXPECT_TRUE(view->a_shared);
     EXPECT_EQ(view->a_shared->role, MatrixFragmentRole::A);
     EXPECT_EQ(view->b.role, MatrixFragmentRole::B);
-    EXPECT_FALSE(view->disable_output_lane);
+    ASSERT_TRUE(view->disable_output_lane);
+    EXPECT_EQ(view->disable_output_lane->elements.size(), 4u);
     EXPECT_TRUE(validateModule(*owned).has_value());
   }
   std::optional<ResolvedModule> owned;
@@ -170,7 +175,6 @@ TEST(TcgenMmaF8F6F4, OwnedTruthMaskAndRestoration) {
   auto& instruction = *owned->functions.front().body[0].get();
   auto& form = dynamic_cast<Tcgen05MmaF8f6f4&>(instruction);
   ASSERT_TRUE(form.a_register);
-  ASSERT_TRUE(form.disable_output_lane);
   const auto view = tcgen_mma_f8f6f4_view(instruction);
   ASSERT_TRUE(view);
   EXPECT_TRUE(std::get<ResolvedPredicate>(*view->enable_d).negated);
@@ -194,9 +198,9 @@ TEST(TcgenMmaF8F6F4, OwnedTruthMaskAndRestoration) {
   form.idesc.value.declared_type = ScalarType::F32;
   reject();
   form.idesc.value.declared_type = ScalarType::B32;
-  form.disable_output_lane->value.elements[0]->declared_type = ScalarType::B64;
+  form.disable_output_lane.value.elements[0]->declared_type = ScalarType::B64;
   reject();
-  form.disable_output_lane->value.elements[0]->declared_type = ScalarType::F32;
+  form.disable_output_lane.value.elements[0]->declared_type = ScalarType::F32;
   auto& predicate = std::get<ResolvedPredicate>(form.enable_input_d.value);
   predicate.register_ref.register_class = ResolvedRegisterClass::General;
   reject();
@@ -333,7 +337,8 @@ TEST(TcgenMmaF8F6F4, IndependentTransposePackingAndContexts) {
 /** Current target identities use the ordinary four unscaled branches. */
 TEST(TcgenMmaF8F6F4, SourceAndKnownTargetIntersections) {
   const std::string source =
-      "tcgen05.mma.cta_group::1.kind::f8f6f4 [%d], %ad, %bd, %i, %p;";
+      "tcgen05.mma.cta_group::1.kind::f8f6f4 [%d], %ad, %bd, %i, {%i, %i, %i, "
+      "%i}, %p;";
   for (const auto& [target, version, accepted] : {
            std::tuple{"sm_100a", "8.5", false},
            std::tuple{"sm_100a", "8.6", true},

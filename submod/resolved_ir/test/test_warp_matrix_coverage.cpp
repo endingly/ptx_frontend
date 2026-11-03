@@ -101,13 +101,14 @@ TEST(WarpMatrixCoverage, ResolvesOwnedMatrixMovementAndChecksTarget) {
     EXPECT_EQ(store->check(selected).has_value(), expected) << name;
   };
   expect_modern_target("sm_100a", 8, 6, true);
-  expect_modern_target("sm_110a", 8, 9, false);
+  // Direct feature facts can match historical clauses; real 110 headers still require PTX 9.0.
+  expect_modern_target("sm_110a", 8, 9, true);
   expect_modern_target("sm_110a", 9, 0, true);
   expect_modern_target("sm_120a", 8, 6, false);
   expect_modern_target("sm_120a", 8, 7, true);
   expect_modern_target("sm_100f", 8, 7, false);
   expect_modern_target("sm_100f", 8, 8, true);
-  expect_modern_target("sm_110f", 8, 9, false);
+  expect_modern_target("sm_110f", 8, 9, true);
   expect_modern_target("sm_110f", 9, 0, true);
   expect_modern_target("sm_120f", 8, 8, true);
 }

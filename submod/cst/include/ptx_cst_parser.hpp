@@ -66,6 +66,7 @@ class PtxCstParser {
     RightBrace,
     FunctionBoundary,
     ModuleItem,
+    BodyItem,
     Eof,
   };
 
@@ -146,6 +147,9 @@ class PtxCstParser {
   /** Parse the predicted operand form from its unconsumed prefix. */
   std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
   parseIdentifierOperand();
+  /** Parse one identifier with at most one existing vector selector suffix. */
+  std::expected<syntax_cst::CstAddressBase, CstParseDiagnostic>
+  parseIdentifierOrMember(std::string_view description);
 
   /** Parse after consuming `[`, including its closing `]` and optional suffix. */
   std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
@@ -208,8 +212,11 @@ class PtxCstParser {
       CstParseDiagnostics& diagnostics, BlockDepth block_depth);
   std::expected<syntax_cst::CstModuleDirective, CstParseDiagnostic>
   parseModuleDirective();
+  /** Parse one finite legacy payload, leaving the next structural item untouched. */
+  std::expected<syntax_cst::CstLegacyDwarfRecord, CstParseDiagnostic>
+  parseLegacyDwarfRecord();
   std::expected<syntax_cst::CstSectionDirective, CstParseDiagnostic>
-  parseSectionDirective();
+  parseSectionDirective(CstParseDiagnostics& diagnostics);
   std::expected<syntax_cst::CstFunction, CstParseDiagnostic> parseFunction(
       std::vector<TokenId> qualifiers, CstParseDiagnostics& diagnostics);
 

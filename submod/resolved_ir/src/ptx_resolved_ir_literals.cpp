@@ -10,6 +10,26 @@
 
 namespace ptx_frontend::resolved_ir {
 namespace detail {
+std::expected<void, ResolveDiagnostic> require_integer_source(
+    const ResolvedImmediate& value, SourceRange range) {
+  if (value.integer_source_bits.has_value())
+    return {};
+  return std::unexpected(ResolveDiagnostic{
+      .range = range,
+      .message = "This operand requires an integer constant source."});
+}
+
+/** Accept ordinary floating destinations and bit carriers of the lexical source width. */
+bool floating_destination_compatible(ScalarType destination,
+                                     ScalarType source) {
+  return destination == ScalarType::F16 || destination == ScalarType::F32 ||
+         destination == ScalarType::F64 || destination == ScalarType::BF16 ||
+         destination == ScalarType::E4m3 || destination == ScalarType::E5m2 ||
+         (scalar_kind(destination) == base::ScalarKind::Bit &&
+          base::scalar_types_compatible(destination, source,
+                                        base::ScalarTypeSizePolicy::SameWidth));
+}
+
 ResolveDiagnostic invalid_immediate(const syntax_ast::AstImmediate& immediate,
                                     std::string message) {
   return ResolveDiagnostic{
@@ -36,7 +56,7 @@ std::expected<uint64_t, ResolveDiagnostic> parse_unsigned_literal(
   return value;
 }
 
-/** Apply a scalar operand's integer conversion to an already evaluated source. */
+/** Convert an evaluated integer source only for genuine integer or Bit uses. */
 std::expected<ResolvedImmediate, ResolveDiagnostic> convert_integer_value(
     declaration_semantics::IntegerConstantValue source, SourceRange range,
     ScalarType type, bool require_target_range,
@@ -44,7 +64,7 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> convert_integer_value(
   using base::ScalarKind;
   const ScalarKind kind = scalar_kind(type);
   if (kind != ScalarKind::Unsigned && kind != ScalarKind::Signed &&
-      kind != ScalarKind::Bit && !is_raw32_fp8x4_type(type)) {
+      kind != ScalarKind::Bit) {
     return std::unexpected(ResolveDiagnostic{
         .range = range,
         .message = fmt::format(
@@ -152,6 +172,40 @@ uint32_t narrow_float_literal_bits(uint64_t bits) {
          ((static_cast<uint32_t>(unbiased_exponent + 126) << 23) + rounded);
 }
 
+/** Convert binary64 bits directly to IEEE binary16, round-to-nearest ties-even.
+ * Overflow is signed infinity and underflow is gradual. NaNs retain sign and
+ * high payload bits and are quieted; no instruction modifier or host mode applies.
+ */
+uint16_t narrow_half_literal_bits(uint64_t bits) {
+  const auto sign = static_cast<uint16_t>((bits >> 48) & 0x8000U);
+  const int exponent = static_cast<int>((bits >> 52) & 0x7ffU);
+  const uint64_t fraction = bits & 0x000fffffffffffffULL;
+  if (exponent == 0x7ff)
+    return sign | 0x7c00U |
+           (fraction == 0 ? 0U
+                          : static_cast<uint16_t>(fraction >> 42) | 0x0200U);
+  // Every binary64 subnormal is below half the minimum binary16 subnormal.
+  if (exponent == 0)
+    return sign;
+  const int unbiased = exponent - 1023;
+  if (unbiased > 15)
+    return sign | 0x7c00U;
+  if (unbiased < -25)
+    return sign;
+  const uint64_t significand = (uint64_t{1} << 52) | fraction;
+  // Retain eleven normal bits, or subnormal units of 2^-24; shift is 42..53.
+  const int shift = unbiased >= -14 ? 42 : 28 - unbiased;
+  uint16_t rounded = static_cast<uint16_t>(significand >> shift);
+  const uint64_t remainder = significand & ((uint64_t{1} << shift) - 1);
+  const uint64_t halfway = uint64_t{1} << (shift - 1);
+  if (remainder > halfway || (remainder == halfway && (rounded & 1U)))
+    ++rounded;
+  if (unbiased < -14)
+    return sign | rounded;
+  // The retained implicit bit contributes one exponent unit, including carry.
+  return sign | ((static_cast<uint16_t>(unbiased + 14) << 10) + rounded);
+}
+
 /**
  * Widen IEEE binary32 literal bits exactly without host floating arithmetic.
  * Subnormals and signed zero are preserved; NaNs are quieted with their sign
@@ -181,20 +235,109 @@ uint64_t widen_float_literal_bits(uint32_t bits) {
 }
 
 /**
+ * Round a normalized binary64 significand after discarding 45..53 low bits.
+ * The 53-bit significand and bounded shift make every operation representable;
+ * an exact halfway remainder increments only an odd retained integer.
+ */
+uint64_t round_scalar_significand(uint64_t significand, int shift) {
+  const uint64_t retained = significand >> shift;
+  const uint64_t remainder = significand & ((uint64_t{1} << shift) - 1);
+  const uint64_t halfway = uint64_t{1} << (shift - 1);
+  return retained +
+         (remainder > halfway || (remainder == halfway && (retained & 1)));
+}
+
+/** Quantize binary64 bits once to BF16, preserving sign and high NaN payload. */
+uint64_t narrow_bfloat_literal_bits(uint64_t bits) {
+  const uint64_t sign = (bits >> 48) & 0x8000;
+  const uint64_t exponent = (bits >> 52) & 0x7ff;
+  const uint64_t fraction = bits & 0x000fffffffffffffULL;
+  if (exponent == 0x7ff)
+    return sign | 0x7f80 | (fraction ? (fraction >> 45) | 0x40 : 0);
+  if (exponent == 0)
+    return sign;
+  const int unbiased = static_cast<int>(exponent) - 1023;
+  if (unbiased > 127)
+    return sign | 0x7f80;
+  if (unbiased < -134)
+    return sign;
+  const uint64_t rounded = round_scalar_significand(
+      (uint64_t{1} << 52) | fraction, unbiased >= -126 ? 45 : -81 - unbiased);
+  if (unbiased < -126)
+    return sign | rounded;
+  return sign | ((static_cast<uint64_t>(unbiased + 126) << 7) + rounded);
+}
+
+/**
+ * Quantize binary64 bits once to finite E4M3 or signed NaN.
+ * The adopted non-saturating boundary retains the even finite word at 464;
+ * every larger magnitude, infinity and NaN maps to the signed NaN encoding.
+ */
+uint64_t narrow_e4m3_literal_bits(uint64_t bits) {
+  const uint64_t sign = (bits >> 56) & 0x80;
+  const uint64_t exponent = (bits >> 52) & 0x7ff;
+  const uint64_t fraction = bits & 0x000fffffffffffffULL;
+  if (exponent == 0x7ff ||
+      (bits & 0x7fffffffffffffffULL) > 0x407d000000000000ULL)
+    return sign | 0x7f;
+  if (exponent == 0)
+    return sign;
+  const int unbiased = static_cast<int>(exponent) - 1023;
+  if (unbiased < -10)
+    return sign;
+  const uint64_t rounded = round_scalar_significand(
+      (uint64_t{1} << 52) | fraction, unbiased >= -6 ? 49 : 43 - unbiased);
+  if (unbiased < -6)
+    return sign | rounded;
+  return sign | ((static_cast<uint64_t>(unbiased + 6) << 3) + rounded);
+}
+
+/** Quantize binary64 bits once to E5M2 with signed infinity and quiet NaNs. */
+uint64_t narrow_e5m2_literal_bits(uint64_t bits) {
+  const uint64_t sign = (bits >> 56) & 0x80;
+  const uint64_t exponent = (bits >> 52) & 0x7ff;
+  const uint64_t fraction = bits & 0x000fffffffffffffULL;
+  if (exponent == 0x7ff)
+    return sign | 0x7c | (fraction ? (fraction >> 50) | 0x02 : 0);
+  if (exponent == 0)
+    return sign;
+  const int unbiased = static_cast<int>(exponent) - 1023;
+  if (unbiased > 15)
+    return sign | 0x7c;
+  if (unbiased < -17)
+    return sign;
+  const uint64_t rounded = round_scalar_significand(
+      (uint64_t{1} << 52) | fraction, unbiased >= -14 ? 50 : 36 - unbiased);
+  if (unbiased < -14)
+    return sign | rounded;
+  return sign | ((static_cast<uint64_t>(unbiased + 14) << 2) + rounded);
+}
+
+/** Dispatch only the three explicitly supported alternate scalar formats. */
+uint64_t narrow_alternate_literal_bits(uint64_t bits, ScalarType type) {
+  if (type == ScalarType::BF16)
+    return narrow_bfloat_literal_bits(bits);
+  if (type == ScalarType::E4m3)
+    return narrow_e4m3_literal_bits(bits);
+  return narrow_e5m2_literal_bits(bits);
+}
+
+/** Identify exactly the scalar alternate formats with a numeric converter. */
+bool is_alternate_literal_type(ScalarType type) {
+  return type == ScalarType::BF16 || type == ScalarType::E4m3 ||
+         type == ScalarType::E5m2;
+}
+
+/**
  * Decode a floating literal in its lexical precision, then convert to the
  * operand precision. Equal-width literals retain their exact payload bits.
  */
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
     const syntax_ast::AstImmediate& immediate, ScalarType type,
     std::string_view text, bool negative, uint8_t bit_width) {
-  if (negative) {
-    return std::unexpected(invalid_immediate(
-        immediate,
-        fmt::format("Floating bit-pattern literal '{}' cannot have a sign.",
-                    immediate.syntax.text)));
-  }
-  const bool packed_raw32 = is_raw32_fp8x4_type(type) && bit_width == 32;
-  if (type != ScalarType::F32 && type != ScalarType::F64 && !packed_raw32) {
+  const bool packed_raw32 = is_packed32_literal_type(type) && bit_width == 32;
+  const auto source_type = bit_width == 32 ? ScalarType::F32 : ScalarType::F64;
+  if (!floating_destination_compatible(type, source_type) && !packed_raw32) {
     return std::unexpected(invalid_immediate(
         immediate,
         fmt::format(
@@ -207,13 +350,34 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
   const auto bits = parse_unsigned_literal(immediate, text, 16);
   if (!bits)
     return std::unexpected(bits.error());
+  if (negative) {
+    return resolve_numeric_value(
+        declaration_semantics::FloatingConstantValue{
+            -std::bit_cast<double>(*bits)},
+        immediate.syntax.range, type);
+  }
   if (packed_raw32) {
     if (*bits > std::numeric_limits<uint32_t>::max()) {
       return std::unexpected(invalid_immediate(
-          immediate, "Packed FP8 literal exceeds its 32-bit raw width."));
+          immediate, "Packed floating literal exceeds its 32-bit raw width."));
     }
     return ResolvedImmediate{.bits = *bits, .type = type};
   }
+  if (is_alternate_literal_type(type))
+    return ResolvedImmediate{
+        .bits = narrow_alternate_literal_bits(
+            bit_width == 32
+                ? widen_float_literal_bits(static_cast<uint32_t>(*bits))
+                : *bits,
+            type),
+        .type = type};
+  if (type == ScalarType::F16)
+    return ResolvedImmediate{
+        .bits = narrow_half_literal_bits(
+            bit_width == 32
+                ? widen_float_literal_bits(static_cast<uint32_t>(*bits))
+                : *bits),
+        .type = type};
   if (bit_width == 32 && type == ScalarType::F64) {
     return ResolvedImmediate{
         .bits = widen_float_literal_bits(static_cast<uint32_t>(*bits)),
@@ -229,7 +393,7 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
 std::expected<ResolvedImmediate, ResolveDiagnostic>
 resolve_decimal_float_literal(const syntax_ast::AstImmediate& immediate,
                               ScalarType type, std::string_view text) {
-  if (type != ScalarType::F32 && type != ScalarType::F64) {
+  if (!floating_destination_compatible(type, ScalarType::F64)) {
     return std::unexpected(invalid_immediate(
         immediate,
         fmt::format("Decimal floating literal '{}' is incompatible with scalar "
@@ -257,6 +421,14 @@ resolve_decimal_float_literal(const syntax_ast::AstImmediate& immediate,
                                immediate.syntax.text)));
   }
 
+  if (is_alternate_literal_type(type))
+    return ResolvedImmediate{.bits = narrow_alternate_literal_bits(
+                                 std::bit_cast<uint64_t>(value), type),
+                             .type = type};
+  if (type == ScalarType::F16)
+    return ResolvedImmediate{
+        .bits = narrow_half_literal_bits(std::bit_cast<uint64_t>(value)),
+        .type = type};
   if (type == ScalarType::F32) {
     return ResolvedImmediate{
         .bits = narrow_float_literal_bits(std::bit_cast<uint64_t>(value)),
@@ -268,11 +440,14 @@ resolve_decimal_float_literal(const syntax_ast::AstImmediate& immediate,
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_value(
     const declaration_semantics::NumericConstantValue& value, SourceRange range,
-    ScalarType type, bool require_target_range) {
+    ScalarType type, bool require_target_range,
+    std::optional<ScalarType> integer_immediate_type) {
   if (const auto* integer =
           std::get_if<declaration_semantics::IntegerConstantValue>(&value))
-    return convert_integer_value(*integer, range, type, require_target_range);
-  if (type != ScalarType::F32 && type != ScalarType::F64)
+    return convert_integer_value(*integer, range,
+                                 integer_immediate_type.value_or(type),
+                                 require_target_range);
+  if (!floating_destination_compatible(type, ScalarType::F64))
     return std::unexpected(
         ResolveDiagnostic{.range = range,
                           .message = "Floating constant expression is "
@@ -280,20 +455,25 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_value(
   const auto bits = std::bit_cast<uint64_t>(
       std::get<declaration_semantics::FloatingConstantValue>(value).value);
   return ResolvedImmediate{
-      .bits = type == ScalarType::F32 ? narrow_float_literal_bits(bits) : bits,
+      .bits = is_alternate_literal_type(type)
+                  ? narrow_alternate_literal_bits(bits, type)
+              : type == ScalarType::F16 ? narrow_half_literal_bits(bits)
+              : type == ScalarType::F32 ? narrow_float_literal_bits(bits)
+                                        : bits,
       .type = type};
 }
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     const syntax_ast::AstConstantOperand& operand, ScalarType type,
-    bool require_target_range) {
+    bool require_target_range,
+    std::optional<ScalarType> integer_immediate_type) {
   const auto value =
       declaration_semantics::numericConstantValue(*operand.expression);
   if (!value)
     return std::unexpected(ResolveDiagnostic{.range = value.error().range,
                                              .message = value.error().message});
   return resolve_numeric_value(*value, operand.range, type,
-                               require_target_range);
+                               require_target_range, integer_immediate_type);
 }
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
@@ -333,21 +513,26 @@ bool is_numeric_operand(const syntax_ast::AstOperand& operand) {
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_operand(
     const syntax_ast::AstOperand& operand, ScalarType type,
-    bool require_target_range) {
+    bool require_target_range,
+    std::optional<ScalarType> integer_immediate_type) {
   if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand))
-    return resolve_immediate_value(*immediate, type, require_target_range);
+    return resolve_immediate_value(*immediate, type, require_target_range,
+                                   integer_immediate_type);
   if (const auto* expression =
           std::get_if<syntax_ast::AstConstantOperand>(&operand))
-    return resolve_immediate_value(*expression, type, require_target_range);
+    return resolve_immediate_value(*expression, type, require_target_range,
+                                   integer_immediate_type);
   if (const auto* negated =
           std::get_if<syntax_ast::AstNegatedImmediate>(&operand)) {
     auto value = resolve_immediate_value(negated->immediate, ScalarType::B64);
     if (!value)
       return std::unexpected(value.error());
+    if (auto integer = require_integer_source(*value, negated->range); !integer)
+      return std::unexpected(integer.error());
     return resolve_numeric_value(
         declaration_semantics::IntegerConstantValue{
             value->bits == 0 ? uint64_t{1} : uint64_t{0}, false},
-        negated->range, type, require_target_range);
+        negated->range, type, require_target_range, integer_immediate_type);
   }
   return std::unexpected(
       ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
@@ -356,7 +541,8 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_operand(
 
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     const syntax_ast::AstImmediate& immediate, ScalarType type,
-    bool require_target_range) {
+    bool require_target_range,
+    std::optional<ScalarType> integer_immediate_type) {
   std::string_view text = immediate.syntax.text;
   bool negative = false;
   if (!text.empty() && (text.front() == '+' || text.front() == '-')) {
@@ -368,9 +554,15 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     case syntax_ast::AstImmediateKind::DecimalInteger:
     case syntax_ast::AstImmediateKind::BinaryInteger:
     case syntax_ast::AstImmediateKind::HexInteger:
-      return resolve_integer_literal(immediate, type, text, negative,
-                                     require_target_range);
+      return resolve_integer_literal(immediate,
+                                     integer_immediate_type.value_or(type),
+                                     text, negative, require_target_range);
     case syntax_ast::AstImmediateKind::F32Hex:
+      if (text.size() != immediate.syntax.text.size())
+        return std::unexpected(invalid_immediate(
+            immediate,
+            fmt::format("Floating bit-pattern literal '{}' cannot have a sign.",
+                        immediate.syntax.text)));
       return resolve_float_bits_literal(immediate, type, text, negative, 32);
     case syntax_ast::AstImmediateKind::F64Hex:
       return resolve_float_bits_literal(immediate, type, text, negative, 64);
@@ -379,8 +571,9 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
                                            immediate.syntax.text);
     case syntax_ast::AstImmediateKind::WarpSize:
       // PTX defines WARP_SZ as the signed source integer constant 32.
-      return resolve_integer_literal(immediate, type, "32", negative,
-                                     require_target_range);
+      return resolve_integer_literal(immediate,
+                                     integer_immediate_type.value_or(type),
+                                     "32", negative, require_target_range);
   }
   throw ResolveException("Unknown AstImmediateKind.");
 }
@@ -411,6 +604,14 @@ resolve_call_literal(
             literal.spelling, formal.type_spelling),
     });
   }
+  // Packed numeric construction remains undefined; only a retained direct word
+  // may reach the shared exact-width producer. Vector formals are rejected above.
+  if (formal.scalar_type == ScalarType::F16x2 &&
+      (literal.source_value || literal.kind != base::LiteralCategory::F32Hex))
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = "No direct numeric call-literal conversion to packed .f16x2 "
+                   "is defined."});
   if (literal.source_value) {
     auto value = detail::resolve_numeric_value(*literal.source_value, range,
                                                formal.scalar_type, true);

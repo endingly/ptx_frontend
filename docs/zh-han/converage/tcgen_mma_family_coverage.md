@@ -4,12 +4,16 @@
 
 | 固定源码家族 | Kind | 结构化操作数布局 | 专项契约 |
 | --- | --- | ---: | --- |
-| `tcgen05.mma` | f16、tf32、f8f6f4、i8、mxf8f6f4、mxf4、mxf4nvf4 | 30 | [f16](tcgen_mma_coverage.md)、[tf32](tcgen_mma_tf32_coverage.md)、[f8](tcgen_mma_f8f6f4_coverage.md)、[i8](tcgen_mma_i8_coverage.md)、[MX8](tcgen_mma_mx8_coverage.md)、[MX4](tcgen_mma_mx4_coverage.md)、[MX NV](tcgen_mma_mxnv_coverage.md) |
-| `tcgen05.mma.sp` | 同样七种 kind | 30 | [普通稀疏](tcgen_mma_sparse_coverage.md)、[稀疏 MX](tcgen_mma_sparse_mx_coverage.md) |
+| `tcgen05.mma` | f16、tf32、f8f6f4、i8、mxf8f6f4、mxf4、mxf4nvf4 | 18 | [f16](tcgen_mma_coverage.md)、[tf32](tcgen_mma_tf32_coverage.md)、[f8](tcgen_mma_f8f6f4_coverage.md)、[i8](tcgen_mma_i8_coverage.md)、[MX8](tcgen_mma_mx8_coverage.md)、[MX4](tcgen_mma_mx4_coverage.md)、[MX NV](tcgen_mma_mxnv_coverage.md) |
+| `tcgen05.mma.sp` | 同样七种 kind | 18 | [普通稀疏](tcgen_mma_sparse_coverage.md)、[稀疏 MX](tcgen_mma_sparse_mx_coverage.md) |
 | `tcgen05.mma.ws` | f16、tf32、f8f6f4、i8 | 16 | [稠密 WS](tcgen_mma_ws_dense_coverage.md) |
 | `tcgen05.mma.ws.sp` | 同样四种 kind | 16 | [稀疏 WS](tcgen_mma_ws_sparse_coverage.md) |
 
-92 个布局统计操作数结构，不等于每一种 CTA group、selector、collector 动作或目标的笛卡尔积。规范化来源统计将其展开为 152 条已记录的拓扑元组；相对保存的 40 条基线元组，新增 112 条、移除零条，40 个既有元组键也增加了可选限定符契约。统计核对了精确家族／kind 集合及 237 项来源断言，生成类身份与条件规则另有 [C++ 源码／已知值测试](../../../submod/resolved_ir/test/)和 [Python 规则测试](../../../python/tests/spec/)。这些数字只描述当前固定来源模型，不能推广至未来 PTX 版本的全部拼写。
+当前 68 个布局统计操作数结构，不等于每一种 CTA group、selector、collector 动作或目标的笛卡尔积。
+普通非 WS dense/sparse mask 必需：group 1 四个标量项，group 2 八个。
+删除 24 个省略 mask 的布局保留全部 22 个家族/kind 身份及其他域。
+此前统计的 92 个布局和 152 条拓扑元组是历史数据，包含现在已拒绝的省略形式。
+生成身份与条件规则另有 [C++ 测试](../../../submod/resolved_ir/test/)和 [Python 测试](../../../python/tests/spec/)。
 
 普通非 WS 形式保持各 kind 的 group、M/N/K、A 位置、掩码、D 缩放、转置与目标规则。[A collector 与 ashift](tcgen_mma_a_collector_coverage.md)扩展既有八种稠密／稀疏身份，不建立重叠类。六种稠密／稀疏 MX 身份共用两种 A 位置、带来源的类型化 selector、缩放 A/B 的 Tensor Memory 地址及 [A collector 控制](tcgen_mma_mx_a_collector_coverage.md)；不带通道掩码、D 缩放或 ashift。MX 缩放数据行明确保存 kind、稀疏状态、K、selector、角色、因子数、合法 ID 和放置策略。MX8 省略 selector 推导 1X；MX4 省略时推导 block32；MX NV 必须写出 selector。稀疏 MX 查询使用真实稀疏行及隐含的 F32 输出：表 46/47 不编码 D 类型字段。共享缩放行的生成投影保留稠密／稀疏身份，因此因子与 ID 检查能选中正确行。
 
@@ -19,7 +23,9 @@
 
 已知值报告可拒绝矛盾的描述符字段、形状／类型／目标组合、稀疏元数据索引、缩放事实和通道声明，但**不能**证明调用方字值等于运行时不透明的 `idesc`、共享描述符、零列字或 Tensor Memory 内容。固定表 47 的 MX4 K96 缩放 ID 域为 0/2，而后面的 K96 图也画出 1/3；前端执行已定义指令字的交集，记录冲突，不凭空扩大接受范围。M32 稀疏 WS 的元数据放置图尚未确立，因此报告保留 `MetadataLayoutRule`。固定来源未确定物理规则时，无缩放低位打包及部分低位转置仍是显式义务。实时稀疏内容、各 lane 的缩放放置、collector 历史、完成前来源稳定性、分配、同步和数值结果同样未获证明。
 
-最终来源快照采用 Clang 21 Debug、Ninja 及配置好的 LLD 驱动路径验证。完整 CTest **1,357/1,357** 通过，其中 `TcgenMma*` 专项 **64/64**；Python CI 套件 **518/518** 通过。**13/13** 个已安装 MMA consumer 均完成配置、构建和运行；Python 3.14 wheel 构建、安装及资源 smoke 也通过。生成计划包含 **101 个条目、4,530 个形式、5,663 个操作数布局、913 个多布局形式和 390 个输出**（11 个全局输出，另有七类合计 379 个）。`GeneratorJobsTests.test_parallel_artifacts_match_serial_bytes_and_stable_manifest` 用合成发射器验证项目的并行写入／manifest 协议；`TcgenDescriptorGenerationTests.test_emitted_tables_are_deterministic_and_cover_literal_rules` 验证 TCGEN 描述符行。两者都不是对全部 390 个输出进行独立逐字节对比的声明。
+采用的 K96 encoding/layout 分离：Table 47 规定 A[29:30]/B[4:5] 的 code 域 {0,2}，图示物理 index 与字节单位 alignment guarantee 是不同的量。Block32 为三个 factor（Mx3/3xN），NV block16 为六个（Mx6/6xN），最低均为四字节。Layout-defined placement 下 ID 2 配 alignment 4/8 有效，不应用 `ID % alignment` 或推测 encoded-to-physical 转换。冲突标签 1/3 继续记录，缺失可选事实保留 obligation。[K96 解释](matrix_reference_interpretations.md#k96-encoded-scale-ids-and-physical-layout-facts)记录这一工程决策及不变的 opaque-word、live-content、unsupported-known-vector-layout 边界。
+
+历史集成快照采用 Clang 21 Debug、Ninja 及配置好的 LLD 驱动路径验证。完整 CTest **1,357/1,357** 通过，其中 `TcgenMma*` 专项 **64/64**；Python CI 套件 **518/518** 通过。**13/13** 个已安装 MMA consumer 均完成配置、构建和运行；Python 3.14 wheel 构建、安装及资源 smoke 也通过。生成计划包含 **101 个条目、4,530 个形式、5,663 个操作数布局、913 个多布局形式和 390 个输出**（11 个全局输出，另有七类合计 379 个）。`GeneratorJobsTests.test_parallel_artifacts_match_serial_bytes_and_stable_manifest` 用合成发射器验证项目的并行写入／manifest 协议；`TcgenDescriptorGenerationTests.test_emitted_tables_are_deterministic_and_cover_literal_rules` 验证 TCGEN 描述符行。两者都不是对全部 390 个输出进行独立逐字节对比的声明。
 
 集成序列中的首次 resolved-IR 构建耗时 **543.24 秒**、子进程峰值 RSS **4,146,040 KiB**；最终核心修复后的增量 resolved-IR 构建耗时 **197.11 秒**、峰值 **2,755,800 KiB**。两次缓存状态不同，不能当作干净构建性能对照。随后完整目标构建耗时 **11.93 秒**，完整 CTest 耗时 **106.40 秒**。固定 `ptxas` **13.3.73** 检查点的 **31/31 项预期结果**一致：19 组新增 kind、八项 collector／ashift／零列控制、两项精确 103a 稀疏 MX 和两项 selector 省略对照（30 项接受、一项预期拒绝）。最终构建未重跑该汇编语料；它也未覆盖全部目标或寄存器拼写，没有运行 GPU。[仓库中的源码测试](../../../submod/resolved_ir/test/test_tcgen_mma_sparse_mx.cpp)、[已知数据行测试](../../../python/tests/spec/test_tcgen_mma_sparse_mx_contract.py)与[安装后示例](../../../examples/tcgen_mma_ws_sparse_consumer/)可独立重跑前端正反例。
 
@@ -35,3 +41,15 @@ ctest --preset ci-linux-clang-debug --output-on-failure
 本地运行时，unittest-parallel 默认使用逻辑 CPU 数；CI 可以显式指定 worker 数。
 
 有界汇编检查点使用完整 PTX 9.3 模块及 `/usr/local/cuda-13.3/bin/ptxas`，模块和日志包单独保留，未纳入本仓库。这里的 31/31 是已记录的工具观察；上面的命令与已链接测试则可直接从当前源码树复现。由此不能推断发布 CI、公开 ABI 冻结或模拟器／GPU 执行已获验证。
+
+## 历史101 source profile 与验证 feature
+
+`sm_101`/`compute_101` 及 A 形式从 PTX8.6 起支持，F 形式从 PTX8.8 起支持；PTX9.0/9.3 仍接受，rename 不引入上界。110 source profile 仍从 PTX9.0 起支持。`TargetIdentity` 保留 architecture101、flavor 和精确书写；`same_target_identity` 比较 source architecture/flavor，因此101A与110A仍不同。
+
+新增 base 函数 `target_feature_architecture(identity)` 读取显式 private catalog 数据：三个101 key 投影到 feature architecture110，其他 key 保持原 architecture；未收录的 typed key 不会因此被识别。公共 `TargetProfile` 与 `TargetInfo` 布局不变。source/owned/semantic factory 用此 feature level 作为 numeric SM，同时保留 source identity，并传递既有110基础能力 `cluster`、`aggregate_smem`、`reserved_smem`、`graph_exec`。Generic101 没有 family；101A/F 仅启用 canonical `sm_110f`，不继承100f/103f，也不支持 FP64 mapping option。此有限对应基于公布的 rename 与 family 关系，不是物理硬件或 driver 保证。
+
+availability 的 singular 与 span exact-target 要求通过该 helper 比较 validation-feature architecture 与精确 flavor；此关系不同于 source identity 和存储 key 相等。手动提供的 `TargetInfo::sm_version` 仍是 caller 的具体 feature 事实，checker 不会覆盖它。source profile 引入版本、instruction/PTX 门槛、capability 与 shape 条件仍独立。
+
+历史指令数据仅修改已采用的231个 parent：219个保留100A clause并加入101A，仅原有110F分支时加入101F；12个 block-selector parent 追加8.8历史101A/F clause。854个原110条件及其版本门槛全部保留，DNF上限仍为六，25个受限 cluster gather4/im2col-W parent 不变。TCGEN 闭合 row 保留 kind、scaled-D 与显式 scale-vector 限制：历史 written block16/32 门槛为8.8，100-only vector 和 scaled-D 路径仍限定100。生成的 operational query 先验证精确 source profile 及其最低版本，再匹配 feature；未知 word 与地址仍为未决义务，不从实时 register 推断事实。
+
+两个 module validator 均独立检查当前 function 的 `source_region`、`source_version`、精确 `source_target` 与当前 owned region 一致。合法 replacement AST 不能掩盖矛盾 cache。101/110 context 自身一致且当前 payload 在 supplied effective context 下合法时，允许通过 supplied header retarget；保留的 availability 不成为历史否决。缺少完整 instruction context 时继续既有 `AvailableContext` 推迟及严格 `MissingValidationContext` 政策。

@@ -19,8 +19,8 @@ class TcgenMmaACollectorContractTests(unittest.TestCase):
         raw = load_yaml(packaged_spec_dir() / "tensor_memory_data_movement.yaml")
         forms = {v.name: v for v in normalize_instruction_spec(raw)[0].variants}
         for sparse in (False, True):
-            for kind, layouts in (("f16", 8), ("tf32", 8),
-                                  ("i8", 4), ("f8f6f4", 4)):
+            for kind, layouts in (("f16", 4), ("tf32", 4),
+                                  ("i8", 2), ("f8f6f4", 2)):
                 name = f"tcgen05_mma_{'sp_' if sparse else ''}{kind}"
                 form = forms[name]
                 with self.subTest(name=name):

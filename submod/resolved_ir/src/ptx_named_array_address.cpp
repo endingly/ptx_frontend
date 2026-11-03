@@ -84,9 +84,19 @@ bool valid_named_array_address(const ResolvedAddress& address,
     const auto& value = reg->value;
     if (!value.symbol_id || !value.declared_type ||
         value.register_class != ResolvedRegisterClass::General ||
-        value.vector_width || value.component || reg->locs.size() != 1 ||
-        reg->locs.front() != index.index_range)
+        value.vector_width || !valid_register_component(value) ||
+        (value.component && value.component->range != index.index_range) ||
+        reg->locs.size() != 1 || reg->locs.front() != index.index_range)
       return false;
+    if (value.component) {
+      const auto* metadata =
+          base::find_scalar_type_metadata(*value.declared_type);
+      if (!metadata ||
+          metadata->register_declaration_usage !=
+              base::ScalarDeclarationUsage::Fundamental ||
+          metadata->size_bytes * value.component->declaration_width > 16)
+        return false;
+    }
     const auto kind = base::scalar_kind(*value.declared_type);
     if ((kind != base::ScalarKind::Unsigned &&
          kind != base::ScalarKind::Signed && kind != base::ScalarKind::Bit) ||

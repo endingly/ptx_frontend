@@ -19,7 +19,7 @@ namespace {
 
 /** Own a parsed tensor copy after its syntax tree has been destroyed. */
 std::optional<ResolvedModule> owned_multicast(
-    std::string_view copy, std::string_view target = "sm_110a",
+    std::string_view copy, std::string_view target = "sm_100a",
     std::string_view version = "9.3") {
   const std::string text = ".version " + std::string(version) + "\n.target " +
                            std::string(target) +
@@ -43,7 +43,7 @@ std::optional<ResolvedModule> owned_multicast(
 }
 
 /** Use the exact target catalog instead of a numeric-SM approximation. */
-checker::Context multicast_context(std::string_view target = "sm_110a",
+checker::Context multicast_context(std::string_view target = "sm_100a",
                                    checker::PtxVersion version = {9, 3}) {
   const auto profile = base::find_target_profile(target);
   if (!profile)
@@ -161,12 +161,12 @@ TEST(TensorMulticast, ModeAndTargetIntersections) {
       Case{"tile::gather4", 2, "8.6", {8, 6}, "sm_100a", true},
       Case{"tile::gather4", 2, "8.6", {8, 6}, "sm_100", false},
       Case{"tile::gather4", 2, "8.8", {8, 8}, "sm_103f", true},
-      Case{"tile::gather4", 2, "9.0", {9, 0}, "sm_110a", true},
+      Case{"tile::gather4", 2, "9.0", {9, 0}, "sm_110a", false},
       Case{"tile::gather4", 2, "9.0", {9, 0}, "sm_110", false},
       Case{"im2col", 3, "8.0", {8, 0}, "sm_90", true},
       Case{"im2col::w", 3, "8.6", {8, 6}, "sm_100a", true},
       Case{"im2col::w", 3, "8.6", {8, 6}, "sm_100", false},
-      Case{"im2col::w", 3, "9.0", {9, 0}, "sm_110a", true},
+      Case{"im2col::w", 3, "9.0", {9, 0}, "sm_110a", false},
       Case{"im2col::w::128", 3, "8.8", {8, 8}, "sm_103f", true},
       Case{"im2col::w::128", 3, "9.0", {9, 0}, "sm_120a", false},
   };

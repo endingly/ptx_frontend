@@ -53,7 +53,7 @@ TEST(HeaderCompatibility, RejectsKnownHeaderContradictions) {
        {".version 1.0\n.target sm_80\n", ".version 0.9\n.target sm_10\n",
         ".version 2.2\n.target sm_20\n.address_size 32\n",
         ".version 2.2\n.target sm_20\n.address_size 64\n",
-        ".version 2.3\n.target sm_20, debug\n",
+        ".version 2.3\n.target sm_20, debug\n.section .debug_info {.b8 0}\n",
         ".version 1.4\n.target sm_10, texmode_unified\n",
         ".version 1.4\n.target sm_10, texmode_independent\n",
         ".version 9.3\n.target sm_80, map_f64_to_f32\n",
@@ -70,7 +70,7 @@ TEST(HeaderCompatibility, AcceptsHeaderFeatureBoundaries) {
        {".version 1.0\n.target sm_10\n",
         ".version 2.3\n.target sm_20\n.address_size 32\n",
         ".version 2.3\n.target sm_20\n.address_size 64\n",
-        ".version 3.0\n.target sm_20, debug\n",
+        ".version 3.0\n.target sm_20, debug\n.section .debug_info {.b8 0}\n",
         ".version 1.5\n.target sm_10, texmode_unified\n",
         ".version 1.5\n.target sm_10, texmode_independent\n",
         ".version 1.5\n.target sm_10, map_f64_to_f32\n",
@@ -132,7 +132,7 @@ TEST(HeaderCompatibility, CoversEveryExactProfileAndComputeSynonym) {
 
 /** Unknown and unsupported catalog keys never acquire guessed header minima. */
 TEST(HeaderCompatibility, UnknownProfilesRemainUnknown) {
-  for (const auto suffix : {"999", "101", "101a", "101f", "80a", "90f"}) {
+  for (const auto suffix : {"999", "102", "102a", "102f", "80a", "90f"}) {
     for (const auto prefix : {"sm_", "compute_"}) {
       const auto ast = parseHeader(".version 9.3\n.target " +
                                    std::string{prefix} + suffix + "\n");
@@ -174,8 +174,8 @@ TEST(HeaderCompatibility, ReplacementAstChecksEachHeaderFeature) {
   const std::pair<std::string_view, std::string_view> cases[]{
       {".version 2.3\n.target sm_20\n.address_size 32\n",
        ".version 2.2\n.target sm_20\n.address_size 32\n"},
-      {".version 3.0\n.target sm_20, debug\n",
-       ".version 2.3\n.target sm_20, debug\n"},
+      {".version 3.0\n.target sm_20, debug\n.section .debug_info {.b8 0}\n",
+       ".version 2.3\n.target sm_20, debug\n.section .debug_info {.b8 0}\n"},
       {".version 1.5\n.target sm_10, texmode_unified\n",
        ".version 1.4\n.target sm_10, texmode_unified\n"},
       {".version 1.5\n.target sm_10, texmode_independent\n",

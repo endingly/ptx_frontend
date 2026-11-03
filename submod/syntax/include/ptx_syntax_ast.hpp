@@ -11,14 +11,10 @@
 
 #include <ptx_frontend/base/ptx_ast_types.hpp>
 #include <ptx_frontend/common/source_loc.hpp>
+#include <ptx_frontend/syntax/ptx_syntax_legacy_dwarf.hpp>
+#include <ptx_frontend/syntax/ptx_syntax_sections.hpp>
 
 namespace ptx_frontend::syntax_ast {
-
-/** Source spelling retained by a semantic syntax leaf. */
-struct AstSyntax {
-  std::string text;
-  SourceRange range;
-};
 
 struct AstOpcode {
   AstSyntax syntax;
@@ -83,10 +79,19 @@ struct AstAddressOffset {
   SourceRange range;
 };
 
+/** Explicit scalar selection from a named ordinary register vector. */
+struct AstVectorMember {
+  AstIdentifierRef base;
+  AstSyntax selector;
+  SourceRange range;
+};
+
 /** A named-array index with independently retained source operation and ranges. */
 struct AstNamedArrayIndex {
-  /** Numeric expressions own their trees; identifiers name scalar registers. */
-  std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand> index;
+  /** Numeric expressions own their trees; register indices may select vector elements. */
+  std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand,
+               AstVectorMember>
+      index;
   /** Optional register displacement in element units, never bytes. */
   std::optional<AstAddressOffset> displacement;
   SourceRange left_bracket_range;
@@ -97,7 +102,9 @@ struct AstNamedArrayIndex {
 
 /** An unresolved bracketed or unbracketed PTX address expression. */
 struct AstAddress {
-  std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand> base;
+  std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand,
+               AstVectorMember>
+      base;
   std::optional<AstAddressOffset> offset;
   bool bracketed{};
   /** PTX `.unified` address suffix independent of declaration attributes. */
@@ -110,12 +117,6 @@ struct AstAddress {
   SourceRange right_bracket_range;
   /** Named-array syntax does not imply an outer dereference bracket. */
   std::optional<AstNamedArrayIndex> named_index;
-};
-
-struct AstVectorMember {
-  AstIdentifierRef base;
-  AstSyntax selector;
-  SourceRange range;
 };
 
 /** Arithmetic minus applied to one register spelling, before semantic binding. */
@@ -185,8 +186,8 @@ enum class AstCallParameterListKind : uint8_t {
   Input,
 };
 
-using AstCallParameter =
-    std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand>;
+using AstCallParameter = std::variant<AstIdentifierRef, AstImmediate,
+                                      AstConstantOperand, AstVectorMember>;
 
 struct AstCallParameterList {
   AstCallParameterListKind kind{};
@@ -195,7 +196,8 @@ struct AstCallParameterList {
 };
 
 struct AstCallTarget {
-  AstIdentifierRef name;
+  /** Owned direct name or explicit ordinary register selection. */
+  std::variant<AstIdentifierRef, AstVectorMember> name;
   SourceRange range;
 };
 
@@ -278,13 +280,6 @@ struct AstFileDirective {
   AstSyntax filename;
   std::optional<AstSyntax> timestamp;
   std::optional<AstSyntax> file_size;
-  SourceRange range;
-};
-
-/** An outermost DWARF section whose payload remains raw syntax. */
-struct AstSectionDirective {
-  AstSyntax name;
-  std::vector<AstSyntax> payload;
   SourceRange range;
 };
 
@@ -465,6 +460,8 @@ enum class AstKernelResourceKind : uint8_t {
   ReqNctaPerCluster,
   ExplicitCluster,
   MaxClusterRank,
+  /** Written deprecated maximum-CTA optimization hint, distinct from the minimum. */
+  MaxNctaPerSm,
 };
 
 /** A per-entry kernel resource constraint retained from the function header. */
@@ -495,8 +492,8 @@ struct AstFunctionParameter {
   std::optional<AstSyntax> pointer_space;
   std::optional<AstSyntax> pointer_alignment;
   AstIdentifierRef name;
-  bool is_array{};
-  std::optional<AstConstantExpression> array_size;
+  /** Owned outer-to-inner axes, including any omitted outer extent. */
+  std::vector<AstArrayDimension> array_dimensions;
   SourceRange range;
 };
 
@@ -543,7 +540,8 @@ struct AstBlock;
 using AstFunctionBodyItem =
     std::variant<AstVariableDeclaration, AstLabel, AstCallPrototype,
                  AstCallTargets, AstBranchTargets, AstLocDirective, AstPragma,
-                 std::unique_ptr<AstBlock>, AstInstruction>;
+                 std::unique_ptr<AstBlock>, AstInstruction,
+                 AstLegacyDwarfRecord>;
 
 /** A lexically nested function-body block. */
 struct AstBlock {
@@ -576,7 +574,7 @@ using AstModuleItem =
     std::variant<AstVersionDirective, AstTargetDirective,
                  AstAddressSizeDirective, AstFileDirective, AstSectionDirective,
                  AstPragma, AstVariableDeclaration, AstAliasDirective,
-                 AstFunction>;
+                 AstFunction, AstLegacyDwarfRecord>;
 
 struct AstModule {
   std::vector<AstModuleItem> items;

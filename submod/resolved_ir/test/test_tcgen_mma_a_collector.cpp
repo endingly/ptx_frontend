@@ -60,9 +60,11 @@ TEST(TcgenMmaACollector, DenseSparseKindsAndSourceOrder) {
                                    std::string(sparse ? ".sp" : "") +
                                    ".cta_group::" + std::to_string(group) +
                                    ".kind::" + std::string(kind);
+        const std::string mask =
+            group == 1 ? "{%i,%i,%i,%i}" : "{%i,%i,%i,%i,%i,%i,%i,%i}";
         const std::string args = " [%d], [%a], %bd, " +
-                                 std::string(sparse ? "[%sp], " : "") +
-                                 "%i, %p;";
+                                 std::string(sparse ? "[%sp], " : "") + "%i, " +
+                                 mask + ", %p;";
         SCOPED_TRACE(prefix);
         EXPECT_TRUE(accepts_a_collector(prefix + args));
         for (std::string_view op : {"fill", "use", "lastuse", "discard"})
@@ -81,7 +83,7 @@ TEST(TcgenMmaACollector, DenseSparseKindsAndSourceOrder) {
             accepts_a_collector(prefix + ".collector::b0::fill" + args));
         const std::string shared = " [%d], %ad, %bd, " +
                                    std::string(sparse ? "[%sp], " : "") +
-                                   "%i, %p;";
+                                   "%i, " + mask + ", %p;";
         EXPECT_TRUE(
             accepts_a_collector(prefix + ".collector::a::fill" + shared));
         EXPECT_FALSE(accepts_a_collector(prefix + ".ashift" + shared));
@@ -95,8 +97,8 @@ TEST(TcgenMmaACollector, OwnedViewAndTamper) {
   std::optional<ResolvedModule> owned;
   {
     auto ast = parse_a_collector(a_collector_source(
-        "tcgen05.mma.sp.cta_group::1.kind::f16.ashift"
-        ".collector::a::lastuse [%d], [%a], %bd, [%sp], %i, %p;"));
+        "tcgen05.mma.sp.cta_group::1.kind::f16.ashift.collector::a::lastuse "
+        "[%d], [%a], %bd, [%sp], %i, {%i, %i, %i, %i}, %p;"));
     ASSERT_TRUE(ast);
     auto result = resolveAndValidateModule(*ast);
     ASSERT_TRUE(result.has_value());
@@ -130,8 +132,9 @@ TEST(TcgenMmaACollector, OwnedViewAndTamper) {
 
 /** Omitted and explicit discard controls retain distinct source provenance. */
 TEST(TcgenMmaACollector, OmittedAndWrittenDiscard) {
-  auto absent_ast = parse_a_collector(a_collector_source(
-      "tcgen05.mma.cta_group::1.kind::i8 [%d], [%a], %bd, %i, %p;"));
+  auto absent_ast = parse_a_collector(
+      a_collector_source("tcgen05.mma.cta_group::1.kind::i8 [%d], [%a], %bd, "
+                         "%i, {%i, %i, %i, %i}, %p;"));
   ASSERT_TRUE(absent_ast);
   auto absent = resolveAndValidateModule(*absent_ast);
   ASSERT_TRUE(absent.has_value());
@@ -144,9 +147,9 @@ TEST(TcgenMmaACollector, OmittedAndWrittenDiscard) {
   omitted->collector.locs.push_back(omitted->cta_group.locs.front());
   EXPECT_FALSE(validateModule(*absent).has_value());
 
-  auto written_ast = parse_a_collector(a_collector_source(
-      "tcgen05.mma.cta_group::1.kind::i8.collector::a::discard "
-      "[%d], [%a], %bd, %i, %p;"));
+  auto written_ast = parse_a_collector(
+      a_collector_source("tcgen05.mma.cta_group::1.kind::i8.collector::a::"
+                         "discard [%d], [%a], %bd, %i, {%i, %i, %i, %i}, %p;"));
   ASSERT_TRUE(written_ast);
   auto written = resolveAndValidateModule(*written_ast);
   ASSERT_TRUE(written.has_value());

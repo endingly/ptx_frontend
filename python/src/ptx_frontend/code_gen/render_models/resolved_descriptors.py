@@ -8,13 +8,16 @@ from ptx_frontend.base.utils import to_file_stem
 from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
 from ptx_frontend.code_gen.render_models.availability import AvailabilityModel, build_availability
 from ptx_frontend.code_gen.render_models.matrix import MatrixDescriptorModel, build_matrix_descriptor
-from ptx_frontend.spec.model import CodegenUnit, MbarrierStateTokenForm, TextureResourceRole
+from ptx_frontend.spec.model import CodegenUnit, TextureResourceRole
 from ptx_frontend.ir.resolved_ir import (
     ResolvedAddressStateSpace,
     ResolvedField,
     ResolvedInstruction,
     ResolvedModifierBinding,
     ResolvedOperandBinding,
+    ResolvedOperandRole,
+    ResolvedOperandAccess,
+    ResolvedOperandShape,
     ResolvedOperandTypeExpression,
     ResolvedOperandTypeExpressionKind,
     TensorAccessMode,
@@ -106,6 +109,7 @@ class ResolvedOperandBindingModel:
     topology_members: tuple[ResolvedBindingMemberModel, ...]
     immediate_conversion_policy: str
     video: ResolvedVideoOperandModel | None
+    integer_immediate_type: str | None = None
 
 @dataclass(frozen=True)
 class ResolvedAddressStateSpaceModel:
@@ -214,13 +218,32 @@ def _build_operand_binding(binding: ResolvedOperandBinding, name: str, backend: 
                            register_types_name: str | None = None) -> ResolvedOperandBindingModel:
     """Preserve designated-member order and typed nested operand constraints."""
 
+    if binding.integer_immediate_type is not None:
+        expression = binding.type_expression
+        if (expression.kind is not ResolvedOperandTypeExpressionKind.FIXED_SCALAR
+                or (expression.scalar_type, binding.integer_immediate_type) not in (
+                    ("f16", "b16"), ("bf16", "b16"),
+                    ("f16x2", "b32"), ("bf16x2", "b32"))
+                or binding.role is not ResolvedOperandRole.SOURCE
+                or binding.access is not ResolvedOperandAccess.READ
+                or len(binding.allowed_shapes) != 2
+                or set(binding.allowed_shapes) != {
+                    ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE}
+                or binding.source_value_vector
+                or (binding.minimum_elements, binding.maximum_elements)
+                   not in ((None, None), (0, 0))):
+            raise ValueError("integer_immediate_type requires a read scalar half or packed half binding")
+
     member = ResolvedBindingMemberModel
     vector: list[ResolvedBindingMemberModel] = []
     if binding.allowed_vector_arities:
         vector.append(member("allowed_vector_arities", vector_arities_name if vector_arities_name is not None else f"{name}_vector_arities"))
     if binding.vector_arity_modifier_field_id is not None:
         vector.append(member("vector_arity_modifier_field_id", f'"{binding.vector_arity_modifier_field_id}"'))
-    if binding.allowed_vector_arities or binding.vector_arity_modifier_field_id is not None:
+    # Named modern fragments use only their existing min/max count authority.
+    # Their Element policy is active even without a second vector-arity field.
+    if (binding.allowed_vector_arities or binding.vector_arity_modifier_field_id is not None
+            or binding.allow_named_vector):
         vector.extend((member("vector_type_policy", f"checker::VectorTypePolicy::{binding.vector_type_policy.value}"),
                        member("allow_vector_sink", str(binding.allow_vector_sink).lower())))
     if binding.allow_named_vector:
@@ -238,7 +261,7 @@ def _build_operand_binding(binding: ResolvedOperandBinding, name: str, backend: 
         sink.append(member("allow_destination_sink", "true"))
     if binding.allow_predicate_sink:
         sink.append(member("allow_predicate_sink", "true"))
-    if binding.mbarrier_state_token_form is not MbarrierStateTokenForm.REGISTER:
+    if binding.mbarrier_state_token_form is not None:
         sink.append(member("mbarrier_state_token_form", "checker::MbarrierStateTokenForm::" +
             ''.join(part.capitalize() for part in binding.mbarrier_state_token_form.value.split('_'))))
     symbol: list[ResolvedBindingMemberModel] = []
@@ -308,7 +331,9 @@ def _build_operand_binding(binding: ResolvedOperandBinding, name: str, backend: 
         build_availability(dict(binding.sink_availability)) if binding.sink_availability else None,
         tuple(symbol), str(binding.preserve_parameter_address_space).lower(), tuple(address), parameter,
         tuple(topology), cpp_value(CppDomain.IMMEDIATE_CONVERSION_POLICIES,
-            binding.immediate_conversion_policy.value, backend=backend), video)
+            binding.immediate_conversion_policy.value, backend=backend), video,
+        cpp_value(CppDomain.SCALAR_TYPES, binding.integer_immediate_type, backend=backend)
+            if binding.integer_immediate_type is not None else None)
 
 
 def _build_binding_storage(name: str, bindings: tuple[ResolvedOperandBinding, ...], backend: CodegenUnit) -> ResolvedBindingStorageModel:

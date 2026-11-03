@@ -98,7 +98,7 @@ OPERAND_SYNTAX_SHAPES = {
     OperandKind.TCGEN_HALF_SPLIT_OFFSET: OperandSyntaxShape.IMMEDIATE,
     OperandKind.MATRIX_FRAGMENT: OperandSyntaxShape.VECTOR_PACK,
     OperandKind.MATRIX_SCALE_SELECTOR: OperandSyntaxShape.VECTOR_PACK,
-    OperandKind.SHARED_MATRIX_DESCRIPTOR: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.SHARED_MATRIX_DESCRIPTOR: (OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_MEMBER),
     OperandKind.WGMMA_SCALE_D: (
         OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE
     ),

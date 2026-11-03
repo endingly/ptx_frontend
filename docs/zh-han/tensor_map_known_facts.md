@@ -60,3 +60,19 @@ atomicity、运行时 peer/mask 成员资格、barrier 完成和 descriptor 内�
 形式已支持规范 [cache-hint/policy 操作数](tensor_cache_controls.md)，它与 descriptor
 事实独立。准确形式、证据与剩余义务见 [tensor async 覆盖](converage/tensor_async_coverage.md)
 和 [frontend 收口矩阵](converage/tensor_async_closeout.md)。
+
+## 完整关系的保守边界
+
+以下五个规则 ID 在局部检查通过后仍有意保持 `Unresolved`，即使调用者事实 API 支持的全部相关字段都有已知值。提供数值不等于提供缺失的数学关系，也不能证明来源。报告可以既没有不合格断言诊断，也没有 `Violated` 行，却仍包含这些未解决义务；这里不存在 descriptor 整体已验证的汇总结果。
+
+| 规则 ID | 已实现的局部检查 | 仍为 `Unresolved` 的完整关系 | 相关且受支持的调用者数值 |
+| --- | --- | --- | --- |
+| 17 `STORE_BOUNDS` | Store/reduce 范围、转换后坐标非负、lower-edge 偏移非负与 upper-edge 偏移非正；无偏移 im2col store 需要两组边缘数组。 | 整个 tiled/store box 在完整 tensor 内的包含关系与相对两侧边缘的变换。 | 完整/tiled 维度、traversal、坐标及适用的边缘数组。 |
+| 18 `IM2COL_SHAPE` | Im2col 范围、rank 3–5、spatial 长度 rank−2，以及对应 rank 的有符号边缘偏移范围。 | Filter-base/spatial-box 的相对两侧边缘关系，包括所选 spatial 坐标的来源。 | 完整/tiled 维度、traversal、已知坐标、spatial box 和两组边缘数组；仅有坐标数值不能证明来源。 |
+| 19 `IM2COL_INFO` | 普通 im2col 范围、rank 3–5、对应 rank 的 information 数量和转换后 U16 范围；请求 pixel 过多且 fill 未知时保持未解决。 | Pixels/traversal/available-NDHW/fill 关系。 | 维度、traversal、坐标、information、每列 pixel 数、每 pixel channel 数、available NDHW 数量及 fill。 |
+| 20 `W_PROFILE` | W/W128 范围、rank 3–5、无 interleave、要求 swizzle、实际使用时排除 128-byte/flip8、D/H extent 为一及既定 information 范围。 | W/W128 的完整宽度、相对两侧边缘、边界和数量关系。 | 维度、traversal、坐标、spatial box、information、W 宽度和边缘偏移、数量、fill 及布局断言。 |
+| 21 `GATHER_SCATTER` | Gather4/scatter4 范围、rank 为二、五个坐标角色、无 interleave 且 tiled-box 高度为一。 | 每个所选 row 的完整边界/extent 关系。 | 完整/tiled 维度、traversal 及五个角色的已知坐标；API 不新增逐 row extent 或来源事实。 |
+
+已知的局部反例仍为 `Violated`；结构上不适用仍为 `NotApplicable`。缺失或未知字段保持未知，不能当作已知零。这些完整关系限制不会改变 22 个稳定 ID、依赖 mask 或不合格断言的隔离规则；未解决 detail 中提到的字段不会自动成为新的 metadata 依赖。
+
+这是文档化的范围边界，不是实现了五个求解器。完整的受支持调用者数值或通过的局部检查都不证明 tensor-map 字节、实际 GPU 边界、地址所有权、同步或运行时协议完成。既有局部 `Checked` 结果仍仅具有其明确的条件含义。

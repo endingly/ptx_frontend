@@ -9,20 +9,22 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 
 | 范围 | 状态 | 当前实现子集 |
 | --- | --- | --- |
-| 具名数组地址 | 支持子集 | 专用 MOV address source 与普通 LD/ST 接纳单个 `A[index]`，按声明的标量 element stride 缩放并保留 direct-minus/plus-negative 源码运算。family/qualifier 排除边界及 ptxas 拼写差异见[具名地址语义](../resolved_ir_design.md#具名数组地址)，语法和 range 见[具名数组地址语法](../syntax_ast_design.md#具名数组地址语法)。 |
+| 具名数组地址 | 支持子集 | 专用 MOV address source 与通用 address role 接纳单个 `A[index]`，按声明的标量 element stride 缩放并保留 direct-minus/plus-negative 源码运算。register-only role/qualifier 排除边界及 ptxas 拼写差异见[具名地址语义](../resolved_ir_design.md#具名数组地址)，语法和 range 见[具名数组地址语法](../syntax_ast_design.md#具名数组地址语法)。 |
 | PTX 9.3 Video | 支持源码家族 | 全部 23 个 scalar/SIMD2/SIMD4 opcode，独立 Video 类型、selector/mask、寄存器取负、立即数来源及目标检查；见 [Video 覆盖](video_coverage.md)。算术执行不属于 frontend。 |
 | Token 与 trivia | 部分支持 | identifier、dot identifier、literal、标点、注释、空白与部分稳定 directive；未修改的 `CstFile::sourceText()` 会从 token buffer 逐字节 round-trip |
-| 单 instruction fragment | 部分支持 | predicate guard、opcode/modifier、普通 operand、address、普通 `.xyzw/.rgba` scalar component 与 brace lane、vector member/vector pack，以及 call/branch 专用 operand shape；call argument、address base 与 named-array index 中的 component 尚不支持 |
+| Instruction keyword 的 name context | 按上下文 | Instruction 位置识别 opcode root，显式声明 name 使用字符 grammar，保留官方 `bar` object/function 示例。独立 role/type/ABI/visibility 规则仍适用，见[词法解释](../lexer_design.md)。 |
+| 单 instruction fragment | 部分支持 | predicate guard、opcode/modifier、普通 operand、address、普通 `.xyzw/.rgba` scalar component 与 brace lane、vector member/vector pack，以及 call/branch 专用 operand shape；普通 address base 与 named-array register index 可在既有 type/role 规则下使用选中的 scalar component；call 输入、唯一返回和 indirect register target 支持显式普通 component |
 | Module header | 支持子集 | `.version`、`.target`、`.address_size` 会 lower 为有序且 independent 于 AST 的 source-configuration region。每个 region 拥有 effective version、target-option spelling、address width 与 explicit/defaulted provenance；省略 address size 时拥有 PTX 的 32-bit default，而非 host property。已识别的 region 会提供 target-aware module validation，但不构成 hardware configuration 或 execution contract。 |
 | Debug file directive | 支持子集 | outermost `.file file_index "filename"` 与可选且成对的 `, timestamp, file_size`；decimal/octal/hex uint64 ID 在 debug-only namespace 中 binding，重复的规范化 ID 一律诊断（包括相同 metadata），symbol table 拥有 payload，overflow 会诊断；显式数值 metadata（包括 `0, 0`）要求 PTX ISA >= 3.2，不依赖 SM/debug option |
-| Debug location directive | 支持子集 | function/nested-block `.loc file line column` 的 decimal/octal/hex file ID 与成对 PTX 7.2 `function_name`/`inlined_at` payload 会验证已绑定 file ID 与 `.debug_str` section/label identity；不附着到 instruction，也不进入 Resolved IR |
-| Debug section directive | 支持子集 | outermost `.section name { ... }` 的匹配 brace 与有序 raw DWARF payload token 会保留；`.debug_str` 与 raw `name:` label 会绑定为 debug identity，payload width、relocation 和 offset semantic 仍未支持 |
-| Backend pragma directive | 支持子集 | module、`.entry` header 与 function/nested-block statement 的 `.pragma` 保留非空 comma-separated string list 到 CST/AST；pragma 不进入 binding 或 Resolved IR |
-| Kernel resource directive | 支持子集 | entry header 的 `.maxnreg n`、`.maxntid nx[,ny[,nz]]`、`.reqntid nx[,ny[,nz]]`、`.minnctapersm ncta`、`.reqnctapercluster nx[,ny[,nz]]`、零参数 `.explicitcluster` 与 `.maxclusterrank n` 进入专用 CST/AST，并以 normalized function-contract value 自主保存。declaration semantics 拒绝同一 entry 同时使用 `.maxntid` 与 `.reqntid`、`.reqnctapercluster` 与 `.maxclusterrank`；module validation 检查已建模 PTX/target minimum。launch feasibility、occupancy 与 physical resource allocation 仍不检查。 |
+| Debug location directive | 支持子集 | function/nested-block `.loc file line column` 的 decimal/octal/hex file ID 与成对 PTX 7.2 `function_name`/`inlined_at` payload 会验证已绑定 file ID 与 `.debug_str` section/label identity；保存 owning SymbolTable record 并检查 modulewide preceding base triple，不生成可执行 instruction |
+| Debug section directive | 支持子集 | CST 保留 raw token/trivia 与 typed entry；拥有式 AST/module integer list、signed byte addend、single symbol 与同 section label difference 检查原始范围/locality/版本；`.debug_str` typed label 在 metadata namespace 绑定，链接后的 DWARF 值仍未知 |
+| Legacy debug serialization | 闭合语法支持 | `@@DWARF`、PTX [1.2,2.0)、unsigned hex width/single wide label/有限 section header；owning source-wide scope stream、独立格式检查，无 decoder |
+| Backend pragma directive | 支持子集 | module、`.entry` header 与 function/nested-block statement 的 `.pragma` 保留非空 comma-separated string list 到 CST/AST；string 不创建 bound name；module 拥有带实际 placement scope 的 opaque advisory record |
+| Kernel resource directive | 支持子集 | entry header 的 `.maxnreg n`、`.maxntid nx[,ny[,nz]]`、`.reqntid nx[,ny[,nz]]`、`.minnctapersm ncta`、`.maxnctapersm ncta`、`.reqnctapercluster nx[,ny[,nz]]`、零参数 `.explicitcluster` 与 `.maxclusterrank n` 进入专用 CST/AST，并以 normalized function-contract value 自主保存。declaration semantics 拒绝同一 entry 同时使用 `.maxntid` 与 `.reqntid`、`.reqnctapercluster` 与 `.maxclusterrank`；module validation 检查已建模 PTX/target minimum。launch feasibility、occupancy 与 physical resource allocation 仍不检查。 |
 | Function | 支持子集 | `.entry/.func` definition、`.func` prototype、visibility/linkage qualifier、返回/输入参数列表、`.noreturn`、`.func` ABI suffix、`.language` 与 entry `.blocksareclusters`。Resolved function 会 independent 于 AST 地拥有 normalized signature、linkage/canonical identity、已支持 attribute、ABI suffix、resource，以及 language/cluster marker。 |
-| Formal parameter | 支持子集 | `.reg/.param`、alignment、scalar type、pointer space/alignment，以及由结构化 constant expression 指定长度的 array |
+| Formal parameter | 支持子集 | `.reg/.param`、alignment、fundamental scalar/v2/v4 type（含 packed scalar F16x2）、pointer space/alignment，以及由结构化 constant expression 指定长度的 array |
 | Variable declaration | 支持子集 | module/function scope、linkage qualifier、`.reg/.param/.local/.shared/.global/.const`、窄 `.attribute(.managed/.unified)`、alignment、vector/base type、parameterized name、多维 array，以及 `.global/.const` initializer |
-| Function body | 支持子集 | variable declaration、label、当前 instruction grammar，以及递归绑定的 nested block；resolution 会按源码顺序递归平铺 instruction，call staging 限于各 lexical block |
+| Function body | 支持子集 | variable declaration、label、当前 instruction grammar，以及递归绑定的 nested block；resolution 会按源码顺序递归平铺 instruction，call staging 按平铺 instruction 序列及绑定 lexical object visibility 检查 |
 | Constant expression | 支持子集 | 声明/指令共享数值树：括号、整数运算/cast、同类型 f64 算术/比较/三元运算；call/tuple/predicate/address 数值叶；depth 128、shift count 0–63。精确 `0f` 仅作 literal；`generic(symbol)` 与 mask 仍是 initializer operator。详见 [共享数值求值](../declaration_semantics_design.md#共享数值求值)。 |
 | Initializer | 支持子集 | scalar expression、递归 brace list、未定长首维；拒绝 `.extern`、parameterized name 及非 `.global/.const` initializer |
 | Symbol binding | 支持子集 | module/function/nested-block scope、变量/参数/函数/label、lexical shadowing、parameterized member、instruction/initializer/dimension/control-flow reference，以及隔离的 debug file/string metadata identity；label 与 control-flow metadata 保持 function-local |
@@ -75,66 +77,88 @@ Lexer 能切分矩阵以外的源码，Syntax AST 也可能以文本形式保留
 此表逐 spelling 覆盖 PTX ISA Table 1 的 35 个 directive，以及该表遗漏的五项：5.4.8 的
 `.attribute`、11.4 的 `.abi_preserve`、`.abi_preserve_control` 和 11.8 的
 `.blocksareclusters`、`.language`。它回答 coverage matrix 的六个 pipeline 问题。legacy
-非 dot spelling `@@dwarf` 与 `.ptr` 等 attribute 刻意不属于这份 dot-directive registry。
+非 dot spelling `@@DWARF` 与 `.ptr` 等 attribute 刻意不属于这份 dot-directive registry。
 
 图例：`D` = 专用 lexer token；`G` = 通用 `DotIdent`（仍可 tokenize，但不表示 CST
 支持）。`T` = typed directive CST/AST；`E` = 进入既有 declaration/function node；`R` =
 parser 明确拒绝。`Y` = 作为 owned binding/Resolved-IR contract 保存；`I` = consuming
 instruction 保留/check 已绑定 identity；`C` = direct binding/declaration semantic check；
 `V` = 当前 AST-free `validateModule` traversal 会执行 target-aware validation。仅被保留不等于
-`V`：prototype ABI/`.noreturn` availability 与 storage-declaration attribute availability 仍走
-AST/declaration-validation path。`V` 只验证已建模 source-profile requirement，不建立 launch
+`V`：storage-declaration attribute availability 仍走 AST/declaration-validation path。`V` 只验证已建模 source-profile requirement，不建立 launch
 feasibility、simulator execution 或 hardware behavior；`—` = 该阶段无支持。
 
 | Directive | Token | CST | Syntax AST | Binding | Resolved IR | Target / semantic | 明确边界 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `.address_size` | D | T | T | — | Y | C | 拥有带 explicit/defaulted provenance 的 effective 32/64-bit source-header width；作为 header integrity revalidate，不用于构建 `checker::TargetInfo`，也不表示 host-address 或 allocation |
 | `.alias` | G | T | T | Y | Y / I | C / V | owned 同 module device-function alias；不做 linker/backend alias |
-| `.abi_preserve` | G | T | T | — | Y | C / V（仅 `.func`） | 两种 form 均拥有 ABI metadata。PTX 9.0 availability 对 `.func` 为 AST-free；`.callprototype` availability 仍为 AST-backed。不进行 physical register assignment。 |
-| `.abi_preserve_control` | G | T | T | — | Y | C / V（仅 `.func`） | 两种 form 均拥有 ABI metadata。PTX 9.0 availability 对 `.func` 为 AST-free；`.callprototype` availability 仍为 AST-backed。不进行 physical register assignment。 |
+| `.abi_preserve` | G | T | T | — | Y | C / V | 两种 form 均拥有 ABI metadata。current owned prototype 与独立 supplied prototype 均重查 PTX 9.0 / SM 80 minima，包括 partial known context。不进行 physical register assignment。 |
+| `.abi_preserve_control` | G | T | T | — | Y | C / V | 两种 form 均拥有 ABI metadata。current owned prototype 与独立 supplied prototype 均重查 PTX 9.0 / SM 80 minima，包括 partial known context。不进行 physical register assignment。 |
 | `.align` | D | E | E | Y | Y | C | declaration/parameter alignment |
 | `.attribute` | G | T | T | — | Y | C / V（仅 function） | 仅 typed `.managed` 与 `.unified(id,id)` placement/version subset。AST-free target availability 覆盖 function attribute；已保留 storage attribute 当前仍通过 AST/declaration validation 检查。不进行 runtime allocation 或 host-address interpretation。 |
-| `.branchtargets` | D | T | T | Y | Y / I | C / I | 拥有 bound、expanded logical target；`brx.idx` consumer 为 PTX 6.0 / SM 30，不提供 CFG/protocol proof |
-| `.callprototype` | D | T | T | Y | Y / I | C / I | 拥有 normalized signature 与已支持 ABI metadata。AST-free validation 会 recheck identity、scope 与 signature，不检查 prototype ABI/`.noreturn` availability；indirect-call availability 仍由 consumer 决定。 |
-| `.calltargets` | D | T | T | Y | Y / I | C / I | 拥有 ordered bound/canonical function target 及 shared signature；indirect-call availability 仍由 consumer 决定 |
+| `.branchtargets` | D | T | T | Y | Y / I | C / I | 拥有 bound、expanded logical target；unused/nested presence 要求 PTX 2.1 / SM 20；`brx.idx` consumer 为 PTX 6.0 / SM 30，不提供 CFG/protocol proof |
+| `.callprototype` | D | T | T | Y | Y / I | C / V / I | 拥有 normalized signature 与已支持 ABI metadata。两种 module validation route 依 selected region 重查 base PTX 2.1 / SM 20 与实际 suffix minima；identity/scope/signature 与 indirect-call consumer 检查仍独立。 |
+| `.calltargets` | D | T | T | Y | Y / I | C / I | 拥有 ordered bound/canonical function target 及 shared signature；unused/nested presence 独立要求 PTX 2.1 / SM 20；indirect-call instruction 另行检查 |
 | Call-table flist array | D | T | T | Y | Y / I | C / I | 已初始化 scalar u32/u64 一维 global/const array；拥有真实 storage identity、sparse 显式 function slot、完整公共 signature、lexical order 与 AST-free storage/function 关联。允许重复/隐式 zero tail；不证明 runtime pointer membership。 |
 | `.common` | D | E | E | Y | Y | C / V | 普通 module-scope global definition 的独立 Common linkage；PTX 5.0 / SM 20，沿用 initializer/layout，AST-free eligibility 与有序 target 检查；无跨 object linker |
 | `.const` | D | E | E | Y | Y | C | 既有 variable declaration |
 | `.entry` | D | E | E | Y | Y | C | 既有 function node |
 | `.explicitcluster` | D | T | T | — | Y | C / V | entry-only、零参数、PTX 7.8 modeled availability；target launch feasibility deferred |
 | `.extern` | D | E | E | Y | Y | C | 既有 linkage qualifier |
-| `.file` | D | T | T | Y | — | C | decimal/octal/hex uint64 identity；重复的规范化 ID 一律诊断；按源码顺序拥有 payload；overflow 诊断；显式数值 metadata 要求 PTX >= 3.2（缺失 version 时 `AvailableContext` 延后检查；replacement AST 提供 version/metadata） |
-| `.func` | D | E | E | Y | Y | C | 既有 function node |
+| `.file` | D | T | T | Y | — | C | decimal/octal/hex uint64 identity；重复的规范化 ID 一律诊断；按源码顺序拥有 payload；file_size 在 current 与独立 supplied data 中检查完整 unsigned64 单叶（0 至 UINT64_MAX）；timestamp domain 不变；显式数值 metadata 要求 PTX >= 3.2（缺失 version 时 `AvailableContext` 延后检查；replacement AST 提供 version/metadata） |
+| `.func` | D | E | E | Y | Y | C | Current local direct/consumed-finite may-call cycle 要求 PTX 2.0 / SM 20；包含 unused definition，open edge 非 acyclic proof；无 runtime stack/CFG |
 | `.global` | D | E | E | Y | Y | C | 既有 variable declaration |
 | `.local` | D | E | E | Y | Y | C | 既有 variable declaration |
-| `.loc` | D | T | T | Y | — | C | decimal/octal/hex file ID 与 `.debug_str` function-name identity；不做 attachment |
+| `.loc` | D | T | T | Y | — | C | 拥有有序 full64 triple、prior-base inline reference 与独立 current/replacement metadata join；不做 attachment |
 | `.maxclusterrank` | D | T | T | — | Y | C / V | entry-only normalized resource、PTX 7.8 modeled availability；与 `.reqnctapercluster` 冲突 |
-| `.maxnctapersm` | G | R | — | — | — | — | 未建模 deprecated resource directive |
 | `.maxnreg` | D | T | T | — | Y | C / V | entry-only normalized resource，含 modeled availability；occupancy implication deferred |
+| `.maxnctapersm` | D | T | T | — | Y | C / V | 独立弃用 entry hint，PTX >= 1.3；已建模 u32 容量，不是 occupancy 硬上限 |
 | `.maxntid` | D | T | T | — | Y | C / V | entry-only normalized resource；与 `.reqntid` 冲突；launch feasibility deferred |
 | `.minnctapersm` | D | T | T | — | Y | C / V | entry-only normalized resource；warning/device feasibility deferred |
-| `.noreturn` | D | E | E | — | Y | C / V（仅 `.func`） | device `.func`/`.callprototype`；检查 return-parameter conflict，但 AST-free PTX 6.4 availability 当前只对 `.func` recheck；prototype availability 仍为 AST-backed。 |
+| `.noreturn` | D | E | E | — | Y | C / V | device `.func`/`.callprototype`；检查 return-parameter conflict。两种 module route 均重查 prototype PTX 6.4 / SM 30 minima，不因另一个 context fact 未知而跳过已知失败。 |
 | `.param` | D | E | E | Y | Y | C | 既有 variable/formal/call-parameter declaration |
-| `.pragma` | D | T | T | — | — | — | backend string interpretation 刻意未实现 |
+| `.pragma` | D | T | T | — | Y | V | module/entry-header/statement record 拥有 raw string、range 与实际 scope；独立于 target 要求 PTX >= 2.0；不解释 backend string 或执行效果 |
 | `.reg` | D | E | E | Y | Y | C | 既有 variable/formal declaration |
 | `.reqnctapercluster` | D | T | T | — | Y | C / V | entry-only normalized resource、PTX 7.8 modeled availability；与 `.maxclusterrank` 冲突 |
 | `.reqntid` | D | T | T | — | Y | C / V | entry-only normalized resource；与 `.maxntid` 冲突；launch feasibility deferred |
-| `.section` | D | T | T | Y | — | C | 仅 `.debug_str` 及 raw `name:` label binding；payload 保持 raw |
+| `.section` | D | T | T | Y | Y | C / V | owning module metadata、typed integer/relocation grammar 与静态 locality；无可执行 node 或 DWARF decoder |
 | `.shared` | D | E | E | Y | Y | C | 既有 variable declaration |
 | `.sreg` | G | R | — | — | — | — | 未建模 special-register declaration |
 | `.target` | D | T | T | — | Y | V | owned source-target option 会为 recognized profile 构建 `checker::TargetInfo`；不表示 physical target selection 或 translation guarantee |
 | `.tex` | G | R | — | — | — | — | 未建模 declaration directive |
 | `.version` | D | T | T | — | Y | V | owned source version 参与 target-aware module validation |
 | `.visible` | D | E | E | Y | Y | C | 既有 linkage qualifier |
-| `.weak` | D | E | E | Y | Y | C | 既有 linkage qualifier |
+| `.weak` | D | E | E | Y | Y | C | PTX 3.1 / all targets；逐 supplied occurrence 与 current owned symbol/storage/function fact 检查，包含 unused prototype；非 weak-linker simulation |
 | `.blocksareclusters` | G | T | T | — | Y | C / V | owned 零参数 entry marker；PTX 9.0 modeled availability，且要求 `.reqntid` + `.reqnctapercluster`；launch rule deferred |
-| `.language` | G | T | T | — | Y | C / V | owned 非空 official string/integer list；PTX 9.3 modeled availability，不实现 backend-language behavior |
+| `.language` | G | T | T | — | Y | C / V | 两种 API 以统一 exported semantic decoder 重查 current raw 非空 official quoted-name/unsigned0..10 list，保留重复及顺序；已知 PTX <9.3 不因 target 缺失而推迟。无 backend-language behavior |
 
 ## 实现优先级
 
 [项目 roadmap](../../../.agents/project_roadmap.v2.md) 是实现状态、依赖和优先级的唯一权威来源。
 本矩阵只记录能力边界，刻意不重复该排序。
 
-PTX ISA 的 variable declaration 概述提到 optional fixed address，但当前规范没有给出独立
-语法、约束或示例。frontend 不会据此发明语法；只有获得规范性 grammar 或可验证的
-`ptxas` 行为后才会增加对应节点。
+### 固定变量地址：已采用的参考边界
+
+**`FIXED-ADDRESS-PRODUCTION` 的处置为 `ADOPTED_REFERENCE_GAP`，不是 `CODE_PASS`。**
+固定的 [PTX ISA 9.3 §5.4.1 概述](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variable-declarations)
+提到 optional fixed variable address，但所引用的 declaration、array、initializer
+及 alignment 条款没有提供确定可执行的 production、terminal、约束或固定放置示例。
+frontend 不解析或分配变量的绝对固定地址。
+
+变量名后的候选 tail `@ 0x100`、`.fixed(0x100)`、`.address(0x100)`、`:0x100`
+在项目现有的严格声明 grammar 下产生诊断。这些是人为构造的说明，不是官方 PTX
+negative oracle。带诊断的恢复 CST 或 AST 不表示干净接受。普通 initializer 内容、
+数组 shape 与 alignment 是独立事实；见[存储边界与示例](../storage_declarations.md#绝对变量放置)。
+
+工程上的完整性只针对固定的可执行源 production 与公开解释，并保留此命名参考缺口，
+不表示已实现 prose 中提到的每项能力。未来具体的官方 production 或勘误需要新的
+架构裁决及实际实现评审。可复现 assembler 观察可补充证据，但不能单独确立规范性 grammar。
+
+对 `.target debug`，modern section record 和 legacy record 同时为零是确定错误。非零 record 仅通过缺失检查；实际 DWARF recognition 仍为 **D-DEBUG-DWARF-PRESENCE-RECOGNITION**，不由 name、空/非空、label 或 typed byte 认证。
+
+
+历史 entry body input：PTX 1.0–1.3 保留 owning `LegacyEntryInput`，支持 input LD/MOV、readonly/frame/cache 重连和32764-byte checked logical ceiling；1.4+ header ABI 与2.0+ body call slot 保持区分。精确历史 physical launch packing 仍 reference-boundary qualified。见[parameter contract](../parameter_declarations.md)。
+
+空白 terminal 集合恰为 ASCII SP、HT、LF、VT、FF、CR。VT 计一个物理 byte
+column，不换行；保留既有 CR/LF/CRLF、comment/string 边界及无损 EOF trivia。
+这是 frontend 采用的工程解释，不做 Unicode normalization，也不增加 escape。
+详见[空白物理位置](../syntax_ast_design.md#ascii-空白与物理位置)。

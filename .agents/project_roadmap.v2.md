@@ -15,6 +15,27 @@
 > - M10 后续的 PTX ISA 9.3 §9.7 YAML taxonomy 规范化已经完成；
 > - M11～M14 的前端计划已按当前代码审计；M15～M19 的逐项状态尚未重新审计，不能由下方空框推断功能缺失。M14 的具体证据及不透明 descriptor 边界见第 12 节。
 >
+位运算常量表达式沿用详细正文的通常算术转换：二元 `&`、`|`、`^` 仅在两输入
+均为 signed 时产生 signed 结果，一元 `~` 独立地产生 unsigned 结果。回归分别
+断言表达式的 64 位数据与类型，并在 `.u64` storage、`mov.u64` 及源文本/AST
+销毁后的 owned IR 中核对转换结果；这项证据补全不修改 evaluator 或 opcode
+规则。规范冲突、历史 assembler 证据及其限制见
+[位运算策略](../docs/zh-han/bitwise_constant_policy.md)。
+
+常量表达式 shift 沿用求值后 unsigned count bits 小于 64 的 domain；count 的
+负号拼写本身不是拒绝条件。回归分别核对 0/63 端点的数据与左类型保留、非法
+count 的子树定位及 concrete/deferred 分类，以及真实使用位置和源文本/AST
+销毁后的合法 owned payload。本项测试与文档补全不修改 evaluator 或 `shl`/`shr`
+opcode 规则；0–63 是前端采用的表达式策略，不是硬件 clamp 模拟。详见
+[declaration semantics](../docs/zh-han/declaration_semantics_design.md)。
+
+间接 function-address carrier 采用共享的 private role 检查：General effective scalar，
+fundamental integer/bit 8/16/32/64；floating、B128、wrong class 与 whole vector 拒绝。
+source/direct/current 两种 API 使用一致规则，已知 declaration 不因 context 缺失而 defer；
+source call input/return/indirect-target 支持普通 scalar component，call parameter 仅追加默认 null 的 owning component field；先核对真实 owner 再做 scalar ABI 投影。该资格不计算
+函数地址值或模拟链接/执行。详细 derived 解释见
+[control-flow contract](../docs/zh-han/control_flow_syntax_design.md)。
+
 > ISA 规划基线：
 >
 > - [NVIDIA PTX ISA 9.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/)；
@@ -394,7 +415,10 @@ ScaleFactorDescriptor
 
 Coverage 文档使用 `partial`、supported subset、deferred 和 out-of-scope 等自然语言边界来
 说明实际实现的 variant slice。它们是读者理解当前行为的说明，不是覆盖 PTX 9.3 的人工
-inventory，也不构成 no-unaccounted-item CI gate。任何 `complete` 表述只能针对明示的
+inventory，也不构成 no-unaccounted-item CI gate。固定变量绝对地址继续保留
+`FIXED-ADDRESS-PRODUCTION` / `ADOPTED_REFERENCE_GAP`，不记为 `CODE_PASS` 或已实现
+allocation。工程完整性须限定到固定的可执行 source production 与公开解释，并明确
+此参考缺口；普通内容 256、数组 256 个 element、alignment 256 不表示地址 256。任何 `complete` 表述只能针对明示的
 family scope，绝不表示整部 PTX ISA。
 
 ## 5.3 1.0 family disposition
@@ -502,6 +526,10 @@ family scope，绝不表示整部 PTX ISA。
 | M0-C01 | ✅ | source → CST → AST | facade 与显式 pipeline 一致 |
 | M0-C02 | ✅ | 语法回归与 coverage | tokenize/CST/AST 边界分别记录 |
 
+ASCII whitespace 覆盖 SP/HT/LF/VT/FF/CR；VT 仅推进一个物理 byte column，
+不换行，也不引入 Unicode normalization 或新 escape。当前 main 的 lexer/CST/AST
+与 owning handoff 定向验证由独立证据记录；actual-diff core acceptance 另行记录。
+
 ## M1：数据驱动 Resolved IR 平台
 
 | ID | 状态 | Issue | 闭环摘要 |
@@ -522,13 +550,19 @@ family scope，绝不表示整部 PTX ISA。
 | --- | --- | --- | --- |
 | M2-I01 | ✅ | lexical SymbolTable | module/function scope 与 shadowing |
 | M2-I02 | ✅ | reference classification | declared/external/special/unresolved 分离 |
-| M2-I03 | ✅ | declaration semantics | array/initializer/redeclaration/prototype |
+| M2-I03 | ✅ | declaration semantics | array/initializer/redeclaration/prototype；weak typed presence PTX 3.1/all targets，current/supplied 独立检查，无 linker simulation |
 | M2-I04 | ✅ | constant evaluator | 64-bit、cast、unary/binary/conditional/shift |
 | M2-I05 | ✅ | call/branch syntax node | call group 不与 vector 共用 |
 | M2-I06 | ✅ | execution predicate binding | SymbolId/type/negation/range |
 | M2-I07 | ✅ | direct `bra` | stable label identity 与 function scope |
 | M2-C01 | ✅ | `resolveModule()` | binding/declaration/instruction diagnostic 汇总 |
 | M2-C02 | ✅ | module diagnostic regression | duplicate/unresolved/wrong-kind 可区分 |
+
+普通 `.xyzw/.rgba` scalar component 可作为 address base 与具名数组 register index，
+复用实际 `.reg .v2/.v4` owner/member/lane identity 与既有 integer/bit、range、stride
+和 alignment 规则；不新增 resolved field，不计算 runtime address 或分配内存。
+component call input/return/fptr 仍未交付；Fabric、opaque 与 tensor-map 的独立边界不变。
+具体边界见 [resolved IR](../docs/us-en/resolved_ir_design.md) 与[中文设计](../docs/zh-han/resolved_ir_design.md)。
 
 存储声明的当前公共边界另见 [storage metadata](../docs/us-en/storage_declarations.md)
 与[中文契约](../docs/zh-han/storage_declarations.md)：module resolution 保留非 `.param` state-space
@@ -537,11 +571,19 @@ initializer 信息；内存布局、分配及 CTA/thread instance 仍属于 cons
 
 `.param` 的声明覆盖与公共 metadata 边界另见 [parameter coverage](../docs/us-en/parameter_declarations.md)
 与[中文契约](../docs/zh-han/parameter_declarations.md)：保留 entry/device input、device return
-与 body-local parameter 的 typed shape、size/alignment、role 和 lexical identity；opaque 与
+与 PTX 1.0–1.3 `LegacyEntryInput`、现代 body-local parameter 的 typed shape、size/alignment、role 和 lexical identity；opaque 与
 其他 unsupported form 明确诊断，不扩展为 launch packing 或 simulator allocation。
 Device `.reg` input/return 支持 `.v2`/`.v4` 非 predicate fundamental vector（总大小至多
-128 bit）；signature、binding 与 direct/indirect call 保留一个完整 vector shape，owned
-validation 在 AST 销毁后继续核对。`.param` vector 仍明确为 unsupported。
+128 bit）；default stack ABI 下，仅在 PTX 版本已知且不低于 2.0、当前 target 可识别且
+架构不低于 SM 20 时，整个 register-state formal 还必须至少 32 bit。Signature、binding
+与 direct/indirect call 保留完整 vector shape，owned validation 在 AST 销毁后继续核对。
+合法 `.param` scalar、`.v2` 与 `.v4` fundamental object（每个 vector shape 的 payload 至多
+128 bit，含当前规则允许的 native `.f16x2` element）在适用的 entry/header、device input/return、
+body-local、signature 与 call 路径中受支持；数组 extent 独立于 vector payload，数组总大小可
+超过 128 bit。源码与 AST-free owned metadata 保留 vector shape 和 parameter-array 各轴；call
+ABI 按总元素数并结合 vector type/shape 匹配。predicate、instruction-only element 与不适用的
+declaration context 仍明确诊断；这不扩展为 launch packing 或 simulator allocation，也不定义
+numeric packed `.f16x2` literal representation。
 
 ## M3：值、地址与 `mov`
 
@@ -600,16 +642,16 @@ validation 在 AST 销毁后继续核对。`.param` vector 仍明确为 unsuppor
 | M6-I07 | ✅ | function-local call `.param` | scope/lifetime/direction/address |
 | M6-I08 | ✅ | call-context semantics | `::entry/::func`、adjacency、predication |
 | M6-C01 | ✅ | ABI checker | arity/order/type/shape/literal |
-| M6-C02 | ✅ | direct-call regression | prototype/extern/recursive/error |
+| M6-C02 | ✅ | direct-call regression | prototype/extern/recursive/error；current local may-call cycles PTX 2.0/SM20，open boundary 非 whole-program acyclic proof |
 | M6-C03 | ✅ | docs/package regression | installed consumer 闭环 |
 
 ## M7：Indirect call 与 control-flow metadata
 
 | ID | 状态 | Issue | 闭环摘要 |
 | --- | --- | --- | --- |
-| M7-I01 | ✅ | `.callprototype` | grammar/signature/scope/range |
-| M7-I02 | ✅ | `.calltargets` | ordered target list |
-| M7-I03 | ✅ | `.branchtargets` | function-local identity |
+| M7-I01 | ✅ | `.callprototype` | grammar/signature/scope/range；current-owned/supplied minimum-only availability 按 selected context 独立重查，非 runtime ABI proof |
+| M7-I02 | ✅ | `.calltargets` | ordered target list；unused/nested presence PTX 2.1 / SM 20，known context 独立检查 |
+| M7-I03 | ✅ | `.branchtargets` | function-local identity；unused/nested presence PTX 2.1 / SM 20，known context 独立检查 |
 | M7-I04 | ✅ | metadata symbol kind | stable SymbolId |
 | M7-I05 | ✅ | metadata declaration semantics | order/member/scope/duplicate |
 | M7-I06 | ✅ | indirect callee value | register/prototype/target-set |
@@ -626,17 +668,18 @@ validation 在 AST 销毁后继续核对。`.param` vector 仍明确为 unsuppor
 | M8-I01 | ✅ | nested block CST/AST | 独立 node/range |
 | M8-I02 | ✅ | nested lexical scope | shadowing/visibility/recursive pipeline |
 | M8-I03 | ✅ | `.file` | lossless payload |
-| M8-I04 | ✅ | `.loc` | basic/extended payload |
-| M8-I05 | ✅ | `.section` | matched brace/raw DWARF payload |
-| M8-I06 | ✅ | `.pragma` | module/header/body placement |
-| M8-I07 | ✅ | kernel-resource directives | maxnreg/maxntid/reqntid/minnctapersm |
+| M8-I04 | ✅ | `.loc` | owning ordered SymbolTable basic/inline triples；共同 current/replacement numeric/binding/prior-base 检查；无 instruction attachment/DWARF decoder |
+| M8-I05 | ✅ | `.section` | matched brace/raw CST tokens + owning typed integer/relocation metadata；检查范围/locality/版本，非 DWARF decoder |
+| Legacy debug serialization | ✅ | `@@DWARF` | closed unsigned hex/single wide symbol/finite header；PTX [1.2,2.0)；owning source-wide scoped values，非 decoder/recognizer |
+| M8-I06 | ✅ | `.pragma` | owning Module advisory records/raw strings/ranges/actual occurrence scopes；PTX 2.0；current/source 独立 intrinsic 与 neutral replacement；无 backend 执行解释 |
+| M8-I07 | ✅ | kernel-resource directives | maxnreg/maxntid/reqntid/minnctapersm/maxnctapersm (distinct deprecated hint, PTX >= 1.3; modeled u32 capacity) |
 | M8-I08 | ✅ | directive coverage boundary | PTX 9.3 directive boundary |
 | M8-I09 | ✅ | DiagnosticCollection | optional value + ordered diagnostics |
 | M8-I10 | ✅ | recovery node | inserted/skipped/error |
 | M8-I11 | ✅ | synchronization point | bounded module recovery |
 | M8-I12 | ✅ | CST round-trip | byte-faithful sourceText |
 | M8-I13 | ✅ | lexer/CST fuzz harness | arbitrary bytes/malformed nesting |
-| M8-I14 | ⏸ | optional fixed-address evidence | 等待规范或可复现 `ptxas` |
+| M8-I14 | ⏸ | optional fixed-address evidence | `ADOPTED_REFERENCE_GAP`；等待具体官方 production/勘误及新架构裁决；assembler 仅作补充证据 |
 | M8-C01 | ✅ | recovered CST → AST | recovery node CST-only |
 | M8-C02 | ✅ | directive binding/semantic | file/debug identity |
 | M8-C03 | ✅ | real PTX module corpus | no silent drop |
@@ -1026,6 +1069,42 @@ warp-level matrix topology，并为 WGMMA/TCGEN05 提供公共 shape/type/layout
 
 WGMMA 与 TCGEN05 milestone 不得再次用硬编码 tuple 数量表示 matrix fragment。
 
+局部参考解释：WMMA `m8n8k4` F64 沿用既有 A/B 各 1、C/D 各 2 个 64 位寄存器规则；
+[双语解释](../docs/zh-han/converage/matrix_reference_interpretations.md)记录冲突条款、容量依据及
+16 字节 C/D 对齐。定向回归分别核对精确的 36 个静态 identity 与独立 source/owned/control
+义务，生产规则未改。本项仅补充该局部工程解释的测试与说明，不改变上述整族状态。
+
+局部参考解释：标准 F64 MMA 沿用 `.m8n8k4`，不接受 `.m8n84` 笔误别名；
+[双语解释](../docs/zh-han/converage/matrix_reference_interpretations.md)记录冲突条款，以及
+PTX 7.0/sm80 和邻接 m16n8 F64 的 PTX 7.8/sm90 独立门槛。定向回归绑定单个静态
+identity 与 source/owned/control 义务；本项仅新增测试与说明，生产规则未改。
+本项不改变上述整族状态。
+
+局部参考解释：ordered sparse low-bit MMA 保留带前导点的 `.kind::f8f6f4` 与既有
+50 个类型组合；[双语说明](../docs/zh-han/converage/matrix_reference_interpretations.md)
+区分静态 identity、五组 source 代表、实际 owned selector/fragment 和 runtime packing
+义务。本项仅新增该局部拼写解释的测试与说明，生产规则未改；
+不改变上述整族状态。
+
+局部参考解释：dense integer WGMMA 既有 N=240/256、D120/128 标量寄存器及 32 个
+signedness/placement/satfinite identity 保留；[双语说明](../docs/zh-han/converage/matrix_reference_interpretations.md)
+记录 shape/fragment 契约相对不完整 Syntax 枚举的有界优先性与整数 N 网格。
+本项仅新增该局部工程解释的测试与说明，生产规则未改，不改变上述整族状态。
+
+局部参考解释：K96 Table 47 encoded A/B ID 沿用 {0,2}，与三/六 factor 物理 layout
+及四字节 caller alignment guarantee 分离；[双语说明](../docs/zh-han/converage/matrix_reference_interpretations.md)
+明确不应用 ID%alignment 或推测 encoded-to-physical mapper，missing facts/live contents
+继续为独立义务。本项仅新增该局部 known-word/source 边界的测试与说明，生产规则未改，
+不改变上述整族状态。
+
+局部参考解释：七个逻辑 matrix descriptor 角色按精确位宽接受标量 General B/U/S，
+拒绝同宽 F32/F64；普通 SameWidth 位数据、显式 Bit copy、F32 lane mask 和实际 B64
+arrival-state 输出仍保留独立策略。[双语说明](../docs/zh-han/converage/matrix_reference_interpretations.md)
+区分实际诊断阶段、当前角色/binding 与 source 关联，不认证 descriptor 内容或 GPU 结果。
+本项仅新增该局部工程解释的测试与说明，生产规则未改，不改变上述整族状态。
+
+
+
 ---
 
 # 14. M16：Hopper WGMMA
@@ -1332,7 +1411,7 @@ M19 diagnostics/CI/reproducibility infrastructure
 
 | Family | Post-1.0 方向 |
 | --- | --- |
-| Multimem | 当前分支提供 `multimem.ld_reduce/st/red/st.async/red.async/cp.async.bulk/cp.reduce.async.bulk` 七族 PTX 9.3 源码与静态前端检查；[覆盖与边界](../docs/zh-han/converage/multimem_coverage.md)。运行时 multimem 映射、跨设备可见性与完成协议仍属后续验证，不由前端推断。 |
+| Multimem | 当前分支提供 `multimem.ld_reduce/st/red/st.async/red.async/cp.async.bulk/cp.reduce.async.bulk` 七族 PTX 9.3 源码与静态前端检查；标量 weak/ordered FP8x4 的四个既有分支拒绝 integer-origin 浮点 immediate，保留直接 unsigned `0f` word 与显式 B32 register 准备；[覆盖与边界](../docs/zh-han/converage/multimem_coverage.md)。运行时 multimem 映射、跨设备可见性与完成协议仍属后续验证，不由前端推断。 |
 | Fabric | 当前分支提供 PTX 9.3 类型化 CFT handle、`fabric.try_get/put/red/pullred`、`submit`、`wait` 六族与六种 fabric proxy fence 源码及静态前端检查；[覆盖与边界](../docs/zh-han/converage/fabric_coverage.md)。逻辑端点设置、运行时资源状态、提交/完成协议和 GPU 结果仍属后续验证，不由前端推断。 |
 | Texture | 当前分支提供 PTX 9.3 `tex/tld4/txq/istypep` 四族 192 个类型化 source forms，以及 opaque 资源声明、entry 参数、static named members、legacy `.tex`、`mov.u64` 资源 identity 和 AST-free 检查；[覆盖与边界](../docs/zh-han/converage/texture_coverage.md)。实际纹理配置、采样和运行时资源有效性仍属于后续验证。 |
 | Surface | 当前分支提供 PTX 9.3 `suld/sust/sured/suq` 四族 340 个 typed form，覆盖 1,864 种合法 mnemonic 组合；独立 surface descriptor、opaque 资源与坐标、静态类型/shape/availability 检查；[覆盖与边界](../docs/zh-han/converage/surface_coverage.md)。实际 surface 配置、格式转换、边界行为与运行时访问有效性仍属后续验证。 |
@@ -1370,3 +1449,32 @@ M19 diagnostics/CI/reproducibility infrastructure
 
 只要这两个方向同时成立，1.0 就可以既诚实，又足以承载 SM80、Hopper 和 Blackwell
 frontend consumer。
+
+`.language` 的 source/ordered-redeclaration/current-owned domain 共用现有 semantic header 导出的 `languageCode`；raw list/order 与 source identity 不改，已知 PTX9.3 下限独立检查，非 backend language execution proof。
+
+
+Legacy entry body inputs retain owning role/cache and input LD/MOV semantics, distinct from syntactic header ABI and modern call slots. Fresh ambiguous entry body parameter typing requires PTX version; both validators recheck intrinsic current facts before context skips. The 32764-byte logical aggregate ceiling is enforced. `D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` remains qualified for exact physical legacy launch packing; no driver/runtime allocation is modeled.
+
+Historical reciprocal coverage includes a distinct `RcpImplicitF64` for PTX `[1.0, 1.4)`, with RN interpretation and the existing native SM13 or exact mapped SM10/11/12 requirements. Source headers retain their independent profile/version restrictions; this does not claim GPU numeric execution.
+
+Legacy SHFL availability uses the complete PTX/SM removal window: PTX >=3.0 and SM >=30 and (PTX <6.4 or SM <70). Optional numeric `sm_before` propagates through plain and DNF metadata and the existing full-context checker; public aggregate consumers must rebuild. This does not expand partial-context validation or the separate vote inventory.
+
+Historical101/101A source profiles begin at8.6,101F at8.8, including9.0/9.3. Their exact source identities remain101 while explicit catalog feature correspondence is110. The bounded231 historical metadata operations preserve854 original110 conditions and25 restricted parents; public consumers link the additive feature helper. This does not claim GPU execution or complete historical target coverage.
+
+Caller-known tensor-map 的 `STORE_BOUNDS`、`IM2COL_SHAPE`、`IM2COL_INFO`、`W_PROFILE` 与 `GATHER_SCATTER` 保留完整关系的保守 `Unresolved` 边界；局部反例、缺失值和结构不适用仍独立报告。相关受支持事实全部提供也不代表五个数学关系已实现，不证明 descriptor 字节、GPU 边界或同步。配套文档与 Python/C++ 完整事实回归明确这一现有保守边界；此项为边界说明与回归覆盖，不是五个完整关系 solver 的实现或运行时合法性证明。
+
+备用标量转换提供 BF16/E4M3/E5M2 的 binary64 整数位单次 RNE 与 low16/low8 当前字检查，仅作用于现有五个 BF16 源字段；E4/E5 仅有 helper 与通用 checker 能力。公共 API、模型及生成字段不变，其他源权限、packed、call/storage 与完整目标验收仍独立待办。
+
+Scalar SETP explicit Bit16 implementation (independent final acceptance pending): one optional trailing descriptor
+property engages eight existing scalar source rows; four BF16 members become
+RegOrImm/logical BF16/SameWidth. F16 kind/type/width, accepted ALT converters,
+packed-origin guards and intrinsic register eligibility remain unchanged.
+Current-parent integration, full137/default audits, normal generation, focused Debug
+and a matching fresh installed SDK have passed; the 359 obligations have qualified
+current evidence. Distinct actual-diff final acceptance remains pending.
+
+命名矩阵片段在当前分支实现精确角色 permission/Element 元数据及私有声明形状选择，
+复用现有完整 provenance、声明类型与 128-bit 普通向量边界；公共 syntax-only 歧义契约保持不变。
+本条记录实现范围，独立最终验收仍待完成，不代表完整 PTX 或 GPU 行为闭包。
+
+TCGEN named-mask 本次变更限于24个必需 mask layout 的 named admission 与 native F16x2 common-carrier parity；继承已独立提交的 Matrix named 与 shared-component 契约，按当前 parent 完成 Debug／fresh installed consumer 验证后仍须独立最终验收。不得恢复省略 mask layout 或更改 target／CTA-group 契约。

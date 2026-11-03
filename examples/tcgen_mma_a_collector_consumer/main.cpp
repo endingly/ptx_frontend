@@ -40,7 +40,7 @@ int main() {
   .reg .b64 %ad, %bd;
   .reg .pred %p;
   tcgen05.mma.cta_group::1.kind::f16.ashift.collector::a::lastuse
-      [%d], [%a], %bd, %i, %p;
+      [%d], [%a], %bd, %i, {%i,%i,%i,%i}, %p;
   ret;
 }
 )ptx";

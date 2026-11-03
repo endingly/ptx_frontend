@@ -8,10 +8,10 @@ complete-module CUDA 13.3 assembler checkpoint corroborated source spelling;
 assembly alone cannot prove GPU behavior or live descriptor register values.
 
 The canonical spelling is `tcgen05.mma.cta_group::1/2.kind::tf32`.
-Group 1 and 2 each allow shared-descriptor or Tensor Memory A, optional output
-lane mask, and optional D scale. These are eight structural operand layouts and
-two typed group values, or sixteen source topologies. The checkpoint assembled
-all sixteen at `sm_100a`/PTX9.3. The exact adjacent written-order alias
+Group 1 and 2 each allow shared-descriptor or Tensor Memory A, required output
+lane mask, and optional D scale. These are four structural operand layouts and
+two typed group values, or eight source topologies. The checkpoint assembled
+all sixteen historical mask-present/absent combinations at `sm_100a`/PTX9.3; omitted-mask acceptance is tool divergence. The exact adjacent written-order alias
 `.mma.kind::tf32.cta_group::1/2` is also approved as the same typed selected
 form. Group 1 alias assembly was observed; extending the same adjacent swap to
 group 2 is an Authority grammar inference, not a separate assembler result.
@@ -23,8 +23,7 @@ assembler accepted direct literal zero in each descriptor role, but the fixed
 source names register operands; tool acceptance does not broaden the frontend
 role. `enable-input-d` accepts a scalar predicate register with optional
 written negation or an integer constant with zero/nonzero truth, including 2.
-Special predicate registers remain excluded. The mask may be absent; when
-present it has exactly four group-1 or eight group-2 scalar General 32-bit
+Special predicate registers remain excluded. The mask is required and has exactly four group-1 or eight group-2 scalar General 32-bit
 register entries. B32/U32/S32/F32 declarations are compatible as **mask bits**;
 F32 here does not request floating conversion. An explicit empty vector is
 invalid. The optional D scale is an immediate whose **original** evaluated

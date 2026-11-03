@@ -62,8 +62,7 @@ exact index/filename tokens, optional timestamp/file-size tokens, and their sour
 ranges; rejected repeats remain recorded. Filename escapes are retained without
 decoding or path deduplication, and absent numeric metadata retains its default-zero
 meaning. This follows [PTX ISA 9.3 §11.5.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-file)
-and CUDA 13.3 `ptxas` duplicate-index diagnostics. A `.debug_str` section binds its name and each raw `name:` payload
-label as `DebugStringLabel` symbols. Ordinary `SymbolTable::lookup()` skips
+and CUDA 13.3 `ptxas` duplicate-index diagnostics. A `.debug_str` section binds its name and each typed `AstSectionLabelDefinition` as `DebugStringLabel` symbols. Ordinary `SymbolTable::lookup()` skips
 both debug kinds, so a program declaration may use the same spelling. `.loc`
 creates `DebugFile` references for its basic and `inlined_at` file fields, plus
 a `DebugFunctionName` reference for `function_name`; the latter can resolve
@@ -92,6 +91,16 @@ remain operand-specific. Under
 `.callprototype` keeps its mandatory function-name `_` and permits dummy `_`
 input and return names; those dummy names do not become bound symbols or owned
 ABI names. `$` has no corresponding exception.
+
+`SymbolTable::debugLocations()` borrows the table's owning, module-ordered
+`DebugLocationDeclaration` records. Each retains its lexical `ScopeId`, base
+`DebugLocationSourceTriple`, optional `DebugLocationInlineContext`, and physical
+ranges. All leaves reuse owning `DebugFileSourceLeaf` strings; there are no AST
+borrows or independently mutable decoded coordinates. Copying or assigning a
+table copies these values; assignment, move and destruction invalidate borrowed
+spans. The added table layout requires rebuilding binary consumers. Binding
+collects events in source order across functions and depth-first nested blocks;
+common module validation, rather than binding alone, enforces inline precedence.
 
 ## Parameterized variable names
 
@@ -245,3 +254,10 @@ instruction-specific state-space and special-register/type compatibility is
 checked during Resolved IR resolution/checking for modeled forms. Remaining
 work concerns unmodeled instruction/operand forms rather than a missing
 compatibility phase.
+
+Instruction-keyword spellings in explicit name roles follow the
+[contextual lexical interpretation](lexer_design.md), including the official
+`bar` object/function examples. Binding preserves exact case and spelling;
+source name checks and AST-free owned checks apply to actual declaration/symbol
+names without a global keyword exclusion or diagnostic-spelling history join.
+Independent role, type, ABI and prior-declaration checks remain authoritative.

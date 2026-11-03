@@ -28,6 +28,26 @@ Frontend 不建模由调用者选择的禁用 ABI 编译开关。较早 PTX 版�
 [local](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#local-state-space) 与
 [变量声明](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variable-declarations) 规则。
 
+## 绝对变量放置
+
+frontend 不解析或分配变量的绝对固定地址。PTX ISA 9.3 §5.4.1 提到了此能力，
+但引用的声明条款没有给出确定可执行的 production。这仍是命名的
+[`ADOPTED_REFERENCE_GAP`](converage/syntax_coverage.md#固定变量地址已采用的参考边界)，
+不是已实现的 fixed-address 支持。
+
+| 普通声明 | 保留的事实 |
+| --- | --- |
+| `.global .u32 x;` | 零初始化、4 字节 extent、自然 alignment 4 |
+| `.global .u32 x=0x100;` | initializer 内容为 256，extent 为 4 字节 |
+| `.global .u32 x[256];` | 256 个 element，extent 为 1024 字节 |
+| `.global .align 256 .u32 x;` | alignment 除数为 256，extent 为 4 字节 |
+| `.global .align 16 .u32 x[2]={0x100,0};` | alignment 16、两个 element、8 字节 extent，内容为 256 和 0 |
+
+这些声明均不选择绝对地址 256。owned record 描述声明、内容与 layout 输入，
+没有绝对放置字段或 allocator。隐式零初始化不臆造 explicit initializer value 列表。
+这些普通 record 在源文本/AST 销毁后仍可验证和复制；这不暗示存在 fixed-placement
+源语法或 owned case。
+
 ## 身份与布局输入
 
 每个源码 declarator 按源码遍历顺序产生一条记录。`symbol_id` 指向既有 module symbol；
@@ -88,6 +108,10 @@ typed field group 与对象索引路径；它们不进入这个 byte-offset 列�
 `StorageRelocation` 保存 bound symbol、
 可选的 parameterized member、state-space/generic/function address interpretation、
 byte addend 及可选原始 byte mask（`0xff` 左移 0、8、…、56 bit）。
+mask callee 必须为 integer literal；decimal、前导零 octal、binary 与 hexadecimal
+拼写（包括 unsigned suffix）使用公共 integer decoder，并选择相同的八个合法 mask 值。
+例如 `255(257)`、`0377(257)`、`0b11111111(257)` 和 `0xff(257)` 均存储 `1`。
+expression-valued 或 parenthesized mask callee 以及 floating literal 会被拒绝。
 mask 在应用 addend 之后选择一个 byte，并将其放入低八位；提取之后的算术会被拒绝，
 不会被重排到提取之前。
 symbol identity 沿用 lexical binding，包括内层 scope 的同名声明。
@@ -112,14 +136,34 @@ packed/alternate format 必须使用对应 bit-container type。integer/bit init
 `.s64/.u64` 范围求值；更宽的 destination 不会启用 128-bit literal 或 expression 算术。
 对于 `.b128`，frontend 只在求值完成后对 signed result 做符号扩展，对 unsigned result
 做零扩展。因此 `-1` 的两个 word 均全为 1，而 `-1U` 只有低位 word 全为 1。
+准确地说，整个 expression 求值完成后，`lo = source.bits`，
+`hi = (!source.is_unsigned && lo.bit63) ? UINT64_MAX : 0`。
 稀疏 aggregate 中未列出的位置保持零初始化。
+
+Owned `StorageConstant` 不保留 source expression 与 signedness。两个 module validator
+API 都对实际 `.b128` storage 的每个 retained constant leaf 检查
+`hi == 0 || (hi == UINT64_MAX && lo.bit63)`，包括 unused storage、逗号 declarator
+以及每个 flattened array leaf。因此，当低位 word 的 bit 63 为 1 时，高位为零和
+全 1 均合法；在这些形式之间修改 current value 不会恢复 source history。该检查独立于
+target context 和 initialization mode。empty 与 implicit-zero storage 不会生成
+synthetic leaf，现有 external 与 parameterized-group 的 source initializer 限制保持不变。
+非法值的诊断定位于 owned leaf range；该 range 不可用时回退到 declaration range。
 
 这一扩展是明确的 frontend 策略，不表示已经通过 GPU conformance 验证：PTX 规定在
 初始化处转换宽度，但未明确说明 `.b128` 高半部分的规则。当前没有 GPU 验证条件，
 本契约也不复现 ptxas 13.3.33 输出中观察到的异常高位 word。
 
-floating initializer 支持 `.f32/.f64` literal、符号及括号，包括 `1.`、`1.e2` 这样的
-十进制末尾小数点形式；不规范化复合浮点算术。
+floating initializer 支持 decimal 与 exact-F64 literal、符号及括号，包括 `1.`、`1.e2` 这样的
+十进制末尾小数点形式；受支持的复合算术与 integer-condition ternary 使用公共 binary64
+constant evaluator，再经过公共 `.f32`/`.f64` destination conversion。mixed
+integer/floating operand 根据 integer signedness 提升为 binary64；floating comparison
+产生 integer result。exact-F32 literal 仅作为 unsigned direct initializer 保留 raw
+payload；括号、unary sign、算术、comparison、cast 与 conditional expression 中使用 exact-F32
+均被拒绝，包括未选中的 branch。decimal 与 exact-F64 unary sign 仍合法，并保留 negative
+zero。bit destination 仅接受等宽 source precision：`.b32` 接受 direct exact-F32
+literal，`.b64` 接受 decimal/exact-F64 literal 或受支持的 binary64 expression。
+raw payload 与 negative-zero bits 保留；`.b8/.b16/.b128` 以及 source precision 不匹配的
+`.b32/.b64` 会被拒绝。integer destination 仍不兼容 floating result。
 opaque object metadata 包含保留 array shape、显式 alignment 和 typed 命名成员初始化的
 module-global 声明。其 identity 与静态 field 边界见[纹理契约](converage/texture_coverage.md)。
 这些边界不会把不支持的值变为零。

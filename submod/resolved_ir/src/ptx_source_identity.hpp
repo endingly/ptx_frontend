@@ -231,8 +231,11 @@ inline void parameter(std::string& output,
   optional_syntax(output, value.pointer_space);
   optional_syntax(output, value.pointer_alignment);
   identifier(output, value.name);
-  number(output, value.is_array);
-  optional_constant_expression(output, value.array_size);
+  number(output, value.array_dimensions.size());
+  for (const auto& dimension : value.array_dimensions) {
+    tag(output, "axis");
+    optional_constant_expression(output, dimension.size);
+  }
 }
 
 /** Encode one operand and its alternative-specific semantic spelling. */
@@ -332,7 +335,15 @@ inline void operand(std::string& output, const syntax_ast::AstOperand& value) {
                        parameter);
         } else if constexpr (std::same_as<Node, syntax_ast::AstCallTarget>) {
           tag(output, "operand-call-target");
-          identifier(output, node.name);
+          std::visit(
+              [&output](const auto& name) {
+                using Name = std::remove_cvref_t<decltype(name)>;
+                if constexpr (std::same_as<Name, syntax_ast::AstIdentifierRef>)
+                  identifier(output, name);
+                else
+                  operand(output, name);
+              },
+              node.name);
         } else if constexpr (std::same_as<Node, syntax_ast::AstCallTargetSet>) {
           tag(output, "operand-call-target-set");
           identifier(output, node.name);
@@ -446,7 +457,9 @@ inline void function_body(
             instruction(output, node);
           } else if constexpr (std::same_as<Node,
                                             syntax_ast::AstLocDirective> ||
-                               std::same_as<Node, syntax_ast::AstPragma>) {
+                               std::same_as<Node, syntax_ast::AstPragma> ||
+                               std::same_as<Node,
+                                            syntax_ast::AstLegacyDwarfRecord>) {
             // Debug locations and opaque pragmas are intentionally neutral.
           } else {
             static_assert(always_false_v<Node>);
@@ -514,7 +527,8 @@ inline std::string module_source_identity(const syntax_ast::AstModule& module) {
                         std::same_as<Node, syntax_ast::AstTargetDirective> ||
                         std::same_as<Node, syntax_ast::AstFileDirective> ||
                         std::same_as<Node, syntax_ast::AstSectionDirective> ||
-                        std::same_as<Node, syntax_ast::AstPragma>) {
+                        std::same_as<Node, syntax_ast::AstPragma> ||
+                        std::same_as<Node, syntax_ast::AstLegacyDwarfRecord>) {
             // Context/debug directives do not alter resolution-owned content.
           } else if constexpr (std::same_as<
                                    Node, syntax_ast::AstAddressSizeDirective>) {

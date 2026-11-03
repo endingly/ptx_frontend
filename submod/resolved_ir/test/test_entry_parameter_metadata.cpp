@@ -299,14 +299,15 @@ TEST(ResolvedParameterDeclarations, RetainsAllRolesAndDeclarationProperties) {
 /** Every supported parameter element has a validated enum and natural byte size. */
 TEST(ResolvedParameterDeclarations, ClassifiesEverySupportedElementType) {
   const std::pair<std::string_view, base::ScalarType> types[] = {
-      {".s8", base::ScalarType::S8},     {".s16", base::ScalarType::S16},
-      {".s32", base::ScalarType::S32},   {".s64", base::ScalarType::S64},
-      {".u8", base::ScalarType::U8},     {".u16", base::ScalarType::U16},
-      {".u32", base::ScalarType::U32},   {".u64", base::ScalarType::U64},
-      {".b8", base::ScalarType::B8},     {".b16", base::ScalarType::B16},
-      {".b32", base::ScalarType::B32},   {".b64", base::ScalarType::B64},
-      {".b128", base::ScalarType::B128}, {".f16", base::ScalarType::F16},
-      {".f32", base::ScalarType::F32},   {".f64", base::ScalarType::F64},
+      {".s8", base::ScalarType::S8},       {".s16", base::ScalarType::S16},
+      {".s32", base::ScalarType::S32},     {".s64", base::ScalarType::S64},
+      {".u8", base::ScalarType::U8},       {".u16", base::ScalarType::U16},
+      {".u32", base::ScalarType::U32},     {".u64", base::ScalarType::U64},
+      {".b8", base::ScalarType::B8},       {".b16", base::ScalarType::B16},
+      {".b32", base::ScalarType::B32},     {".b64", base::ScalarType::B64},
+      {".b128", base::ScalarType::B128},   {".f16", base::ScalarType::F16},
+      {".f16x2", base::ScalarType::F16x2}, {".f32", base::ScalarType::F32},
+      {".f64", base::ScalarType::F64},
   };
   for (const auto& [spelling, type] : types) {
     SCOPED_TRACE(spelling);

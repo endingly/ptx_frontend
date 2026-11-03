@@ -1,4 +1,5 @@
 #include <cassert>
+#include "ptx_resolved_ir_layout.hpp"
 #include "ptx_resolved_ir_private.hpp"
 #include "ptx_resolved_ir_selection_private.hpp"
 
@@ -1124,7 +1125,9 @@ std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
 std::expected<size_t, ResolveDiagnostic> detail::select_indexed_variant(
     const syntax_ast::AstInstruction& ast,
     const check_end::SyntaxInstructionDescriptor& instruction,
-    const ModifierCandidatePlan& plan, std::span<uint64_t> candidates) {
+    const ModifierCandidatePlan& plan, std::span<uint64_t> candidates,
+    const check_end::ResolvedInstructionDescriptor* resolved,
+    const ResolveContext* context) {
   // The general selector remains the diagnostic reference, including duplicate priority.
   const auto fallback = [&]() -> std::expected<size_t, ResolveDiagnostic> {
     auto selected = select_variant_name(ast, instruction);
@@ -1181,11 +1184,18 @@ std::expected<size_t, ResolveDiagnostic> detail::select_indexed_variant(
   }
   if (arity_count == 1)
     return *arity_match;
+  // Keep syntax filtering separate from declaration filtering: the paired helper
+  // sees only genuinely competing modifier/count/shape candidates.
+  for (size_t index = 0; index < instruction.variants.size(); ++index)
+    if ((candidates[index / 64] & (uint64_t{1} << (index % 64))) != 0 &&
+        !matches_variant_operand_shapes(instruction.variants[index], ast))
+      candidates[index / 64] &= ~(uint64_t{1} << (index % 64));
   std::optional<size_t> shape_match;
   for (size_t index = 0; index < instruction.variants.size(); ++index) {
     if ((candidates[index / 64] & (uint64_t{1} << (index % 64))) == 0)
       continue;
-    if (!matches_variant_operand_shapes(instruction.variants[index], ast))
+    if (resolved && !declaration_variant_eligible(instruction, *resolved, index,
+                                                  candidates, ast, context))
       continue;
     if (shape_match)
       return fallback();

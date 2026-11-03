@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -58,6 +59,43 @@ TEST(PtxDeclarationSemantics, AcceptsIncompleteAndInferredAggregates) {
 
   EXPECT_TRUE(result.binding.diagnostics.empty());
   EXPECT_TRUE(result.diagnostics.empty());
+}
+
+/** Literal byte-mask classification is independent of the integer radix. */
+TEST(PtxDeclarationSemantics, AcceptsIntegerLiteralMaskRadices) {
+  for (const auto mask : {"255", "0377", "0b11111111", "0xff"}) {
+    const std::string source =
+        ".global .u32 target; .global .u8 numeric = " + std::string(mask) +
+        "(257); .global .u8 address = " + std::string(mask) + "(target + 1);";
+    SCOPED_TRACE(source);
+    const auto result = check(source);
+    EXPECT_TRUE(result.binding.diagnostics.empty());
+    EXPECT_TRUE(result.diagnostics.empty());
+  }
+}
+
+/** Direct exact-F32 literals remain distinct from forbidden expression operands. */
+TEST(PtxDeclarationSemantics, ChecksFloatingExpressionCohort) {
+  for (const auto expression :
+       {"0f3f800000", "-0.0", "+0d8000000000000000", "(1.0 + 2) * 3.0",
+        "1 ? 2 : 3.0", "0 ? 2.0 : 3"}) {
+    SCOPED_TRACE(expression);
+    const auto result =
+        check(".global .f64 value = " + std::string(expression) + ";");
+    EXPECT_TRUE(result.diagnostics.empty());
+  }
+  for (const auto expression :
+       {"(0f3f800000)", "((0f3f800000))", "+0f3f800000", "-0f3f800000",
+        "0f3f800000 + 1.0", "(.u64)0f3f800000", "1 ? 2.0 : 0f3f800000",
+        "0 ? 0f3f800000 : 2.0"}) {
+    SCOPED_TRACE(expression);
+    const auto result =
+        check(".global .f64 value = " + std::string(expression) + ";");
+    EXPECT_EQ(
+        diagnosticCount(
+            result, DeclarationDiagnosticKind::InvalidInitializerExpression),
+        1u);
+  }
 }
 
 /** Opaque object handles cannot become initializer addresses through wrappers. */
@@ -442,6 +480,119 @@ TEST(PtxDeclarationSemantics,
   EXPECT_TRUE(result.diagnostics.empty());
 }
 
+/** Counts use evaluated 64-bit bits, while the result retains the left type. */
+TEST(PtxDeclarationSemantics, ShiftCountsPreserveTypedEndpointValues) {
+  /** Independent full-width value and type before a consumer narrows either. */
+  struct Case {
+    /** Ordinary source expression used as a global initializer. */
+    std::string_view text;
+    /** Expected 64-bit expression result. */
+    uint64_t bits;
+    /** Expected left-operand signedness, independent of the count type. */
+    bool is_unsigned;
+  };
+  constexpr Case cases[] = {
+      {"1 << 0", UINT64_C(0x0000000000000001), false},
+      {"1 << 63", UINT64_C(0x8000000000000000), false},
+      {"1U << 63", UINT64_C(0x8000000000000000), true},
+      {"-1 >> 0", UINT64_C(0xffffffffffffffff), false},
+      {"-1 >> 63", UINT64_C(0xffffffffffffffff), false},
+      {"-1U >> 0", UINT64_C(0xffffffffffffffff), true},
+      {"-1U >> 63", UINT64_C(0x0000000000000001), true},
+      {"0 << 63", UINT64_C(0x0000000000000000), false},
+      {"1 << (-1 + 2)", UINT64_C(0x0000000000000002), false},
+      {"1 >> 0U", UINT64_C(0x0000000000000001), false},
+  };
+  for (const auto& fixture : cases) {
+    SCOPED_TRACE(fixture.text);
+    PtxSyntaxParser parser(".global .u64 value = (" +
+                           std::string(fixture.text) + ");");
+    auto module = parser.parseModule();
+    ASSERT_TRUE(module);
+    ASSERT_TRUE(module.diagnostics.empty());
+    const auto& declaration =
+        std::get<syntax_ast::AstVariableDeclaration>(module->items.front());
+    const auto& expression = std::get<syntax_ast::AstConstantExpression>(
+        declaration.declarators.front().initializer->value);
+    const auto integer = constantIntegerValue(expression);
+    ASSERT_TRUE(integer);
+    EXPECT_EQ(integer->bits, fixture.bits);
+    EXPECT_EQ(integer->is_unsigned, fixture.is_unsigned);
+    const auto numeric = numericConstantValue(expression);
+    ASSERT_TRUE(numeric);
+    const auto* value = std::get_if<IntegerConstantValue>(&*numeric);
+    ASSERT_NE(value, nullptr);
+    EXPECT_EQ(value->bits, fixture.bits);
+    EXPECT_EQ(value->is_unsigned, fixture.is_unsigned);
+  }
+}
+
+/** Invalid counts remain concrete errors, even inside unselected expressions. */
+TEST(PtxDeclarationSemantics, ShiftCountErrorsRetainTheirOwnSubtree) {
+  /** Source expression and independently located failing count token/subtree. */
+  struct Case {
+    /** Complete expression; syntax is required to succeed. */
+    std::string_view text;
+    /** Exact written count subtree expected in the evaluator diagnostic. */
+    std::string_view count;
+  };
+  constexpr Case cases[] = {
+      {"1 << (-1)", "(-1)"},
+      {"1 << (64)", "(64)"},
+      {"1 << (65)", "(65)"},
+      {"1 << (18446744073709551615U)", "(18446744073709551615U)"},
+      {"1 << ((.u64)-1)", "((.u64)-1)"},
+      {"1 >> (-1)", "(-1)"},
+      {"1 >> (64)", "(64)"},
+      {"1 >> (65)", "(65)"},
+      {"1 >> (18446744073709551615U)", "(18446744073709551615U)"},
+      {"1 >> ((.u64)-1)", "((.u64)-1)"},
+      {"0 << 64", "64"},
+      {"1 ? 7 : (1 << 64)", "64"},
+      {"0 && (1 >> 65)", "65"},
+      {"1 || (1 << -1)", "-1"},
+  };
+  for (const auto& fixture : cases) {
+    SCOPED_TRACE(fixture.text);
+    const std::string prefix = ".global .u64 value = (";
+    const std::string source = prefix + std::string(fixture.text) + ");";
+    PtxSyntaxParser parser(source);
+    auto module = parser.parseModule();
+    ASSERT_TRUE(module);
+    ASSERT_TRUE(module.diagnostics.empty());
+    const auto& declaration =
+        std::get<syntax_ast::AstVariableDeclaration>(module->items.front());
+    const auto& expression = std::get<syntax_ast::AstConstantExpression>(
+        declaration.declarators.front().initializer->value);
+    const auto value = numericConstantValue(expression);
+    ASSERT_FALSE(value);
+    EXPECT_FALSE(value.error().deferred);
+    EXPECT_EQ(value.error().message,
+              "Constant expression shift count must be in 0..63.");
+    const auto column = static_cast<int32_t>(source.rfind(fixture.count) + 1);
+    const SourceRange expected{
+        {1, column}, {1, column + static_cast<int32_t>(fixture.count.size())}};
+    EXPECT_EQ(value.error().range, expected);
+    EXPECT_FALSE(constantIntegerValue(expression));
+  }
+  for (const auto text :
+       {"1 << 1.0", "1.0 >> 1", "1 << 18446744073709551616"}) {
+    SCOPED_TRACE(text);
+    PtxSyntaxParser parser("mov.u64 d, (" + std::string(text) + ");");
+    const auto parsed = parser.parseInstruction();
+    ASSERT_TRUE(parsed);
+    ASSERT_TRUE(parsed.diagnostics.empty());
+    const auto& operand =
+        std::get<syntax_ast::AstConstantOperand>(parsed->operands[1]);
+    const auto value = numericConstantValue(*operand.expression);
+    ASSERT_FALSE(value);
+    EXPECT_FALSE(value.error().deferred);
+    EXPECT_NE(value.error().message,
+              "Constant expression shift count must be in 0..63.");
+    EXPECT_FALSE(constantIntegerValue(*operand.expression));
+  }
+}
+
 /**
  * @brief Reports every undecodable integer literal, including conditional
  * branches whose value is not selected.
@@ -658,8 +809,9 @@ TEST(PtxDeclarationSemantics, AcceptsSupportedParameterDeclarationForms) {
 .target sm_80
 .entry k(.param .u64 .ptr .global pointer) {
   .param .u32 matrix[2][3];
+  .reg .pred predicate;
 }
-.func device(.reg .pred predicate, .param .b8 bytes[]);
+.func device(.reg .u32 value, .param .b8 bytes[]);
 )ptx");
 
   EXPECT_TRUE(result.binding.diagnostics.empty());
@@ -837,8 +989,8 @@ TEST(PtxDeclarationSemantics, ValidatesEntryParameterByteBoundaries) {
 /** Parameter scalar classification accepts only the modeled storage subset. */
 TEST(PtxDeclarationSemantics, ClassifiesSupportedParameterScalarTypes) {
   constexpr std::array supported = {
-      ".u8", ".u16", ".u32", ".u64", ".s8",   ".s16", ".s32", ".s64",
-      ".b8", ".b16", ".b32", ".b64", ".b128", ".f16", ".f32", ".f64",
+      ".u8",  ".u16", ".u32", ".u64",  ".s8",  ".s16",   ".s32", ".s64", ".b8",
+      ".b16", ".b32", ".b64", ".b128", ".f16", ".f16x2", ".f32", ".f64",
   };
   std::string source = ".version 9.3\n.target sm_80\n.entry k(";
   for (size_t index = 0; index < supported.size(); ++index) {
@@ -856,7 +1008,10 @@ TEST(PtxDeclarationSemantics, ClassifiesSupportedParameterScalarTypes) {
     EXPECT_TRUE(parameterScalarType(type).has_value()) << type;
 
   constexpr std::array unsupported = {
-      ".pred", ".f16x2", ".bf16", ".tf32", ".mystery",
+      ".pred",
+      ".bf16",
+      ".tf32",
+      ".mystery",
   };
   for (const auto type : unsupported) {
     const CheckedModule result = check(
@@ -885,11 +1040,9 @@ TEST(PtxDeclarationSemantics, ValidatesBodyLocalParameterForms) {
   constexpr std::array rejected = {
       Case{".param .b8 bytes[];",
            DeclarationDiagnosticKind::UnsizedArrayDimension},
-      Case{".param .v2 .u32 vector;",
+      Case{".param .v4 .u64 vector;",
            DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
       Case{".param .texref texture;",
-           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
-      Case{".param .u32 values<2>;",
            DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
   };
   for (const auto& test : rejected) {
@@ -900,7 +1053,7 @@ TEST(PtxDeclarationSemantics, ValidatesBodyLocalParameterForms) {
   }
   const CheckedModule accepted = check(
       ".version 8.0\n.target sm_80\n.entry k() {\n"
-      ".param .u32 matrix[2][3];\n}");
+      ".param .u32 matrix[2][3]; .param .u32 values<2>;\n}");
   EXPECT_TRUE(accepted.binding.diagnostics.empty());
   EXPECT_TRUE(accepted.diagnostics.empty());
 }
@@ -962,8 +1115,8 @@ TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
   EXPECT_EQ(contractConstant(address.alignment), 8u);
   ASSERT_EQ(prototype_signature.parameters.size(), 2u);
   const auto& values = prototype_signature.parameters[1];
-  EXPECT_TRUE(values.is_array);
-  EXPECT_EQ(contractConstant(values.array_extent), 4u);
+  ASSERT_EQ(values.array_extents.size(), 1u);
+  EXPECT_EQ(contractConstant(values.array_extents[0]), 4u);
   const FunctionSignature kernel_signature =
       functionSignature(std::get<syntax_ast::AstFunction>(module->items[2]));
   EXPECT_TRUE(kernel_signature.is_entry);
@@ -1593,5 +1746,30 @@ TEST(PtxDeclarationSemantics, VectorRegisterSignaturesCompareShape) {
   auto binding = binding::bindSymbols(*ast);
   EXPECT_FALSE(checkDeclarations(*ast, binding.table).empty());
 }
+/** ABI totals are rank-insensitive while invalid axes keep structural identity. */
+TEST(PtxDeclarationSemantics,
+     ComparesHeaderArrayTotalsWithoutErasingInvalidAxes) {
+  /** Build signature data without validating deliberately malformed dimensions. */
+  const auto signature = [](std::string_view axes) {
+    PtxSyntaxParser parser(".func f(.param .b8 a" + std::string(axes) + ");");
+    const auto ast = parser.parseModule();
+    EXPECT_TRUE(ast && ast.diagnostics.empty());
+    return functionSignature(
+        std::get<syntax_ast::AstFunction>(ast->items.front()));
+  };
+  EXPECT_EQ(signature("[2][3]"), signature("[6]"));
+  EXPECT_EQ(signature("[][2][3]"), signature("[]"));
+  EXPECT_NE(signature("[0]"), signature("[]"));
+  EXPECT_NE(signature("[0]"), signature("[0+0]"));
+  EXPECT_NE(signature("[missing]"), signature("[other]"));
+  EXPECT_NE(signature("[18446744073709551615][2]"), signature("[][2]"));
+  for (const auto axes :
+       {"[0]", "[missing]", "[18446744073709551615][2]", "[2][]"}) {
+    const auto formal = signature(axes).parameters.front();
+    EXPECT_EQ(call_argument_properties(formal).state_space,
+              call_argument_compatibility::CallArgumentStateSpace::Invalid);
+  }
+}
+
 }  // namespace
 }  // namespace ptx_frontend::declaration_semantics

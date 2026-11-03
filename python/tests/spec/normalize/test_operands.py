@@ -54,20 +54,43 @@ def _pack(kind: str = "tensor_coordinate", **fields: Any) -> dict[str, Any]:
 
 
 class OperandNormalizationTests(unittest.TestCase):
-    def test_named_vector_option_is_typed_and_element_register_local(self) -> None:
+    def test_named_vector_option_is_typed_and_binding_local(self) -> None:
         """Named admission is explicit and cannot widen other vector domains."""
         self.assertFalse(normalize_operand(_vector()).vector_allow_named)
         self.assertTrue(normalize_operand(
             _vector(type_policy="element", allow_named=True)
         ).vector_allow_named)
+        self.assertTrue(normalize_operand(
+            _vector(type_policy="aggregate", allow_named=True)
+        ).vector_allow_named)
         for value in (1, "true", None, []):
             with self.subTest(value=value), self.assertRaises(TypeError):
                 normalize_operand(_vector(type_policy="element", allow_named=value))
-        for kind, policy in (("reg_vector", "aggregate"),
-                             ("value_vector", "element"),
+        for kind, policy in (("value_vector", "aggregate"),
                              ("vector_reg", "element"), ("reg", "element")):
             with self.subTest(kind=kind), self.assertRaises(ValueError):
                 normalize_operand(_vector(kind, type_policy=policy, allow_named=True))
+
+    def test_named_value_vector_requires_readonly_nonsink_element_policy(self) -> None:
+        """Named capacity preserves mixed-value defaults and explicit role limits."""
+        from ptx_frontend.spec.synatax_shapes import operand_syntax_shapes, OperandSyntaxShape
+        raw = _vector("value_vector", type_policy="element", allow_named=True)
+        raw.update(access="read", role="src")
+        normalized = normalize_operand(raw)
+        self.assertTrue(normalized.vector_allow_named)
+        self.assertTrue(operand_syntax_shapes(normalized) & OperandSyntaxShape.IDENTIFIER_REF)
+        default = _vector("value_vector")
+        default.update(access="read", role="src")
+        self.assertFalse(normalize_operand(default).vector_allow_named)
+        for access, sink, policy in (("write", False, "element"),
+                                     ("readwrite", False, "element"),
+                                     ("read", True, "element"),
+                                     ("read", False, "aggregate")):
+            bad = _vector("value_vector", type_policy=policy, allow_named=True,
+                          allow_sink=sink)
+            bad.update(access=access, role="src")
+            with self.subTest(access=access, sink=sink, policy=policy), self.assertRaises(ValueError):
+                normalize_operand(bad)
 
     def assert_rejected(
         self, raw: dict[str, Any], exception: type[Exception], message: str
@@ -120,6 +143,7 @@ class OperandNormalizationTests(unittest.TestCase):
                 "texture_unbracketed": False,
                 "texture_resource_kind": None,
                 "video": None,
+                "integer_immediate_type": None,
             },
         )
         self.assertIs(
@@ -624,6 +648,24 @@ class OperandNormalizationTests(unittest.TestCase):
         self.assertIs(
             operand.register_width_policy, OperandRegisterWidthPolicy.EQUAL_OR_WIDER
         )
+
+    def test_word_or_doubleword_supports_register_and_immediate_capable_roles(self) -> None:
+        """Finite 32/64-bit container width retains the fixed-u64 use contract."""
+        for kind in ("reg", "reg_or_imm"):
+            with self.subTest(kind=kind):
+                operand = normalize_operand(_operand(kind, type="u64", register_width="word_or_doubleword"))
+                self.assertIs(operand.register_width_policy, OperandRegisterWidthPolicy.WORD_OR_DOUBLEWORD)
+                for type_use in (None, "u32", {"expr": "modifier(type)"}):
+                    raw = _operand(kind, register_width="word_or_doubleword")
+                    if type_use is not None:
+                        raw["type"] = type_use
+                    with self.assertRaisesRegex(ValueError, "requires fixed u64 use type"):
+                        normalize_operand(raw)
+        for kind in ("imm", "addr", "pred", "reg_vector"):
+            raw = _vector() if kind == "reg_vector" else _operand(kind)
+            with self.subTest(kind=kind):
+                with self.assertRaisesRegex(ValueError, "requires kind 'reg' or 'reg_or_imm'"):
+                    normalize_operand(raw | {"type": "u64", "register_width": "word_or_doubleword"})
 
     def test_equal_or_wider_requires_supported_kind_and_type(self) -> None:
         for kind in ("imm", "vector_reg", "vector_sreg"):

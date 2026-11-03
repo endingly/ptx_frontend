@@ -833,6 +833,11 @@ $defs:
               $ref: "#/$defs/ptx_type_name"
           - $ref: "#/$defs/type_expr"
 
+      integer_immediate_type:
+        description: "Explicit raw integer alternative: B16 for F16/BF16, B32 for F16x2/BF16x2."
+        type: string
+        enum: [b16, b32]
+
       register_width:
         description: >
           Width relation accepted for a register operand relative to its
@@ -1076,9 +1081,13 @@ $defs:
               maxItems: 1
               items:
                 const: reg
-          not:
-            required:
-              - vector
+            vector:
+              type: object
+              additionalProperties: false
+              required: [allow_named, type_policy]
+              properties:
+                allow_named: {const: true}
+                type_policy: {const: element}
 
       - if:
           properties:
@@ -1162,7 +1171,7 @@ $defs:
         default: false
 
       allow_named:
-        description: "Admit a named ordinary vector register for an element-policy reg_vector."
+        description: "Admit a named ordinary vector register for an aggregate/element reg_vector or read-only nonsink element value_vector."
         type: boolean
         default: false
 
@@ -1318,6 +1327,11 @@ $defs:
           ptx_before:
             description: Exclusive PTX version upper bound; omitted means unbounded.
             $ref: "#/$defs/ptx_version"
+          sm_before:
+            description: Exclusive numeric SM upper bound; omitted means unbounded.
+            type: integer
+            minimum: 1
+            maximum: 4294967295
           sm:
             $ref: "#/$defs/sm_version"
           family:
@@ -1334,6 +1348,7 @@ $defs:
           notes:
             type: string
         anyOf:
+          - required: [sm_before]
           - required: [ptx_before]
           - required: [ptx]
           - required: [sm]
@@ -1355,6 +1370,11 @@ $defs:
                 ptx_before:
                   description: Exclusive PTX version upper bound for this conjunction.
                   $ref: "#/$defs/ptx_version"
+                sm_before:
+                  description: Exclusive numeric SM upper bound; omitted means unbounded.
+                  type: integer
+                  minimum: 1
+                  maximum: 4294967295
                 sm:
                   $ref: "#/$defs/sm_version"
                 target:
@@ -1389,6 +1409,7 @@ $defs:
               not:
                 required: [target, targets]
               anyOf:
+                - required: [sm_before]
                 - required: [ptx_before]
                 - required: [ptx]
                 - required: [sm]

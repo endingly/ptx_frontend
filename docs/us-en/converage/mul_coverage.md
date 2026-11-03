@@ -24,7 +24,7 @@ They are frontend contracts only; no row supplies simulator semantics.
 | `.f32x2` | 8.6 / `sm_100` | omitted rounding defaults to `.rn`; all four roundings and `.ftz` are legal; `.sat` is not | all operands are exact `.b64` registers |
 | `.f64` | 1.0 / `sm_13` | omitted rounding defaults to `.rn`; all four roundings are legal; neither `.ftz` nor `.sat` is | Floating register-or-immediate sources and same-width bit-register compatibility |
 | `.f16` | 4.2 / `sm_53` | omitted rounding defaults to `.rn`; explicit `.rn`, `.ftz`, and `.sat` are independently legal | register-only `.f16` or same-width `.b16` values |
-| `.f16x2` | 4.2 / `sm_53` | omitted rounding defaults to `.rn`; explicit `.rn`, `.ftz`, and `.sat` are independently legal | all operands are exact `.b32` registers |
+| `.f16x2` | 4.2 / `sm_53` | omitted rounding defaults to `.rn`; explicit `.rn`, `.ftz`, and `.sat` are independently legal | all data operands accept native `.f16x2` or `.b32` registers |
 | `.bf16` | 7.8 / `sm_90` | omitted rounding defaults to `.rn`; only explicit `.rn` is legal; no `.ftz` or `.sat` | all operands are exact `.b16` registers |
 | `.bf16x2` | 7.8 / `sm_90` | omitted rounding defaults to `.rn`; only explicit `.rn` is legal; no `.ftz` or `.sat` | all operands are exact `.b32` registers |
 
@@ -37,7 +37,7 @@ same-width `.hi/.lo` families.
 The floating and half/bfloat syntax makes rounding optional, with `.rn` as the
 default. The YAML records that default instead of requiring a redundant `.rn`.
 It still rejects directed half/bfloat rounding, `.sat` on `.f32x2` and bfloat
-packed forms, and bfloat `.ftz`/`.sat`. Packed forms retain their documented
+packed forms, and bfloat `.ftz`/`.sat`. Nonfundamental BF16x2/F32x2 packed forms retain their documented
 exact bit-container widths, so a same-width-looking but wrong container is
 rejected by the checker.
 

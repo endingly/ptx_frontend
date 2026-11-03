@@ -74,6 +74,10 @@ syntax 但 rounding class、loss direction、saturation 或 FTZ endpoint 非法�
 可以是 register-or-immediate；register endpoint 仍保留 PTX width contract。所有 `.f64` direction
 要求 SM 13 或更高。
 
+对于 F16 与 BF16 两种16-bit instruction format，已采用的 equal-format-size integer-valued conversion 规则允许两个方向使用 `.rni/.rzi/.rmi/.rpi`：F16 destination 可选 `.sat`，共八种；BF16 destination 不带 `.sat`，共四种。此规则不使任一方向接受 `.ftz`、`.rna` 或 `.rs`。普通 F16-to-BF16 conversion 损失 significand precision，要求显式 floating rounding；保存的默认 `Rn` 不能补足源码中省略的 modifier。已采用的反向 BF16-to-F16 omission 仍允许，可选 F16 `.sat`；两个方向均保留显式 `.rn/.rz/.rm/.rp`。Cross-half form 要求 PTX7.8／SM90。相等的是 instruction-format size，不是 physical carrier width：F16 endpoint 的合法较宽 Bit carrier 与 BF16 endpoint 的 exact Bit16 存储可同时存在。
+
+Generated presence 保留既有“locations 非空 OR value 不等于 default”规则。因此当前非默认 integer-rounding value 即使清空 location 仍为 present；默认 `Rn` 且 locations 为空表示 absent。手动提供的 modifier view 若 `is_present=false`，则忽略保存的 mode。合法的当前 typed edit 独立于保留的 lexical history 检查。Rounding 选择请求的 GPU operation；前端不执行该 operation 或 saturation。Numeric F16 input `1.5` 在所有 mode 下仍为 source word `0x3e00`。此有界 overlapping-clause interpretation 不扩展其他 format pair、qualifier、converter permission 或 availability。
+
 half/bfloat/tf32 cohort 保留各自独立的 syntax 与 availability：
 
 - Plain scalar `f16 <- f32` 接受四种 floating rounding spelling：`.rn/.rz/.rm/.rp`。special
@@ -83,11 +87,33 @@ half/bfloat/tf32 cohort 保留各自独立的 syntax 与 availability：
   PTX 7.1 / SM 80，其 `.ftz` form 自 PTX 7.8 / SM 90；其余 ordinary BF16 direction 自
   PTX 7.8 / SM 90。
 - `f16x2 <- f32,f32` 与 `bf16x2 <- f32,f32` 使用两个 scalar `.f32` source 与 packed
-  physical destination。stochastic `.rs` form 额外要求 `.b32` register `rbits`，并仅限 PTX
+  physical destination。stochastic `.rs` form 额外要求 scalar register 中的逻辑 `.b32` value `rbits`，并仅限 PTX
   8.7 的 exact `sm_100a` 或 `sm_103a`。
 - `tf32 <- f32` 保留独立 `.rna` 和 `.rn/.rz` form。base destination 为 PTX 7.0 / SM 80；
   directed ReLU cohort 为 PTX 7.8 / SM 90。`.satfinite` 有独立的较晚 availability，包括
   directed `.rn/.rz` form 的 PTX 8.6 / SM 100。
+
+### 逻辑格式与寄存器载体
+
+InstructionOnly 浮点／定点格式必须使用 Bit 寄存器声明，包括 BF16、TF32、
+packed low-bit、UE8M0 和 S2F6。即使物理 operand model 使用 B8/B16/B32，仍检查
+选定的逻辑格式。原生 fundamental F16x2 则允许原生声明或 Bit 载体；同宽的任意
+signed、unsigned、F32 寄存器不加入该集合。普通 F16/F32/F64 与整数转换保留既有兼容性。
+
+载体 kind 与宽度独立：converted data 允许最宽到 B128 的兼容更宽 Bit 寄存器，
+但 BF16/BF16x2 的 source、destination 及 TF32 destination 必须精确同宽。
+Intrinsic source 使用其规范 kind 和宽度，因此 B32 intrinsic 不能作为要求精确宽度的
+BF16 source。显式向量分量保留有效元素 dtype 与声明身份；完整向量不能充当 scalar data role。
+
+Scale factor 独立编码 UE8M0x2，必须使用 Bit 存储。`rbits` 是随机 bit 数据，
+保留普通兼容 S32/U32/F32 载体；两个辅助 operand 均不继承 converted-data 格式。
+采用对 CVT 未限定 source-widening note 的解读，两个辅助 operand 也可放宽：factor
+使用至少 16 位 Bit scalar 寄存器的低 16 位；`rbits` 使用至少 32 位、原本兼容的 scalar
+寄存器低 32 位。B128 载体仍可符合要求。更宽的载体不增加 factor lane 或随机 bit 字段：
+两个 factor byte 与 stochastic 分区仍位于这些逻辑 payload 内。BF16/BF16x2 converted-data
+的精确宽度例外不限制独立辅助 operand。这是对宽泛 source note 的包含式解释，并非手册
+另有辅助 operand 专属许可句。检查保留逻辑 operand 类型与实际声明宽度，不执行截位、
+不观察运行时寄存器值，也不构造 packed 数字字面量。
 
 ### FP8、low-bit、UE8M0、S2F6、stochastic 与 scaled form
 
@@ -104,15 +130,15 @@ modern form 保留 physical packing，不把 instruction-only type spelling 当�
   path。packed-source FP4 按正常 equal-or-wider register policy 接受 `.b8` destination，
   而 FP6 保留 `.b16` minimum。packed-source 和 BF16-destination extension 保留 `sm_100f`、
   `sm_110f`、`sm_120f` family 上的 PTX 9.1/9.2 gate。
-- x4 FP8、FP4、FP6 form 是来自四元素 `.f32` register vector 的 `.rs` conversion。它们要求
-  独立 `.b32` `rbits` register、强制 `.satfinite`，并只允许 PTX 8.7 exact `sm_100a` 或
+- x4 FP8、FP4、FP6 form 是以四个逻辑 `.f32` input 进行 `.rs` conversion。Brace 可混合 scalar register 与 floating constant／expression；真实 named `.v4.f32` 或 `.v4.b32` 声明（包括 compact member）提供相同的四个有序 lane。它们要求
+  scalar register 中独立的逻辑 `.b32` `rbits` value、强制 `.satfinite`，并只允许 PTX 8.7 exact `sm_100a` 或
   `sm_103a` target。
 - `ue8m0x2` 支持指定的 `.rz/.rp` f32 与 packed-BF16 input，以及 `.rn` BF16 output form，
   并使用对应 low-bit target alternative。
 - `s2f6x2` 为 PTX 9.1。f32 与 BF16 x2 direction 保留强制 `.rn.satfinite`；BF16 x2 result
   direction 保留适用的 optional flag。这些 form 仅限 `sm_100a`、`sm_103a`、`sm_110a`、
   `sm_120a` 或 `sm_121a`。
-- `.scaled::n2::ue8m0` spelling 选择带额外 `.b16` scale-factor operand 的匹配 layout；未写
+- `.scaled::n2::ue8m0` spelling 选择带额外逻辑 `.b16` scale-factor register operand 的匹配 layout；未写
   该 spelling 时使用较短的 physical layout。scale factor 不能代替 instruction-only scalar
   type 的 register declaration。
 
@@ -149,3 +175,11 @@ kernel-parameter contract 拒绝它；device-formal `.local` probe 则按预期�
 `ptxas --version` 以及 `ptxas -arch=<target> <fixture>.ptx -o <fixture>.cubin` 复现。
 ordinary matrix 记录 140 个 accepted case 和四个 8-bit integer-width discrepancy。这些
 observation 是 compiler 工具证据，不能替代 PTX 9.3，也不能以该工具版本验证 PTX 9.2 form。
+
+Scalar F16 numeric source 现经公共 binary64-to-binary16 RNE 路径转换：支持 decimal/F64 expression 与裸 unsigned exact F32，不经过 binary32 中间值。Literal 转换保留 signed zero 与 subnormal，与指令 rounding/FTZ/saturation 无关。既有 CVT source kind 及 rounding 规则不变：四个含 F16 source 的 model template 在这些独立 rounding 检查下仍没有合法 positive。不增加 integer-to-F16 literal reinterpretation；Bit16 precision 规则及 exact F32 expression 禁令保留。
+
+普通 `cvt.pack.sat` 的 S32 input 除同宽 B32/S32/U32 register 外，也接受 integer constant 与 expression。既有 64-bit evaluator 将每个 input 窄化为低32位 S32 word，并保留原64位 integer bits／sign metadata；因此 `0x100000001U` 的 use word 为1，不要求 target-range。前端不把 input 预先饱和到 destination lane 宽度，也不预计算 packed result。Floating-valued input 仍不兼容 S32；最终 category 为 Integer 的 expression（包括 FP comparison）走 integer 路径。独立 B32 carry source 保留既有 literal／precision 契约，包括同宽 unsigned direct0f bit data；这不使 register-only stochastic `rbits` 接受 literal。Carry topology、destination width 与 target 边界不变。
+
+公共 ABI 迁移：`CvtPackSatU8S32B32`、`CvtPackSat16S32`、`CvtPackSatSmallS32B32` 的 `src1`／`src2` 从 `WithLocs<ResolvedRegisterRef>` 改为 `WithLocs<RegOrImm>`。Consumer 必须重编译，并通过 `std::get_if<ResolvedRegisterRef>` 或 `std::get_if<ResolvedImmediate>` 检查 `.value`。六个字段原位迁移；class、modifier domain、selector 顺序不变。Copy／assignment／clone 保留 typed word、source cache、declaration identity 与 location。普通当前 IR word／reference 修改按当前事实核对；source association 仍是独立的 retained-syntax 检查。
+
+三个原已获准的 CVT 源字段（`CvtF32Bf16`、`CvtF32Bf16Ftz`、`CvtNonF32BaseFromBf16`）现复用现有 helper 完成 BF16 标量数值源转换。编译期源量化直接采用 binary64 最近偶数舍入，独立于运行时舍入、FTZ 和饱和，不计算 CVT 目的结果。每个目的类型与 modifier 组合仍须独立的合法寄存器对照。E4M3/E5M2 helper 能力不会新增标量 CVT 源权限，packed/raw-word、向量、call 和存储权限保持不变。

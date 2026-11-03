@@ -44,6 +44,27 @@ the ordinary operands with or without a final 64-bit `cache_policy` register.
 The policy operand requires the hint. `st.async` destinations require a register
 base; a symbol base or an immediate-only address is rejected.
 
+Root `st.async` inherits the `st` wider-source-register rule from PTX 9.4.1.
+Each scalar or explicit vector lane may use an otherwise compatible equal or
+wider register, including B64/B128 Bit carriers; narrower registers reject.
+Integer/Bit compatibility and floating-format restrictions remain independent:
+F32/F64 data requires its matching native floating type or a sufficiently wide
+Bit carrier, so F64 does not substitute for F32 data. Bit-typed data retains
+its ordinary fundamental compatibility. Sources remain register-only.
+
+The instruction type and written arity define transfer size, static alignment
+and mbarrier completion bytes, irrespective of actual carrier widths. Shared v2
+permits instruction elements through 64 bits; v4 remains limited to 32-bit
+elements. Four B128 scalar carriers in a v4.u32 brace list therefore retain a
+16-byte logical transfer, without declaring an oversized ordinary vector.
+Scalar instruction `.b128` keeps its PTX 9.2 / SM 90 gate independently of a
+wider carrier used for another logical type. Address/barrier and completion
+contracts above are unchanged. Distinct
+[`multimem.st.async` / `multimem.red.async`](multimem_coverage.md) data remains
+same-width; sharing suffix words does not make them root `st` instructions.
+This is static source/type validation, not execution of chopping or a runtime
+complete-tx protocol proof.
+
 The checker enforces known address spaces, static alignment (16 bytes for
 bulk copy/reduce/prefetch, 8 bytes for a barrier), modifier/operand coupling,
 supported type tuples, immediate divisibility, and target availability.
@@ -53,3 +74,5 @@ declaration; standalone instruction checking defers that declaration check.
 For register sizes and addresses, runtime values, remote-CTA provenance,
 group/phase completion protocol, and cache behavior remain consumer
 obligations. This frontend does not execute instructions.
+
+Root shared `st.async` v2/v4 data sources accept ordinary named register vectors alongside scalar brace lanes. The declaration itself must remain at most 128 bits even when each carrier is wider than the logical element. Completion bytes and transfer alignment still derive from logical type times arity. Named data does not relax the independent register-base address requirement.

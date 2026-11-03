@@ -16,7 +16,7 @@ namespace {
 
 /** Parse and resolve before returning, so callers only own the released IR. */
 std::optional<ResolvedModule> owned_grouped(std::string_view source,
-                                            std::string_view target = "sm_110a",
+                                            std::string_view target = "sm_100a",
                                             std::string_view version = "9.3") {
   const std::string text =
       ".version " + std::string(version) + "\n.target " + std::string(target) +
@@ -37,7 +37,7 @@ std::optional<ResolvedModule> owned_grouped(std::string_view source,
 }
 
 /** Resolve catalog features, including exact and family targets. */
-checker::Context group_context(std::string_view target = "sm_110a",
+checker::Context group_context(std::string_view target = "sm_100a",
                                checker::PtxVersion version = {9, 3}) {
   const auto profile = base::find_target_profile(target);
   if (!profile)

@@ -19,10 +19,32 @@ conditional 两个分支及 logical 两个 operand 均检查，即使值未被�
 
 二元 `&`、`|`、`^` 保持 usual arithmetic conversions：两个 signed 输入产生
 signed 结果，任一 unsigned 输入产生 unsigned 结果。依据是 PTX 9.3 §4.5.5
-正文及有限 CUDA 13.3 assembler 交叉检查；Table 5 的 unsigned 摘要与之不同。
+正文：仅在 Table 5 的 `&`/`|`/`^` 行与详细二元操作规则冲突时，选择详细规则。
+这是前端采用的解释，不是 NVIDIA 发布的勘误。历史 assembler 观察及其确切工具
+版本见[位运算策略](bitwise_constant_policy.md)。表达式结果保留 64 位数据及符号性，
+直到使用位置转换；destination 类型和规范化源符号缓存不会反向提供表达式类型。
 一元 `~` 产生 unsigned，remainder 将两输入解释为 unsigned 并产生 signed。
-shift count 超出 0–63 仍显式报 frontend error；assembler 接受部分较大的 shift，
-因此该 domain 边界不表示与 assembler 完全一致。
+常量表达式 shift 先将 count 求值为 64 位值，再将其数据解释为 unsigned，
+仅接受 0–63。因此 `1 << (-1 + 2)` 合法；求值为 `-1`、`64`、`65` 或
+`UINT64_MAX` 的 count 被拒绝，不执行 mask 或 clamp。即使 count 是 unsigned，
+结果也保持左操作数的类型：signed 负数右移填充符号位，unsigned 右移填零，
+count 为零时保留输入数据。
+
+0–63 是前端采用的表达式 domain 策略。[手册的常量表达式规则](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-constant-expression-evaluation)
+没有为大于等于 64 的 count 定义结果；本策略不表示厂商要求一律报错，也不表示
+PTX `shl`/`shr` instruction 的执行行为。具体 count 错误保留在失败 count 子树，
+且不标记为 deferred，包括 conditional 或 logical 未选中子表达式中的非法 shift。
+`symbol + 1` 这类合法符号重定位表达式在值未知时保持 deferred；
+`symbol << 1` 和 `symbol >> 1` 是非法重定位操作，不是 deferred 数值 shift。
+initializer 和 array-dimension 的
+声明包装层保留原有覆盖整个表达式的 invalid-initializer/invalid-dimension 诊断；
+对同一 AST 表达式调用公共 evaluator，仍得到具体 count 子树错误。MOV、call
+及 address 使用位置则直接传播该 count 错误。
+
+合法的规范化 immediate 和 storage payload 在源文本/AST 销毁、复制、赋值及
+instruction clone 后，继续接受现有 owned IR 检查。非法 shift 不产生此类 payload，
+因而 owned count tree 重校验不适用，也不引入 count-origin 缓存。数组 extent、
+destination 类型及地址范围限制仍是独立的使用位置约束。
 
 ## 定位与 API
 
@@ -98,6 +120,11 @@ target check 仍是独立的 declaration rule。
 
 ## Redeclaration
 
+Recursion legality 在 module validation 中、binding/visibility/signature/table join 后
+检查 current typed call。`resolveModuleOnly` 仍是 transport，成功本身不验证 recursion
+support。已识别 direct/finite-candidate cycle 要求 PTX 2.0 / SM 20；open call 不被认证为
+acyclic。参见 [control flow](control_flow_syntax_design.md)。
+
 module scope 的同名 item 先由 binding 合并到稳定的 `SymbolId`，再由本 pass 判断是否合法：
 
 - 多个签名相同的 `.extern` variable declaration 合法；
@@ -108,6 +135,12 @@ module scope 的同名 item 先由 binding 合并到稳定的 `SymbolId`，再�
 - symbol kind 冲突、linkage 冲突、签名变化和多个 definition 均产生带 previous range 的
   诊断；
 - `.extern .func` 只能是 prototype，不能带 body。
+
+`.weak` 在所有 target 上要求 PTX 3.1。Source pass 在每个 typed variable/function
+occurrence 的 weak qualifier 处检查，包含未使用 prototype。Binding 保留首个 canonical
+linkage；成功 module owning handoff 前，兼容 redeclaration 必须具有相同 linkage 与
+signature。Mixed weak/nonweak declaration 仍不兼容。来自已拒绝 mixed source 的
+binding-only table 不保留每个历史 qualifier；不新增 occurrence-history API 或 weak linker 行为。
 
 redeclaration 的 alignment 按 effective value 比较，但每个 declaration occurrence
 仍保留 source provenance 与 range。对于已建模的 fundamental storage，省略的
@@ -156,6 +189,11 @@ unsized array 位置、pointer attribute，以及可静态判定的 ISA version/
 大小限制。该契约适用于 entry/device header、call-prototype formal 与 body-local `.param`
 声明；保留 type spelling 或 array syntax 本身不表示声明合法。
 
+Parameter element classifier 复用 fundamental metadata 并排除 predicate，
+保留 native scalar F16x2，不展开其 packed component。已验证 vector lane 参与
+checked object bytes、自然 alignment 与 padded entry total；未使用的 prototype
+signature 同样检查 shape、alignment 和 role。
+
 ## Entry resource constraint
 
 对已支持的 entry-header `.maxnreg`、`.maxntid`、`.reqntid` 与 `.minnctapersm`，本 pass
@@ -186,3 +224,77 @@ signedness 传播与求值逻辑。
 
 二元位运算遵循 PTX 正文中的通常算术转换规则；汇总表的不同表述、可复现汇编
 证据和工具版本限制见[符号性决策说明](bitwise_constant_policy.md)。
+
+`FunctionParameterContract::array_extents` 是 formal 轴唯一的 normalized 表示。
+合法数组按检查后的总元素数比较 ABI，rank 本身不是额外限制；无效 structural 轴与
+溢出仍无效并保留逐轴 identity。未知外轴仍保留并检查已知内轴。
+派生 `CallArgumentProperties::array_size` 表示总数，不是第一轴缓存。
+精确 source identity 独立保留，见[parameter 合同与 member migration](parameter_declarations.md)。
+
+Register-state device/call-prototype formal 使用独立的 default-ABI 下限：已知
+PTX >=2.0 且当前可识别 target 为 SM20+ 时，整个 scalar/vector 值必须至少32bit，
+不是每个 lane 都要求32bit；source type/shape 保持不变。未使用的输入和返回 formal
+同样检查。Source-aware retarget 使用所提供 AST 的 context，AST 销毁后使用 owned
+region；已知 legacy context 不应用该下限，缺失 context 在 partial checking 中延后。
+普通小宽度/predicate register 与传给匹配 `.param` formal 的小 actual 仍合法，
+完整边界见[parameter 声明](parameter_declarations.md)。
+
+按[上下文 keyword 解释](lexer_design.md)，instruction root 拼写在显式声明 name role
+中仍可作为普通 identifier。官方 `bar` object/function 示例不支持无条件名称排除；
+这是规范解释与 regression 澄清，不是补加 missing predicate 的代码修复。Source
+validation 检查 name leaf，AST-free owned validation 通过共享字符 grammar 检查
+actual bound symbol name；diagnostic reference spelling 不重建权威 identity。
+独立的声明 role、type、ABI 与先行 visibility 限制保持不变。
+
+现有 `ptx_declaration_semantics.hpp` 的公共
+`declaration_semantics::languageCode(std::string_view)` 同步借用一个原始 operand token，
+返回 `optional<uint64_t>` 且不保留 view。source item 检查、ordered redeclaration
+compatibility 与 owned function integrity 统一调用该 decoder。quoted name
+`unknown`、`ptx`、`nvvm`、`cuda c++`、`cuda c++ tile`、`tile ir`、`python-cutile`、
+`fortran`、`optix` 分别映射 0、3、4、5、6、7、8、9、10，以确定性 ASCII folding 比较。
+完整 unsigned integer token 0..10（含 Reserved 1/2）支持既有 radix 与 U suffix。
+不 trim、求值 expression、将 quoted number 转为 code 或接受 unquoted name alias。
+只移除外层 quote，不解码 inner escape bytes 来扩展名称 alias；这是 frontend decoder
+边界，不是一般 PTX escape 禁令。directive 省略/default `ptx` 由 caller 处理，empty
+token 返回无 code。raw list 的顺序、quote 与 case 仍作为 owned data 保存，不新增 decoded cache。
+
+
+## 历史 entry body input
+
+PTX 1.0–1.3 entry body `.param` 在唯一 `parameter_declarations` 表中保留
+`LegacyEntryInput` role，以及 scope/group/array identity。Signature 仍只描述语法
+header ABI，空 header 不等于没有 host input；lexical metadata 顺序不分配 launch
+地址或 packing。只有 entry body role 歧义才要求 version 并报告
+`MissingValidationContext`，不按 SM 猜 role。已 typed module 缺 context 时保留 role。
+
+`ResolvedSymbolRef::parameter_role` 从 actual record 同步派生，structural kind 仍为
+`CallParameter`。Address/MOV/tensor 共用 input/return/call-slot 方向映射。两个
+validator 都在 context skip 前重连当前 record/cache，检查 readonly、entry frame、
+direct call-actual 排除、shape/scope 和 logical capacity。Legacy LD 不要求 call
+return staging，MOV 保持 `.param`；现代 BodyLocal staging 不变。Checked logical
+总量使用 per-member bytes 乘 compact count，检查32764-byte已知 global ceiling，
+不重复乘 axes/vector，也不套用1.4的256-byte header cap。
+`D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` 对精确历史 physical launch packing
+仍 qualified。详见[parameter contract](parameter_declarations.md)的窗口与边界。
+
+
+### 已弃用的最大 CTA 提示
+
+Entry header 从 PTX ISA 1.3 起接受 `.maxnctapersm ncta`，适用于所有已识别
+source target，包含 PTX 2.0 及后续版本；弃用不表示版本上界。独立的 AST/owned
+`MaxNctaPerSm` kind 表达优化提示：仍可执行额外 CTA，因此不是 runtime occupancy
+硬上限。`.maxntid` 可省略，`.minnctapersm` 可作为独立 resource 同时存在。
+
+完整 unsigned integer token 经检查后进入现有 `uint32_t` resource value，允许
+零及 `UINT32_MAX`，溢出不截断。该范围仅为 frontend 已建模容量；公开语法未指定
+此位宽，检查不证明硬件 occupancy 或 driver 可执行性。CST/AST 存活时保留书写的
+radix、suffix 和 range；owned contract 仅保留 kind、normalized values、explicit
+count 和 range，不增加平行 raw spelling 字段。
+
+两个 validator 都检查当前 payload shape、entry placement 和已知 range containment。
+已知 PTX 版本低于 1.3 时，即使 target 不完整也拒绝；`AvailableContext` 缺少版本时
+只延迟 availability，intrinsic 检查继续。Source-aware 路径采用 supplied effective
+version。当前 numeric value 的一致修改合法；替换 AST 中书写的 resource kind 或
+value 仍受现有 source association 规则检查。
+
+源码依据：[PTX ISA 最大 CTA 指令](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#performance-tuning-directives-maxnctapersm)。

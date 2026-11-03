@@ -278,7 +278,7 @@ TEST(TensorIm2colInfo, ExactAvailabilityMatrix) {
       Case{"cluster", "im2col::w", {8, 6}, "sm_100a", true},
       Case{"cluster", "im2col::w", {8, 6}, "sm_103a", false},
       Case{"cluster", "im2col::w", {8, 8}, "sm_103f", true},
-      Case{"cluster", "im2col::w", {9, 3}, "sm_110a", true},
+      Case{"cluster", "im2col::w", {9, 3}, "sm_110a", false},
       Case{"prefetch", "im2col::w", {8, 6}, "sm_100", false},
       Case{"prefetch", "im2col::w", {8, 8}, "sm_103a", true},
       Case{"prefetch", "im2col::w", {9, 0}, "sm_110f", true},
@@ -286,7 +286,12 @@ TEST(TensorIm2colInfo, ExactAvailabilityMatrix) {
       Case{"cta", "im2col::w::128", {8, 6}, "sm_100", false},
       Case{"cluster", "im2col::w::128", {8, 6}, "sm_100a", true},
       Case{"cluster", "im2col::w::128", {9, 0}, "sm_110a", true},
-      Case{"cluster", "im2col::w::128", {8, 8}, "sm_110f", false},
+      // Direct feature gates are separate from the source-profile PTX floor.
+      Case{"cluster", "im2col::w::128", {8, 8}, "sm_110f", true},
+      Case{"cluster", "im2col::w::128", {8, 6}, "sm_101a", true},
+      Case{"cluster", "im2col::w::128", {8, 8}, "sm_101f", true},
+      Case{"cluster", "im2col::w::128", {9, 3}, "sm_101a", true},
+      Case{"cluster", "im2col::w::128", {9, 3}, "sm_101f", true},
   };
   for (const auto& item : cases) {
     const std::string prefix =
@@ -309,7 +314,7 @@ TEST(TensorIm2colInfo, ExactAvailabilityMatrix) {
   }
 }
 
-/** Table 63 adds the 110f family to W-cluster on all three tensor ranks. */
+/** Specific cluster W target notes retain the 100 family on all three ranks. */
 TEST(TensorIm2colInfo, WClusterTable63FamilyEndpoints) {
   /** A source target and PTX version with the expected W-cluster availability. */
   struct Case {
@@ -325,11 +330,15 @@ TEST(TensorIm2colInfo, WClusterTable63FamilyEndpoints) {
       Case{"8.8", {8, 8}, "sm_103f", true},
       Case{"8.8", {8, 8}, "sm_110a", false},
       Case{"8.9", {8, 9}, "sm_110f", false},
-      Case{"9.0", {9, 0}, "sm_110a", true},
-      Case{"9.0", {9, 0}, "sm_110f", true},
+      Case{"9.0", {9, 0}, "sm_110a", false},
+      Case{"9.0", {9, 0}, "sm_110f", false},
       Case{"9.0", {9, 0}, "sm_110", false},
       Case{"9.3", {9, 3}, "sm_120a", false},
       Case{"9.3", {9, 3}, "sm_120f", false},
+      Case{"8.6", {8, 6}, "sm_101a", false},
+      Case{"8.8", {8, 8}, "sm_101f", false},
+      Case{"9.3", {9, 3}, "sm_101a", false},
+      Case{"9.3", {9, 3}, "sm_101f", false},
   };
   for (int rank = 3; rank <= 5; ++rank) {
     std::string coordinates = "0, 0, 0";

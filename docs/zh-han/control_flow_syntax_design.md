@@ -16,8 +16,8 @@ parameter group，以及 indirect call 可用的 target-set/prototype symbol 组
 - `CstBranchTargetSet` / `AstBranchTargetSet`。
 
 CST 保留括号、组内 comma 和 operand 间 comma；Syntax AST 删除 punctuation，但保留每个
-参数组的角色与 range。return group 必须恰有一个 identifier；input group 可以为空，成员
-当前为 identifier 或 immediate。
+参数组的角色与 range。return group 必须恰有一个 identifier 或显式普通 register member；
+input group 可以为空，成员为 identifier、selected member 或既有 numeric operand。
 
 ## Binding
 
@@ -64,7 +64,7 @@ register target 与最终 metadata operand 都 resolve 为 `ResolvedIndirectCall
 区分 `CallTarget` 与 `CallTargetSet`。这些 layout 要求 PTX 2.1 与 SM 20。为保持兼容，公开
 modifier variant 仍名为 `call_direct`。
 
-`ResolvedIndirectCallee` 表示一个 indirect-call component：non-predicate `.reg` target、
+`ResolvedIndirectCallee` 表示一个 indirect-call component：scalar General integer/bit `.reg` target、
 function-local metadata label，或下文的 call-table reference。module 中 metadata label 保留 `SymbolId`，并区分 `.callprototype` 与
 `.calltargets`；standalone resolution 只保留 spelling。它不携带 signature 或 member list。module
 resolution 将每个 function-local metadata `SymbolId` 索引到 canonical signature：`.callprototype`
@@ -117,6 +117,11 @@ semantic spelling 与 source range。declaration semantics 会拒绝 return para
 保留其 bound identity；当前 indirect-call layout 消费该 prototype identity，
 并复用公共 call ABI contract。entry point 与边界见 [Resolved IR](resolved_ir_design.md)。
 
+current owned 与 supplied prototype contract 独立检查 base PTX 2.1 / SM 20、
+`.noreturn` PTX 6.4 / SM 30，以及两个 ABI suffix 的 PTX 9.0 / SM 80 minima，
+包括各自独立已知的 partial context。nested 与 unused prototype 也参与检查；
+不因此扩大普通 instruction availability 或 runtime ABI behavior 的保证。
+
 ## function-local `.calltargets` 语法
 
 PTX 9.3 `.calltargets` 同样使用专用的 function-body CST/AST node。它保留 label、colon、
@@ -124,6 +129,14 @@ directive、非空且有序的 function-name list、comma、semicolon，以及�
 Parser 会拒绝 empty list、trailing comma、缺少 local label 或 module scope 中的使用。declaration
 semantics 要求每个 member 是此前声明的 device `.func`，以逐项 range 诊断 duplicate，并要求
 canonical signature 相同。
+
+`.branchtargets` 与 `.calltargets` 均要求 PTX 2.1 和 SM 20，包含 nested block
+中未使用的 declaration。AST-free validation 使用 function 选中的 owned region；
+source-aware validation 采用 supplied active context，分别检查 current record 与
+supplied typed declaration。已知 version 与可识别 profile 的下限在 full-context 门槛前
+独立检查；只有未知 prerequisite 在 `AvailableContext` 中延后。Strict context、unknown-target
+诊断、nonneutral payload identity、member binding、signature 与 declaration-order
+检查均保留既有契约。
 
 ## function-local `.branchtargets` 语法
 
@@ -151,6 +164,105 @@ parameter。
 
 只有 function-local `.param` variable 是 call staging。其 `st.param` input store 必须不带
 predicate，并与使用同一 variable 的 call 形成紧邻的连续块；其 `ld.param` return load 也必须不带
-predicate，并紧跟在返回同一 variable 的 call 后。label、declaration 或其他 instruction 会打断该块。
+predicate，并紧跟在返回同一 variable 的 call 后。非执行的 declaration、label、metadata 和词法
+花括号对 instruction 邻接透明；中间的可执行 instruction 会打断该块。binding/scope 规则仍要求
+引用同一个可见的 parameter object/member。这是局部顺序检查，不推断运行时路径上的初始化。
 `call` 自身可以带 predicate。`.uni` 仅保留为程序员的 uniformity assertion，frontend 不尝试不可
 证明的 static uniformity analysis，也不会因 predicated direct `call.uni` 而拒绝它。
+
+Register-state device/call-prototype formal 使用独立的 default-ABI 下限：已知
+PTX >=2.0 且当前可识别 target 为 SM20+ 时，整个 scalar/vector 值必须至少32bit，
+不是每个 lane 都要求32bit；source type/shape 保持不变。未使用的输入和返回 formal
+同样检查。Source-aware retarget 使用所提供 AST 的 context，AST 销毁后使用 owned
+region；已知 legacy context 不应用该下限，缺失 context 在 partial checking 中延后。
+普通小宽度/predicate register 与传给匹配 `.param` formal 的小 actual 仍合法，
+完整边界见[parameter 声明](parameter_declarations.md)。
+
+局部 `ResolvedCallPrototypeContract` 描述 device-call interface，因此 owned
+`signature.is_entry` 必须保持 false。AST-free module validation 即使在 prototype
+未使用时也检查该 role，包括 type/width 其他条件均合法的 return-only interface。
+Module/function copy 与 instruction clone 保留 prototype identity。该 metadata-integrity
+规则独立于 formal ABI width、feature availability 与 supplied-source association；
+不重建 source spelling/history 来检查该 flag。
+
+## 静态 recursion 边界
+
+已知 local call cycle 要求 PTX 2.0 与 SM 20；acyclic device function 在支持的旧 context
+仍合法。两个 module validator 均重算私有 current typed may-call graph，按 canonical local
+device definition 建图，包含 unused definition。实际 direct call 是 exact edge；只有实际
+consumed 且验证过的 finite `.calltargets`/call-table alternative 才是 candidate edge。
+Unused metadata 与 implicit-zero table tail 不建边。依赖 finite alternative 的 cycle 是
+statically possible recursion，不证明会执行。Predicated call 仍是 may edge；不做 CFG、
+predicate feasibility、stack execution 或 dataflow analysis。
+
+参与 caller 使用 selected region，source-aware API 则使用 supplied active context。
+已知旧 PTX 或可识别低 SM 独立拒绝，不能被另一缺失事实遮蔽；只有未知 prerequisite 可在
+`AvailableContext` 中延后。Strict context 与 unknown-target 行为不变。Prototype-only、external
+callee 和 dynamic signature-only call 是 open boundary；不伪造返边，也不因 strict 而一律拒绝。
+成功只表示 modeled check 通过，不是跨这些 open edge 的 whole-program acyclic 证明。
+
+
+## 历史 entry body input
+
+PTX 1.0–1.3 entry body `.param` 在唯一 `parameter_declarations` 表中保留
+`LegacyEntryInput` role，以及 scope/group/array identity。Signature 仍只描述语法
+header ABI，空 header 不等于没有 host input；lexical metadata 顺序不分配 launch
+地址或 packing。只有 entry body role 歧义才要求 version 并报告
+`MissingValidationContext`，不按 SM 猜 role。已 typed module 缺 context 时保留 role。
+
+`ResolvedSymbolRef::parameter_role` 从 actual record 同步派生，structural kind 仍为
+`CallParameter`。Address/MOV/tensor 共用 input/return/call-slot 方向映射。两个
+validator 都在 context skip 前重连当前 record/cache，检查 readonly、entry frame、
+direct call-actual 排除、shape/scope 和 logical capacity。Legacy LD 不要求 call
+return staging，MOV 保持 `.param`；现代 BodyLocal staging 不变。Checked logical
+总量使用 per-member bytes 乘 compact count，检查32764-byte已知 global ceiling，
+不重复乘 axes/vector，也不套用1.4的256-byte header cap。
+`D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` 对精确历史 physical launch packing
+仍 qualified。详见[parameter contract](parameter_declarations.md)的窗口与边界。
+
+
+### 间接函数地址 carrier
+
+间接函数地址使用 General `.reg` 的 effective scalar，其 element type 必须是
+fundamental signed、unsigned 或 bit 的 8、16、32、64 位类型。floating、packed/alternate
+instruction-only type、`.b128`、predicate、special register 和 whole vector 不满足此 role。
+普通 selected component 使用同一 element-type 规则，并保留真实 owner identity、selector
+range 及 vector declaration 的 128 位上限。源码 call component 与已构造的 public register-component value 使用同一 invariant。
+
+这是从 [PTX §6.4.1](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#addresses-as-operands)
+与 [§9.7.13.5](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-instructions-call)
+的函数地址 register 要求作出的 **derived** address-carrier 解释，不声称 `call` 显式枚举
+全部十二种 carrier type。32/64 位 address value 不构成 register 至少 32 位的下限，
+也不要求 `.address_size 64` 必须使用 64 位 register。类型资格不证明窄 register 的实际值
+能表示函数地址，不计算 linked code address，也不证明 runtime target-set membership。
+
+source resolution、direct typed check 与两种 module validation API 都在缺失 version/target
+导致 defer 之前检查此 role。owned 检查重连真实 symbol declaration，拒绝虚假或删除的
+类型 cache；合法 supplied source 不能掩盖非法 current data。generated view 借用实际 active
+RegRef alternative，不把 metadata/table alternative 重新解释为 register。完全未知的
+standalone fact 保持原有 unknown/context 行为。formal input/return ABI 与普通 floating
+call input 的规则继续独立。
+
+
+### call 的 selected scalar operand
+
+call 输入及唯一的括号内返回值支持普通 `.xyzw/.rgba` register selection。
+target 支持 identifier 或显式选中的 indirect register；末尾 prototype/target-set/table
+metadata 仍仅接受 identifier。匿名 brace actual 与 direct function projection 仍不支持。
+`ResolvedCallParameterRef::component` 是默认 disengaged 的 owning optional；null
+保留 whole-variable 合同及旧 aggregate construction。
+
+源码及两种 owned-module validation 都先核对真实 General `.reg` v2/v4 声明、
+SymbolId、parameterized member、element type/state、physical owner 的 128 位上限
+以及显式 selector provenance，然后才向既有 call ABI comparison 提供 effective scalar。
+array、pointer、size 与 alignment 约束不会被抹去。删除或伪造 cache 不能掩盖已知声明。
+返回值的 `WithLocs` 保留外层括号 range；selected leaf 必须位于 group 和 instruction 内。
+observer 的值拷贝、module copy 和 instruction clone 都拥有自己的 selection。
+
+modern register formal 的最小宽度仍是 formal ABI 规则，不是全局 component 下限；
+合法且匹配的 subword `.param` formal 沿用既有 scalar actual 策略。whole named-vector
+actual、constant 与 parameter-memory staging 保持原规则。这是 derived scalar-element
+inheritance，不模拟 pointer 执行，不插入 hidden move 或 synthetic scalar declaration。
+满足当前规则的 coherent edit 仍合法；written source identity 独立检查。公共 CST/AST
+variant 和 owning call reference 要求 producer 与 consumer 一起 rebuild；instruction
+schema、generated layout 和 callback 不变。

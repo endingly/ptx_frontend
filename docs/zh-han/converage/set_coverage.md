@@ -22,7 +22,7 @@ Half/bfloat form 继续使用 typed comparison 与可选 Boolean source，但 de
 
 | Result `.dtype` | Source `.stype` | 最低 PTX / SM | `.ftz` |
 | --- | --- | --- | --- |
-| `.f16` | `.b16/.b32/.b64`、16/32/64 位整数、`.f16/.f32/.f64` | 4.2 / 53 | 仅 `.f16/.f32` source |
+| `.f16` | `.b16/.b32/.b64`、16/32/64 位整数、`.f16/.f32/.f64` | 4.2 / 53 | 所列全部 source 均可选 |
 | `.bf16` | 相同 source 列表 | 7.8 / 90 | 不允许 |
 | `.u16/.s16/.u32/.s32` | `.f16` | 6.5 / 53 | 可选 |
 | `.u16/.s16/.u32/.s32` | `.bf16` | 7.8 / 90 | 不允许 |
@@ -30,10 +30,39 @@ Half/bfloat form 继续使用 typed comparison 与可选 Boolean source，但 de
 | `.u32/.s32` | `.f16x2` | 6.5 / 53 | 可选 |
 | `.bf16x2/.u32/.s32` | `.bf16x2` | 7.8 / 90 | 不允许 |
 
-Bit source 只允许 `.eq/.ne`；有符号及无符号整数 source 允许 `.eq/.ne/.lt/.le/.gt/.ge`；浮点与 packed source 还允许 `.equ/.neu/.ltu/.leu/.gtu/.geu/.num/.nan`。Ordinary unsigned 的 `.lo/.ls/.hi/.hs` 别名不适用于这些 form。`ptxas` 13.3 对 bit、整数和 `.f64` source 的 `.ftz` 报错，包括 `.f16` result；因此对应 generated alternative 不允许 `.ftz`。
+Bit source 只允许 `.eq/.ne`；有符号及无符号整数 source 允许 `.eq/.ne/.lt/.le/.gt/.ge`；浮点与 packed source 还允许 `.equ/.neu/.ltu/.leu/.gtu/.geu/.num/.nan`。Ordinary unsigned 的 `.lo/.ls/.hi/.hs` 别名不适用于这些 form。Specific §9.7.7.1 的 F16-result syntax 允许整个所列 source domain 可选 `.ftz`，包括 Bit、整数与 F64 source。Ordinary §9.7.6.1 SET 仍保留仅 F32 source 可带 FTZ 的条件；BF16／BF16x2 production 仍不接受 FTZ。早期 supplemental `ptxas` 13.3 样例拒绝其中部分 F16-result form；这是 tool divergence，不作为 permission oracle。前端记录请求的 flag，不执行 comparison 或 flush 数值。
 
-标量 `.f16` source 接受 `.f16` 或兼容的 `.b16` register；标量 `.bf16` source 要求 exact `.b16`。Packed `.f16x2` source 接受 `.f16x2` 或兼容的 `.b32`，`.bf16x2` source 则要求 exact `.b32`。Native `.f16x2` result 接受 `.f16x2` 或 `.b32`；native `.bf16x2` result 要求 `.b32`。整数 result 使用宽度兼容的 bit 或整数 register container；packed-source 整数 result 还接受同宽度 `.f16x2` 物理 register。Half/bfloat source 不接受 immediate；普通 bit、整数、`.f32` 和 `.f64` source cohort 在合法场景下保留 register-or-immediate operand。
+标量 `.f16` source 接受 `.f16` 或兼容的 `.b16` register，以及 numeric floating constant；整数结果的标量 `.bf16` source 接受既有 `.b16` register 或 numeric BF16 floating constant。Packed `.f16x2` source 接受 `.f16x2` 或兼容的 `.b32`，`.bf16x2` source 则要求 exact `.b32`。Native `.f16x2` result 接受 `.f16x2` 或 `.b32`；native `.bf16x2` result 要求 `.b32`。整数 result 使用宽度兼容的 bit 或整数 register container。对于 packed-source 整数 result，保留所写逻辑 `.dtype` 为 `.u32` 或 `.s32`：两者的 destination 声明集合均严格为 `.b32/.s32/.u32`，packed result 宽度固定为 32 位。`.f32`、原生 `.f16x2`、更窄／更宽寄存器、predicate 及完整向量不能充当该 scalar 整数结果的 destination。该契约与原生浮点 result SET 及 source-format 载体要求相互独立。Scalar F16 接受 numeric floating immediate；其他 half/bfloat producer 边界见下文；普通 bit、整数、`.f32` 和 `.f64` source cohort 在合法场景下保留 register-or-immediate operand。
 
 [Half/bfloat C++ 测试](../../../submod/resolved_ir/test/test_set_half_completeness.cpp) 覆盖全部 generated alternative、target 边界、非法 control/container、数值 immediate、owned IR 与变异的 typed 字段。[Python spec 测试](../../../python/tests/spec/test_set_completeness.py) 检查普通与 half/bfloat descriptor domain。安装后的 [consumer](../../../examples/conversion_consumer/main.cpp) 使用 public generated representation。
 
 C++ package 0.2.0 将原 generated `Set::EqU32U32` 与 `Set::LtAndF32S32` 分支替换为 typed ordinary family：`Bit`、`Signed`、`Unsigned`、`Float`、`FloatF64`，以及相应的 `Boolean` 分支。Consumer 应选择新分支，并读取 `dtype`/`stype` 字段判断具体 type。这是 source 与 binary API 变更；installed C++ consumer 需用新 header 和 library 重新构建。
+
+Scalar F16 source field 除既有 F16/B16 register 外，也接受转换为 binary16 的 numeric floating constant。Boolean predicate source 与所有 result carrier 契约不变；scalar BF16 整数结果 source 同样接受 numeric floating constant；packed converter 边界仍独立。Integer-origin constant 不是 numeric F16 source。
+
+既有六个 class `SetHalfF16Bit`、`SetHalfF16BitBoolean`、`SetHalfF16Integer`、`SetHalfF16IntegerBoolean`、`SetHalfF16F64`、`SetHalfF16F64Boolean` 现在在原 modifier 位置暴露 instance `WithLocs<bool> ftz`。省略时保存 false 与空 locations；显式 `.ftz` 保存 true 与 token range。True 而无 location，或 false 却保留 token location，均不一致。Copy／clone 在 AST 销毁后仍拥有 flag 与 location；合法当前 typed flag edit 独立于保留的 lexical history。这六个 generated object layout 改变 source／binary ABI，consumer 需使用匹配 header 和 library 重新构建。Operand、comparator／Boolean domain、modifier order 及 PTX4.2／SM53 minimum 保持不变。
+
+### 普通 BF16 FMA/SET 源成员
+
+`FmaMixedF32Bf16`、`SetHalfIntegerBf16` 与
+`SetHalfIntegerBf16Boolean` 的 `src1`、`src2` 现为
+`WithLocs<RegOrImm>`。既有类名、identity 与字段顺序保持不变；C++ consumer
+须以匹配的 header/library 重建，并对 `.value` 使用
+`std::get_if<ResolvedRegisterRef>` 或 `std::get_if<ResolvedImmediate>`。
+
+这六个源接受 numeric Float literal 与 Float-result expression。既有逻辑 BF16
+converter 将 `1.5`、`1.0+0.5`、`0d3ff8000000000000` 与 `0f3fc00000`
+转换为 BF16 类型及 `0x3fc0` word。FMA 使用已固定的 `input_type` modifier，
+SET 使用固定逻辑 BF16。Integer literal 与 Integer-result expression 仍被排除，
+包括值为零的 optional integer-origin；此授权不增加 integer-immediate policy。
+实际寄存器声明仍仅接受普通标量 `.b16` carrier；SameWidth 不授权
+`.f16/.u16/.s16`、special register、整体向量或 instruction-only `.bf16` 独立声明。
+
+Owned validation 检查当前逻辑类型、低十六位与 flags，不要求 Float lexical
+history。释放源码/AST、copy、assignment 或 clone 后，一致的 canonical 当前
+word 编辑仍可合法。保留的错误类型、高位、integer origin 或 negative metadata
+仍为错误。Source association 独立核对 supplied AST 与 retained syntax identity。
+此标量 numeric conversion 不增加 packed pair/splat 或截断规则；packed exact-word
+与 constructor policy 仍相互独立。不执行指令 rounding、saturation、comparison、
+predicate combination 或运行语义；target、destination、其他 source 及全部 packed
+SET form 的契约保持不变。

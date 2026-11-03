@@ -448,7 +448,8 @@ int main() {
                       .explicit_alignment == std::optional<std::uint64_t>{8} &&
               independent_entry->opaque_entry_parameters[1].kind ==
                   OpaqueResourceKind::Sampler &&
-              !independent_entry->opaque_entry_parameters[0].is_array,
+              independent_entry->opaque_entry_parameters[0]
+                  .array_extents.empty(),
           "opaque entry inputs retain kinds, explicit alignment, and shape"))
     return 17;
 

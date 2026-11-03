@@ -1,7 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <expected>
 #include <optional>
+#include <span>
 #include <string_view>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
@@ -9,20 +11,69 @@
 
 namespace ptx_frontend::resolved_ir::detail {
 
-/** Decode an AST immediate without borrowing it beyond the returned value. */
+/** Select an Element register type domain; callers retain width/class/provenance checks. */
+inline bool element_register_type_allowed(
+    ScalarType actual, ScalarType expected,
+    base::ScalarTypeSizePolicy width_policy,
+    std::span<const ScalarType> allowed_register_types) {
+  return allowed_register_types.empty()
+             ? base::scalar_types_compatible(actual, expected, width_policy)
+             : std::ranges::find(allowed_register_types, actual) !=
+                   allowed_register_types.end();
+}
+
+/** Validate the explicit integer alternative independently of the actual source. */
+inline bool valid_integer_immediate_type_policy(
+    const checker::OperandDescriptor& binding) {
+  if (!binding.integer_immediate_type)
+    return true;
+  return binding.type_expression.kind ==
+             checker::OperandTypeExpressionKind::FixedScalar &&
+         ((*binding.integer_immediate_type == ScalarType::B16 &&
+           (binding.type_expression.fixed_scalar_type == ScalarType::F16 ||
+            binding.type_expression.fixed_scalar_type == ScalarType::BF16)) ||
+          (*binding.integer_immediate_type == ScalarType::B32 &&
+           (binding.type_expression.fixed_scalar_type == ScalarType::F16x2 ||
+            binding.type_expression.fixed_scalar_type ==
+                ScalarType::BF16x2))) &&
+         binding.role == checker::OperandRole::Source &&
+         binding.access == checker::OperandAccess::Read &&
+         binding.allowed_shapes == (checker::OperandShape::Register |
+                                    checker::OperandShape::Immediate) &&
+         binding.minimum_elements == 0 && binding.maximum_elements == 0 &&
+         !binding.source_value_vector;
+}
+
+/** Resolve a real ordinary register owner before any call ABI projection. */
+std::expected<WithLocs<ResolvedRegisterRef>, ResolveDiagnostic>
+resolve_register(const syntax_ast::AstOperand& operand,
+                 const ResolveContext* context);
+
+/** Require retained integer result provenance before an integer-only coercion. */
+std::expected<void, ResolveDiagnostic> require_integer_source(
+    const ResolvedImmediate& value, SourceRange range);
+
+/** Decode one literal without borrowing syntax or reclassifying direct float roots.
+ * The integer alternative is prevalidated by its binding; unrelated callers omit it.
+ */
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     const syntax_ast::AstImmediate& immediate, ScalarType type,
-    bool require_target_range = false);
+    bool require_target_range = false,
+    std::optional<ScalarType> integer_immediate_type = std::nullopt);
 
-/** Convert an evaluated numeric source with the existing operand width/range policy. */
+/** Convert a once-evaluated category under the existing width/range policy.
+ * A prevalidated integer alternative selects only IntegerConstantValue results.
+ */
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_value(
     const declaration_semantics::NumericConstantValue& value, SourceRange range,
-    ScalarType type, bool require_target_range = false);
+    ScalarType type, bool require_target_range = false,
+    std::optional<ScalarType> integer_immediate_type = std::nullopt);
 
 /** Evaluate an owned source expression, then apply the operand conversion. */
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     const syntax_ast::AstConstantOperand& operand, ScalarType type,
-    bool require_target_range = false);
+    bool require_target_range = false,
+    std::optional<ScalarType> integer_immediate_type = std::nullopt);
 
 /** Resolve either literal or expression numeric syntax. */
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
@@ -41,7 +92,8 @@ bool is_numeric_operand(const syntax_ast::AstOperand& operand);
 /** Resolve numeric source syntax held in the shared operand variant. */
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_operand(
     const syntax_ast::AstOperand& operand, ScalarType type,
-    bool require_target_range = false);
+    bool require_target_range = false,
+    std::optional<ScalarType> integer_immediate_type = std::nullopt);
 
 /** Resolve a predicate name against an optional declaration context; no borrow escapes. */
 std::expected<WithLocs<ResolvedPredicate>, ResolveDiagnostic>

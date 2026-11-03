@@ -22,8 +22,9 @@ AST expose dedicated nodes:
 
 CST retains parentheses, commas within groups, and commas between operands.
 Syntax AST drops punctuation but retains group roles and source ranges. A
-return group contains exactly one identifier. An input group may be empty and
-currently contains identifiers or immediates.
+return group contains exactly one identifier or explicit ordinary register member.
+An input group may be empty and contains identifiers, selected members or existing
+numeric operands.
 
 ## Binding
 
@@ -93,7 +94,7 @@ formal and reports literal-kind or overflow errors at that literal. The check
 belongs to module resolution, not the generated single-instruction checker.
 
 `ResolvedIndirectCallee` represents one indirect-call component: a
-non-predicate `.reg` target, a function-local metadata label, or a call-table
+scalar General integer/bit `.reg` target, a function-local metadata label, or a call-table
 reference described below. In a module, a metadata label retains its `SymbolId`
 and whether it names `.callprototype` or
 `.calltargets`; standalone resolution retains only its spelling. It carries no
@@ -159,6 +160,12 @@ at module scope is rejected. Binding owns the local label. Current indirect-call
 layouts consume that bound prototype identity and reuse the shared call ABI
 contract; see [Resolved IR](resolved_ir_design.md) for entry points and limits.
 
+Current owned and supplied prototype contracts independently enforce base
+PTX 2.1 / SM 20, `.noreturn` PTX 6.4 / SM 30, and both ABI suffixes PTX 9.0 /
+SM 80, including independently known partial context. Nested and unused prototypes
+are included; ordinary instruction availability and runtime ABI behavior are not
+expanded by these checks.
+
 ## Function-local `.calltargets` syntax
 
 PTX 9.3 `.calltargets` is likewise a dedicated function-body CST/AST node.
@@ -168,6 +175,15 @@ list, a trailing comma, and use without a local label or at module scope.
 Declaration semantics requires every member to be a prior device `.func`,
 diagnoses duplicates using individual member ranges, and requires equal
 canonical signatures.
+
+`.branchtargets` and `.calltargets` each require PTX 2.1 and SM 20, including
+unused declarations in nested blocks. AST-free validation uses the function's
+selected owned region; source-aware validation checks both current records and
+supplied typed declarations with the supplied active context. Known version and
+recognized profile minima are checked independently before full-context gates;
+only unknown prerequisites defer under `AvailableContext`. Strict context and
+unknown-target diagnostics, nonneutral payload identity, member binding,
+signatures and declaration-order checks retain their existing contracts.
 
 ## Function-local `.branchtargets` syntax
 
@@ -194,7 +210,128 @@ Only function-local `.param` variables are call staging. Their `st.param` input
 stores must be unpredicated and form the contiguous block immediately before a
 call that passes the same variable; their `ld.param` return loads must be
 unpredicated and form the contiguous block immediately after a call returning
-the same variable. Labels, declarations, and other instructions break a block.
+the same variable. Nonexecuting declarations, labels, metadata, and lexical
+braces are transparent to instruction adjacency. Intervening executable
+instructions break a block; binding and scope rules still require the same
+visible parameter object/member. These local checks do not infer runtime path
+initialization.
 `call` itself may be predicated. `.uni` is retained as the programmer's
 uniformity assertion, so the frontend does not attempt unprovable static
 uniformity analysis or reject a predicated direct `call.uni`.
+
+Register-state device and call-prototype formals have a separate default-ABI
+minimum: when known PTX >=2.0 and the active recognized target is SM20+, the whole
+scalar/vector value must be at least32bits. This measures explicit vector total
+width, not each lane, and preserves source type/shape. It applies to unused input
+and return formals too, with the supplied AST context for source-aware retargeting
+and owned regions after AST death. Known legacy contexts disable the minimum;
+missing context defers it under partial checking. Ordinary small/predicate registers
+and compatible small actuals to `.param` formals remain legal. See
+[parameter declarations](parameter_declarations.md) for the complete boundary.
+
+A local `ResolvedCallPrototypeContract` describes a device-call interface, so its
+owned `signature.is_entry` must remain false. AST-free module validation checks
+this role even when the prototype is unused, including return-only interfaces
+whose types and widths are otherwise valid. Module/function copies and instruction
+clones preserve prototype identity. This metadata-integrity rule is independent
+of formal ABI width, feature availability and supplied-source association; no
+source spelling/history is reconstructed to validate the flag.
+
+## Static recursion boundary
+
+Known local call cycles require PTX 2.0 and SM 20. Acyclic device functions remain
+legal on supported older contexts. Both module validators recompute a private
+current typed may-call graph over canonical local device definitions, including
+unused definitions. Actual direct calls create exact edges; only consumed,
+validated finite `.calltargets` or call-table alternatives create candidate edges.
+Unused metadata and implicit zero table tails create no edges. A cycle requiring
+a finite alternative is statically possible recursion, not proof it executes.
+Predicated calls remain may-call edges; no CFG, predicate feasibility, stack
+execution or dataflow analysis is performed.
+
+Each participating caller uses its selected region, or supplied active context
+in the source-aware API. Known old PTX or recognized low SM rejects independently
+of the other missing fact; unknown prerequisites alone may defer in
+`AvailableContext`. Strict context and unknown-target handling remain unchanged.
+Prototype-only/external callees and dynamic signature-only calls are open
+boundaries. They gain no fabricated return edges and no blanket strict rejection;
+success means modeled checks passed, not whole-program acyclicity across them.
+
+
+## Historical entry body inputs
+
+PTX 1.0–1.3 entry body `.param` declarations have the owning `LegacyEntryInput`
+role in the sole `parameter_declarations` table, including scoped/group/array
+identities. The function signature remains syntactic header ABI only, so an empty
+header signature does not imply no host inputs. Lexical metadata order assigns
+no launch addresses or packing. Resolution needs a version only for ambiguous
+entry body roles; it reports `MissingValidationContext` without guessing from SM.
+Typed modules retain their role when context is missing.
+
+The optional `ResolvedSymbolRef::parameter_role` cache is derived from the actual
+record while keeping structural `CallParameter`. Address/MOV/tensor projections
+share input/return/call-slot directions. Both validators rejoin current records
+and caches and enforce read-only entry-frame access, direct call-actual exclusion,
+shape/scope and logical capacity before context skips. Legacy input LD is not
+call-return staging; MOV preserves `.param`. Modern BodyLocal staging is unchanged.
+The checked sum of per-member bytes times compact count has the known32764-byte
+global ceiling; no double axes/vector multiplication or invented256 legacy cap.
+`D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` remains qualified for exact historical
+physical launch packing. See the [parameter contract](parameter_declarations.md)
+for context windows, intrinsic guarantees and preserved limitations.
+
+
+### Indirect function-address carriers
+
+An indirect function address uses a General `.reg` effective scalar with a
+fundamental signed, unsigned or bit type of 8, 16, 32 or 64 bits. Floating types,
+packed/alternate instruction-only types, `.b128`, predicates, special registers
+and whole vectors do not satisfy this role. A selected ordinary component uses
+the same element-type rule and retains its real owner identity, selector ranges
+and the 128-bit vector-declaration limit. Written call components use the same invariant as typed public register-component values.
+
+This is a **derived** address-carrier interpretation of
+[PTX §6.4.1](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#addresses-as-operands)
+and the function-address-register requirement in
+[§9.7.13.5](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-instructions-call),
+not a claim that `call` explicitly enumerates all twelve carrier types. Address
+value widths of 32/64 bits do not impose a 32-bit register minimum or require a
+64-bit register under `.address_size 64`. Eligibility does not prove that a
+narrow register actually contains a representable function address, a linked
+code address or a member of a runtime target set.
+
+Source resolution, direct typed checks and both module validation APIs apply
+the role before missing version/target can defer it. Owned checks rejoin actual
+symbol declarations and reject lying or erased type caches; valid supplied
+source cannot mask bad current data. Generated views borrow the active RegRef
+alternative without reinterpreting metadata/table alternatives. Completely
+unknown standalone facts retain their existing unknown/context behavior.
+Formal input/return ABI rules and ordinary floating call inputs remain separate.
+
+
+### Selected scalar call operands
+
+Call inputs and the single parenthesized return accept ordinary `.xyzw/.rgba`
+register selections. The target accepts an identifier or an explicitly selected
+indirect register; final prototype/target-set/table metadata stays identifier-only.
+Anonymous brace actuals and direct function projections remain unsupported.
+`ResolvedCallParameterRef::component` is a default-disengaged owning optional;
+null preserves the whole-variable contract and old aggregate construction.
+
+Source and both owned-module validation routes first join the real General
+`.reg` v2/v4 declaration, SymbolId, parameterized member, element type/state,
+physical 128-bit owner bound and explicit selector provenance. Only then does
+the existing call ABI comparison see an effective scalar. Arrays, pointer,
+size and alignment constraints are retained. Deleting or contradicting a cache
+cannot hide a known declaration. The return's outer parenthesized range stays
+in `WithLocs`; its selected leaf remains contained inside the group and instruction.
+Copied observer values, module copies and instruction clones own the selection.
+
+Modern register-formal minimum width remains a formal ABI rule, not a global
+component minimum: matching legal subword `.param` formals use the existing
+scalar actual policy. Whole named-vector actuals, constants and parameter-memory
+staging retain their existing rules. This is derived scalar-element inheritance,
+not pointer execution, hidden moves or synthetic scalar declarations. Coherent
+current edits remain legal; written source identity is checked independently.
+Public CST/AST variants and the owning call reference require matching producer
+and consumer rebuilds. No instruction schema, generated layout or callback changes.

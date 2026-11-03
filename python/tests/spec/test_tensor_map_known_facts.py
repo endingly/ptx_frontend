@@ -167,6 +167,17 @@ class TensorDestinationNormalizationTests(unittest.TestCase):
                 completion=AsyncCompletionKind.BULK_GROUP), mode)
 
 
+# These complete caller-supported witnesses still leave their whole relation unresolved.
+_COMPLETE_WHOLE_RELATION_LABELS = frozenset({
+    "R17 known zero still lacks box transform",
+    "R18 rank3 signed endpoints",
+    "R21 five coordinate roles and box height one",
+    "R19 complete caller-supported pixel relation",
+    "R20 complete caller-supported W relation",
+    "R20 complete caller-supported W128 relation",
+})
+
+
 class TensorMapKnownFactsTests(unittest.TestCase):
     """Probe each sourced predicate and its nearest missing/invalid neighbor."""
 
@@ -640,6 +651,101 @@ class TensorMapKnownFactsTests(unittest.TestCase):
              FactStatus.UNRESOLVED),
         ))
 
+    def test_complete_whole_relation_inputs(self) -> None:
+        """Supply missing pixel and W facts without asserting the whole relation."""
+
+        im2col = context(mode=TensorAccessMode.IM2COL, rank=4,
+                         coordinates=(ConvertedInteger(1), ConvertedInteger(2),
+                                      ConvertedInteger(3), ConvertedInteger(4)),
+                         info=(ConvertedInteger(1), ConvertedInteger(1)))
+        pixels = facts_at_rank(
+            4, global_strides_bytes=(64,) * 3,
+            tensor_strides_bytes=(64,) * 3,
+            im2col_spatial_box_elements=(1, 1),
+            im2col_lower_edge_offsets=(0, 0),
+            im2col_upper_edge_offsets=(0, 0),
+            pixels_per_column_elements=4, channels_per_pixel_elements=4,
+            available_ndhw_pixels=16, fill=field("zero"),
+        )
+        w = context(mode=TensorAccessMode.IM2COL_W, rank=5,
+                    coordinates=(ConvertedInteger(1),) * 5,
+                    info=(ConvertedInteger(1), ConvertedInteger(1)))
+        width = facts_at_rank(
+            5, global_strides_bytes=(64,) * 4,
+            tensor_strides_bytes=(64,) * 4,
+            im2col_spatial_box_elements=(1, 1, 4),
+            im2col_lower_edge_offsets=(0, 0, 0),
+            im2col_upper_edge_offsets=(0, 0, 0),
+            w_box_elements=4, w_lower_edge_offset=0, w_upper_edge_offset=0,
+            pixels_per_column_elements=4, channels_per_pixel_elements=4,
+            available_ndhw_pixels=16, fill=field("zero"),
+            swizzle=field("bytes64", 2), inner_box_bytes=64,
+            inner_tensor_bytes=64,
+        )
+        w128 = replace(w, mode=TensorAccessMode.IM2COL_W128)
+        self.assert_matrix((
+            ("R19 complete caller-supported pixel relation", R.IM2COL_INFO,
+             im2col, pixels, FactStatus.UNRESOLVED),
+            ("R19 complete facts with one info bound violation", R.IM2COL_INFO,
+             replace(im2col, info=(ConvertedInteger(256), ConvertedInteger(1))),
+             pixels, FactStatus.VIOLATED),
+            ("R19 complete facts with information absent", R.IM2COL_INFO,
+             replace(im2col, info=None), pixels, FactStatus.UNRESOLVED),
+            ("R20 complete caller-supported W relation", R.W_PROFILE,
+             w, width, FactStatus.UNRESOLVED),
+            ("R20 complete W facts with one halo violation", R.W_PROFILE,
+             replace(w, info=(ConvertedInteger(512), ConvertedInteger(1))),
+             width, FactStatus.VIOLATED),
+            ("R20 complete W facts with spatial box absent", R.W_PROFILE,
+             w, replace(width, im2col_spatial_box_elements=None),
+             FactStatus.UNRESOLVED),
+            ("R20 complete caller-supported W128 relation", R.W_PROFILE,
+             w128, width, FactStatus.UNRESOLVED),
+            ("R20 complete W128 facts with one halo violation", R.W_PROFILE,
+             replace(w128, info=(ConvertedInteger(32), ConvertedInteger(1))),
+             width, FactStatus.VIOLATED),
+        ))
+
+    def test_complete_whole_relations_have_no_local_counterexample(self) -> None:
+        """Distinguish no known violation from discharging a whole obligation."""
+
+        selected_rows = [row for row in _matrix_cases()
+                         if row[0] in _COMPLETE_WHOLE_RELATION_LABELS]
+        self.assertEqual(len(selected_rows), 6)
+        for label, rule, selected, supplied, expected in selected_rows:
+            with self.subTest(label=label):
+                self.assertIs(expected, FactStatus.UNRESOLVED)
+                for name in ("full_dimensions_elements", "tiled_box_elements",
+                             "traversal_steps_elements"):
+                    entries = getattr(supplied, name)
+                    self.assertIsNotNone(entries)
+                    self.assertEqual(len(entries), selected.rank)
+                    self.assertTrue(all(value is not None for value in entries))
+                self.assertIsNotNone(selected.coordinates)
+                self.assertTrue(all(value.value is not None
+                                    for value in selected.coordinates))
+                if rule is R.IM2COL_SHAPE:
+                    self.assertIsNotNone(supplied.im2col_spatial_box_elements)
+                    self.assertIsNotNone(supplied.im2col_lower_edge_offsets)
+                    self.assertIsNotNone(supplied.im2col_upper_edge_offsets)
+                if rule in (R.IM2COL_INFO, R.W_PROFILE):
+                    self.assertIsNotNone(selected.info)
+                    self.assertIsNotNone(supplied.pixels_per_column_elements)
+                    self.assertIsNotNone(supplied.channels_per_pixel_elements)
+                    self.assertIsNotNone(supplied.available_ndhw_pixels)
+                    self.assertIsNotNone(supplied.fill)
+                if rule is R.W_PROFILE:
+                    self.assertIsNotNone(supplied.w_box_elements)
+                    self.assertIsNotNone(supplied.w_lower_edge_offset)
+                    self.assertIsNotNone(supplied.w_upper_edge_offset)
+                report = validate_tensor_access_facts(selected, supplied)
+                self.assertFalse(report.diagnostics)
+                self.assertFalse(any(item.status is FactStatus.VIOLATED
+                                     for item in report.outcomes))
+                self.assertIs(report.outcome(rule).status, FactStatus.UNRESOLVED)
+                self.assertEqual(tuple(item.rule for item in report.outcomes),
+                                 tuple(R))
+
     def test_catalog_is_closed_and_renderer_uses_same_rows(self) -> None:
         """Prevent a prepared generator catalog from drifting from the query."""
 
@@ -1092,8 +1198,9 @@ def _matrix_cases() -> tuple[tuple[str, R, TensorAccessContext,
     collector.test_rule_matrix_01_08()
     collector.test_rule_matrix_09_16()
     collector.test_rule_matrix_17_22()
-    if len(rows) != 134 or {rule for _, rule, _, _, _ in rows} != set(R):
-        raise ValueError("literal parity matrix must cover 134 cells and 22 rules")
+    collector.test_complete_whole_relation_inputs()
+    if len(rows) != 142 or {rule for _, rule, _, _, _ in rows} != set(R):
+        raise ValueError("literal parity matrix must cover 142 cells and 22 rules")
     return tuple(rows)
 
 
@@ -1220,9 +1327,8 @@ def render_cpp_known_fact_parity_fixtures() -> str:
     """Prepare C++ assertions from independent literal Python fixture inputs.
 
     This text is test-only, generated as a private include outside the
-    production plan. Its 134 expected cells retain all 128 baseline inputs,
-    correct three contradictory-use outcomes, and add three valid N/A controls
-    plus three reduction boundaries.
+    production plan. Its 142 expected cells preserve the 134
+    established inputs and add eight complete-fact and causal control cells.
     """
 
     blocks = ["/** Compare literal cross-language rule expectations. */",
@@ -1237,8 +1343,16 @@ def render_cpp_known_fact_parity_fixtures() -> str:
             "    ASSERT_NE(item, nullptr);",
             "    EXPECT_EQ(item->status, TensorKnownFactStatus::" +
             _cpp_pascal(expected.name) + ");",
-            "  }",
         ))
+        if label in _COMPLETE_WHOLE_RELATION_LABELS:
+            blocks.extend((
+                "    EXPECT_TRUE(report.diagnostics.empty());",
+                "    EXPECT_FALSE(std::any_of(report.outcomes.begin(),",
+                "        report.outcomes.end(), [](const TensorKnownFactOutcome& row) {",
+                "      return row.status == TensorKnownFactStatus::Violated;",
+                "    }));",
+            ))
+        blocks.append("  }")
     blocks.append("}")
     blocks.extend((
         "/** Diagnose typed malformed analogs without losing independent rows. */",

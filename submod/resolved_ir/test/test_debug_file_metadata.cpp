@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
+#include <iostream>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -69,6 +71,7 @@ TEST(DebugFileMetadata, RetainsPayloadAndReferencesAfterSourceDestruction) {
 .file 02 "same\\name.cu"
 .section .debug_str { name: .b8 0; };
 .entry k() {
+.loc 0x2U 1 0
 .loc 1 1 0, function_name name, inlined_at 0x2U 1 0
 ret;
 }
@@ -103,10 +106,10 @@ ret;
       continue;
     ASSERT_TRUE(reference.target);
     EXPECT_EQ(reference.target->symbol,
-              references == 0 ? first.symbol_id : second.symbol_id);
+              references == 1 ? first.symbol_id : second.symbol_id);
     ++references;
   }
-  EXPECT_EQ(references, 2u);
+  EXPECT_EQ(references, 3u);
   EXPECT_TRUE(validateModule(*module));
   EXPECT_TRUE(
       validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
@@ -366,6 +369,363 @@ TEST(DebugFileMetadata, RejectsUnresolvedBasicAndInlineReferences) {
     const auto ast = parser.parseModule();
     ASSERT_TRUE(ast);
     EXPECT_FALSE(resolveAndValidateModule(*ast));
+  }
+}
+
+/** Preserve a single raw size leaf without adding any instruction availability dependency. */
+std::string fileSizeSource(
+    std::string_view size,
+    std::string_view prefix = ".version 9.3\n.target sm_90\n") {
+  return std::string(prefix) + ".file 1 \"a.cu\", 0, " + std::string(size) +
+         "\n.entry k() { .loc 1 1 0 ret; }\n";
+}
+
+/** Return a complete draft after its source, parser and AST have been destroyed. */
+std::optional<ResolvedModule> fileSizeOwned(std::string source) {
+  PtxSyntaxParser parser(source);
+  const auto ast = parser.parseModule();
+  EXPECT_TRUE(ast && ast.diagnostics.empty());
+  if (!ast || !ast.diagnostics.empty())
+    return std::nullopt;
+  auto module = resolveModuleOnly(*ast);
+  EXPECT_TRUE(module);
+  if (!module)
+    return std::nullopt;
+  return std::move(*module);
+}
+
+/** Require the actual size-domain diagnostic rather than an unrelated payload failure. */
+void expectFileSizeReject(const checker::CheckResult& result,
+                          SourceRange range) {
+  ASSERT_FALSE(result);
+  EXPECT_TRUE(std::ranges::any_of(
+      result.error(), [&](const checker::CheckDiagnostic& diagnostic) {
+        return diagnostic.kind ==
+                   checker::CheckDiagnosticKind::ModuleSourceMismatch &&
+               diagnostic.range == range &&
+               diagnostic.message ==
+                   ".file file size must be a single unsigned 64-bit integer.";
+      }));
+}
+
+/** Public AST edits and a complete rebind return an independently owning current table. */
+std::optional<ResolvedModule> fileSizeReboundOwned(
+    std::string_view word,
+    std::string_view prefix = ".version 9.3\n.target sm_90\n") {
+  PtxSyntaxParser parser(fileSizeSource("18446744073709551615", prefix));
+  auto ast = parser.parseModule();
+  EXPECT_TRUE(ast && ast.diagnostics.empty());
+  if (!ast || !ast.diagnostics.empty())
+    return std::nullopt;
+  auto module = resolveModuleOnly(*ast);
+  EXPECT_TRUE(module);
+  if (!module)
+    return std::nullopt;
+  auto file = std::ranges::find_if(ast->items, [](const auto& item) {
+    return std::holds_alternative<syntax_ast::AstFileDirective>(item);
+  });
+  if (file == ast->items.end())
+    return std::nullopt;
+  auto& declaration = std::get<syntax_ast::AstFileDirective>(*file);
+  declaration.file_size->text = std::string(word);
+  declaration.file_size->range.end.column =
+      declaration.file_size->range.start.column + word.size();
+  declaration.range.end = declaration.file_size->range.end;
+  auto bound = binding::bindSymbols(*ast);
+  EXPECT_TRUE(bound.diagnostics.empty());
+  if (!bound.diagnostics.empty())
+    return std::nullopt;
+  module->symbols = std::move(bound.table);
+  return std::move(*module);
+}
+
+/** Full-width metadata is an unsigned leaf, with overflow rejected without truncation. */
+TEST(DebugFileMetadata, ChecksFullUnsignedSizeBoundary) {
+  auto maximum = fileSizeOwned(fileSizeSource("18446744073709551615"));
+  ASSERT_TRUE(maximum);
+  ASSERT_TRUE(validateModule(*maximum));
+  EXPECT_EQ(maximum->symbols.debugFiles()[0].file_size->text,
+            "18446744073709551615");
+  PtxSyntaxParser parser(fileSizeSource("18446744073709551616"));
+  const auto ast = parser.parseModule();
+  ASSERT_TRUE(ast && ast.diagnostics.empty());
+  EXPECT_FALSE(resolveAndValidateModule(*ast));
+  auto overflow = fileSizeOwned(fileSizeSource("18446744073709551616"));
+  ASSERT_TRUE(overflow);
+  EXPECT_EQ(overflow->symbols.debugFiles()[0].file_size->text,
+            "18446744073709551616");
+  expectFileSizeReject(validateModule(*overflow),
+                       overflow->symbols.debugFiles()[0].file_size->range);
+  const auto copied = *overflow;
+  expectFileSizeReject(validateModule(copied),
+                       overflow->symbols.debugFiles()[0].file_size->range);
+  ResolvedModule assigned;
+  assigned = copied;
+  expectFileSizeReject(validateModule(assigned),
+                       overflow->symbols.debugFiles()[0].file_size->range);
+  assigned.functions[0].body[0] = assigned.functions[0].body[0]->clone();
+  expectFileSizeReject(validateModule(assigned),
+                       overflow->symbols.debugFiles()[0].file_size->range);
+  EXPECT_TRUE(validateModule(*maximum));
+}
+
+/** Public AST rebinding checks both datasets without a mutable debug-file accessor. */
+TEST(DebugFileMetadata, RechecksCurrentAndSuppliedFileSizeIndependently) {
+  auto legal = fileSizeOwned(fileSizeSource("18446744073709551615"));
+  ASSERT_TRUE(legal);
+  ASSERT_TRUE(validateModule(*legal));
+  PtxSyntaxParser parser(fileSizeSource("18446744073709551615"));
+  auto ast = parser.parseModule();
+  ASSERT_TRUE(ast && ast.diagnostics.empty());
+  // A separately parsed legal tree must not mask the current owning table.
+  PtxSyntaxParser good_parser(fileSizeSource("18446744073709551615"));
+  const auto good_ast = good_parser.parseModule();
+  ASSERT_TRUE(good_ast && good_ast.diagnostics.empty());
+  auto& file = std::get<syntax_ast::AstFileDirective>(ast->items[2]);
+  ASSERT_TRUE(file.file_size);
+  file.file_size->text = "18446744073709551616";
+  auto rebound = binding::bindSymbols(*ast);
+  ASSERT_TRUE(rebound.diagnostics.empty());
+  auto bad_current = *legal;
+  bad_current.symbols = std::move(rebound.table);
+  EXPECT_EQ(bad_current.symbols.debugFiles()[0].file_size->range,
+            file.file_size->range);
+  for (const auto policy : {ModuleValidationPolicy::AvailableContext,
+                            ModuleValidationPolicy::RequireCompleteContext}) {
+    expectFileSizeReject(validateModule(bad_current, policy),
+                         file.file_size->range);
+    expectFileSizeReject(validateModule(*good_ast, bad_current, policy),
+                         file.file_size->range);
+    expectFileSizeReject(validateModule(*ast, *legal, policy),
+                         file.file_size->range);
+  }
+  EXPECT_TRUE(validateModule(*legal));
+}
+
+/** One finite metadata word and its independently adopted capacity expectation. */
+struct FileSizeCase {
+  /** Exact single-token source spelling, retained without normalization. */
+  std::string_view word;
+  /** Whether the complete unsigned magnitude fits64bits. */
+  bool accepted;
+};
+
+/** All adopted endpoints, radices and suffixes share the same intrinsic capacity boundary. */
+TEST(DebugFileMetadata, EnumeratesUnsignedSizeWordsWithoutNarrowing) {
+  const std::array<FileSizeCase, 60> cases{{
+      {"0", true},
+      {"0U", true},
+      {"0u", true},
+      {"00", true},
+      {"00U", true},
+      {"00u", true},
+      {"0b0", true},
+      {"0b0U", true},
+      {"0b0u", true},
+      {"0x0", true},
+      {"0x0U", true},
+      {"0x0u", true},
+      {"9223372036854775807", true},
+      {"9223372036854775807U", true},
+      {"9223372036854775807u", true},
+      {"0777777777777777777777", true},
+      {"0777777777777777777777U", true},
+      {"0777777777777777777777u", true},
+      {"0b111111111111111111111111111111111111111111111111111111111111111",
+       true},
+      {"0b111111111111111111111111111111111111111111111111111111111111111U",
+       true},
+      {"0b111111111111111111111111111111111111111111111111111111111111111u",
+       true},
+      {"0x7fffffffffffffff", true},
+      {"0x7fffffffffffffffU", true},
+      {"0x7fffffffffffffffu", true},
+      {"9223372036854775808", true},
+      {"9223372036854775808U", true},
+      {"9223372036854775808u", true},
+      {"01000000000000000000000", true},
+      {"01000000000000000000000U", true},
+      {"01000000000000000000000u", true},
+      {"0b1000000000000000000000000000000000000000000000000000000000000000",
+       true},
+      {"0b1000000000000000000000000000000000000000000000000000000000000000U",
+       true},
+      {"0b1000000000000000000000000000000000000000000000000000000000000000u",
+       true},
+      {"0x8000000000000000", true},
+      {"0x8000000000000000U", true},
+      {"0x8000000000000000u", true},
+      {"18446744073709551615", true},
+      {"18446744073709551615U", true},
+      {"18446744073709551615u", true},
+      {"01777777777777777777777", true},
+      {"01777777777777777777777U", true},
+      {"01777777777777777777777u", true},
+      {"0b1111111111111111111111111111111111111111111111111111111111111111",
+       true},
+      {"0b1111111111111111111111111111111111111111111111111111111111111111U",
+       true},
+      {"0b1111111111111111111111111111111111111111111111111111111111111111u",
+       true},
+      {"0xffffffffffffffff", true},
+      {"0xffffffffffffffffU", true},
+      {"0xffffffffffffffffu", true},
+      {"18446744073709551616", false},
+      {"18446744073709551616U", false},
+      {"18446744073709551616u", false},
+      {"02000000000000000000000", false},
+      {"02000000000000000000000U", false},
+      {"02000000000000000000000u", false},
+      {"0b10000000000000000000000000000000000000000000000000000000000000000",
+       false},
+      {"0b10000000000000000000000000000000000000000000000000000000000000000U",
+       false},
+      {"0b10000000000000000000000000000000000000000000000000000000000000000u",
+       false},
+      {"0x10000000000000000", false},
+      {"0x10000000000000000U", false},
+      {"0x10000000000000000u", false},
+  }};
+  for (const auto& item : cases) {
+    SCOPED_TRACE(item.word);
+    PtxSyntaxParser parser(fileSizeSource(item.word));
+    const auto ast = parser.parseModule();
+    ASSERT_TRUE(ast && ast.diagnostics.empty());
+    const auto& file = std::get<syntax_ast::AstFileDirective>(ast->items[2]);
+    const auto strict = resolveAndValidateModule(*ast);
+    EXPECT_EQ(bool(strict), item.accepted);
+    auto owned = fileSizeOwned(fileSizeSource(item.word));
+    ASSERT_TRUE(owned);
+    ASSERT_TRUE(owned->symbols.debugFiles()[0].file_size);
+    EXPECT_EQ(owned->symbols.debugFiles()[0].file_size->text, item.word);
+    EXPECT_EQ(owned->symbols.debugFiles()[0].file_size->range,
+              file.file_size->range);
+    auto rebound = fileSizeReboundOwned(item.word);
+    ASSERT_TRUE(rebound);
+    EXPECT_EQ(rebound->symbols.debugFiles()[0].file_size->text, item.word);
+    const auto copied = *owned;
+    ResolvedModule assigned;
+    assigned = copied;
+    const auto table_copy = assigned.symbols;
+    assigned.symbols = table_copy;
+    EXPECT_EQ(assigned.symbols.debugFiles()[0].file_size->text, item.word);
+    for (const auto policy : {ModuleValidationPolicy::AvailableContext,
+                              ModuleValidationPolicy::RequireCompleteContext}) {
+      if (item.accepted) {
+        EXPECT_TRUE(validateModule(*owned, policy));
+        EXPECT_TRUE(validateModule(*ast, *owned, policy));
+        EXPECT_TRUE(validateModule(*rebound, policy));
+        EXPECT_TRUE(validateModule(assigned, policy));
+      } else {
+        expectFileSizeReject(validateModule(*owned, policy),
+                             file.file_size->range);
+        expectFileSizeReject(validateModule(*ast, *owned, policy),
+                             file.file_size->range);
+        expectFileSizeReject(validateModule(*rebound, policy),
+                             rebound->symbols.debugFiles()[0].file_size->range);
+        expectFileSizeReject(validateModule(assigned, policy),
+                             file.file_size->range);
+      }
+    }
+  }
+}
+
+/** Invalid lexical roles use public AST construction independently of source parser rejection. */
+TEST(DebugFileMetadata, RejectsInvalidSizeLeavesThroughPublicRebinding) {
+  for (const auto word : {"-1", "+1", "1.0", "1+1", "WARP_SZ", "1Ujunk"}) {
+    SCOPED_TRACE(word);
+    PtxSyntaxParser parser(fileSizeSource(word));
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty()) {
+      std::cout << "size-invalid " << word
+                << " source=PARSE_REJECT source_owned=N_A\n";
+    } else {
+      const auto strict = resolveAndValidateModule(*ast);
+      EXPECT_FALSE(strict);
+      std::cout << "size-invalid " << word << " source=VALIDATION_REJECT\n";
+    }
+    auto module = fileSizeReboundOwned(word);
+    ASSERT_TRUE(module);
+    const auto range = module->symbols.debugFiles()[0].file_size->range;
+    const auto copied = *module;
+    ResolvedModule assigned;
+    assigned = copied;
+    for (const auto policy : {ModuleValidationPolicy::AvailableContext,
+                              ModuleValidationPolicy::RequireCompleteContext}) {
+      expectFileSizeReject(validateModule(*module, policy), range);
+      expectFileSizeReject(validateModule(copied, policy), range);
+      expectFileSizeReject(validateModule(assigned, policy), range);
+    }
+  }
+}
+
+/** Intrinsic capacity is independent of context and of another valid debug dataset. */
+TEST(DebugFileMetadata, SeparatesSizeDomainContextAndNeutralReplacement) {
+  for (const auto prefix :
+       {"", ".version 3.1\n", ".version 3.2\n.target sm_20\n"}) {
+    auto bad = fileSizeReboundOwned("18446744073709551616", prefix);
+    ASSERT_TRUE(bad);
+    const auto range = bad->symbols.debugFiles()[0].file_size->range;
+    PtxSyntaxParser parser(fileSizeSource("0", prefix));
+    const auto good_ast = parser.parseModule();
+    ASSERT_TRUE(good_ast && good_ast.diagnostics.empty());
+    for (const auto policy : {ModuleValidationPolicy::AvailableContext,
+                              ModuleValidationPolicy::RequireCompleteContext}) {
+      expectFileSizeReject(validateModule(*bad, policy), range);
+      expectFileSizeReject(validateModule(*good_ast, *bad, policy), range);
+    }
+  }
+  auto maximum = fileSizeOwned(fileSizeSource("18446744073709551615"));
+  ASSERT_TRUE(maximum);
+  ASSERT_TRUE(validateModule(*maximum));
+  auto different_source = fileSizeSource("0");
+  different_source.replace(different_source.find("a.cu"), 4, "b.cu");
+  PtxSyntaxParser different_parser(different_source);
+  const auto different_ast = different_parser.parseModule();
+  ASSERT_TRUE(different_ast && different_ast.diagnostics.empty());
+  ASSERT_TRUE(resolveAndValidateModule(*different_ast));
+  EXPECT_TRUE(validateModule(*different_ast, *maximum));
+  EXPECT_TRUE(validateModule(*maximum));
+  const auto original = *maximum;
+  auto changed = fileSizeReboundOwned("0");
+  ASSERT_TRUE(changed);
+  maximum->symbols = changed->symbols;
+  EXPECT_TRUE(validateModule(*maximum));
+  EXPECT_EQ(original.symbols.debugFiles()[0].file_size->text,
+            "18446744073709551615");
+  EXPECT_TRUE(validateModule(original));
+}
+
+/** Structural source-range and optional-pair invariants remain distinct from capacity. */
+TEST(DebugFileMetadata, RetainsSizeRangeAndPairingControls) {
+  for (const bool missing_size : {false, true}) {
+    std::optional<ResolvedModule> module;
+    {
+      PtxSyntaxParser parser(fileSizeSource("0"));
+      auto ast = parser.parseModule();
+      ASSERT_TRUE(ast && ast.diagnostics.empty());
+      auto resolved = resolveModuleOnly(*ast);
+      ASSERT_TRUE(resolved);
+      auto& file = std::get<syntax_ast::AstFileDirective>(ast->items[2]);
+      if (missing_size)
+        file.file_size.reset();
+      else
+        file.file_size->range.start = {0, 0};
+      auto rebound = binding::bindSymbols(*ast);
+      ASSERT_TRUE(rebound.diagnostics.empty());
+      resolved->symbols = std::move(rebound.table);
+      module.emplace(std::move(*resolved));
+    }
+    const auto result = validateModule(*module);
+    ASSERT_FALSE(result);
+    EXPECT_TRUE(std::ranges::any_of(result.error(), [](const auto& error) {
+      return error.message ==
+             "Owned debug file payload has inconsistent source boundaries.";
+    }));
+    EXPECT_FALSE(std::ranges::any_of(result.error(), [](const auto& error) {
+      return error.message ==
+             ".file file size must be a single unsigned 64-bit integer.";
+    }));
   }
 }
 

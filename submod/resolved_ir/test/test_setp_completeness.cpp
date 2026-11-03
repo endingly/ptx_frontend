@@ -139,7 +139,8 @@ TEST(SetpCompleteness, RejectsIllegalModifierAndDestinationForms) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   auto& packed =
       dynamic_cast<SetpF16x2&>(*resolved->functions.front().body.front());
-  packed.src1.value.declared_type = ScalarType::F16;
+  std::get<ResolvedRegisterRef>(packed.src1.value).declared_type =
+      ScalarType::F16;
   const auto checked = resolved->functions.front().body.front()->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
                        .instruction_range = parsed_module->range});
@@ -254,10 +255,24 @@ TEST(SetpCompleteness, RejectsFloatingAndSpecialRegisterCombineSources) {
   EXPECT_FALSE(resolveModule(*special).has_value());
 }
 
-/** Half/bfloat SETP cannot receive an immediate in either data-source slot. */
-TEST(SetpCompleteness, RejectsHalfAndBfloatImmediates) {
+/** Scalar numeric sources and packed exact words retain distinct producers. */
+TEST(SetpCompleteness, SeparatesScalarRawNumericAndPackedSourceRoutes) {
   for (const auto type : {"f16", "f16x2", "bf16", "bf16x2"}) {
     const bool packed = std::string_view(type).ends_with("x2");
+    const std::string carrier = std::string_view(type) == "f16" ? "f16"
+                                : packed                        ? "b32"
+                                                                : "b16";
+    const std::string prefix =
+        ".version 9.3\n.target sm_100\n.entry kernel(){ .reg .pred %p0,%p1; "
+        ".reg ." +
+        carrier + " %r0,%r1; ";
+    const std::string operation =
+        std::string("setp.eq.") + type + (packed ? " %p0|%p1, " : " %p0, ");
+    const auto baseline = parseModule(prefix + operation + "%r0,%r1; }");
+    ASSERT_MODULE_PARSE_SUCCEEDS(baseline);
+    const auto matched = resolveAndValidateModule(*baseline);
+    ASSERT_TRUE(matched) << matched.error().front().message;
+
     for (const auto immediate : {"0x3c00", "1.0"}) {
       for (const bool first : {false, true}) {
         const auto source = std::string("setp.eq.") + type +
@@ -267,7 +282,32 @@ TEST(SetpCompleteness, RejectsHalfAndBfloatImmediates) {
         SCOPED_TRACE(source);
         const auto ast = parseInstruction(source);
         ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-        EXPECT_FALSE(resolveSetp(*ast));
+        const auto result = resolveSetp(*ast);
+        const bool scalar = !packed;
+        const bool accepted = scalar || std::string_view(immediate) == "0x3c00";
+        EXPECT_EQ(result.has_value(), accepted);
+        const auto complete = parseModule(prefix + source + " }");
+        ASSERT_MODULE_PARSE_SUCCEEDS(complete);
+        EXPECT_EQ(resolveAndValidateModule(*complete).has_value(), accepted);
+        if (result && scalar) {
+          const RegOrImm* actual = nullptr;
+          if (std::string_view(type) == "f16") {
+            const auto& form = dynamic_cast<const SetpF16&>(**result);
+            actual = first ? &form.src1.value : &form.src2.value;
+          } else {
+            const auto& form = dynamic_cast<const SetpBf16&>(**result);
+            actual = first ? &form.src1.value : &form.src2.value;
+          }
+          const auto& value = std::get<ResolvedImmediate>(*actual);
+          const bool raw = std::string_view(immediate) == "0x3c00";
+          EXPECT_EQ(value.type, raw ? ScalarType::B16
+                                : std::string_view(type) == "f16"
+                                    ? ScalarType::F16
+                                    : ScalarType::BF16);
+          EXPECT_EQ(value.bits,
+                    raw || std::string_view(type) == "f16" ? 0x3c00U : 0x3f80U);
+          EXPECT_EQ(value.integer_source_bits.has_value(), raw);
+        }
       }
     }
   }

@@ -284,3 +284,17 @@ def modifier_value_descriptor_members(
         kind,
         modifier_value_cpp_expr(kind, value, backend=backend), backend=backend,
     )
+
+
+def parameter_qualifier_cpp_expr(kind: ResolvedValueKind, value: str | bool | int) -> str:
+    """Map the finite canonical Parameter aliases without a lossy fallback."""
+
+    qualifier = "Default"
+    if kind is ResolvedValueKind.MEMORY_STATE_SPACE:
+        if not isinstance(value, str):
+            raise ValueError(f"invalid memory state space {value!r}")
+        aliases = {"param": "Default", "param::entry": "Entry", "param::func": "Function"}
+        if value.startswith("param") and value not in aliases:
+            raise ValueError(f"unknown Parameter alias {value!r}")
+        qualifier = aliases.get(value, "Default")
+    return f"ParameterAddressQualifier::{qualifier}"

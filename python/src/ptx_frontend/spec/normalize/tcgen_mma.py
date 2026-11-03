@@ -28,40 +28,39 @@ _SHARED_FIELDS = frozenset(SharedOperandFacts.__dataclass_fields__)
 _BOOL_FIELDS = frozenset(("sparse", "transpose_a", "transpose_b", "a_shared"))
 _INT_FIELDS = frozenset(("group", "m", "n", "k", "a_lane_half", "d_lane_half"))
 _STR_FIELDS = frozenset(("d_type", "a_type", "b_type"))
-_UNSCALED_TARGETS = {
-    "any_of": [
-        {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
-        {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
-        {"ptx": "9.0", "sm": 110, "target": "sm_110a"},
-        {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
-    ],
-}
-_SCALED_TARGETS = {"any_of": _UNSCALED_TARGETS["any_of"][:2]}
-_I8_TARGETS = {"any_of": [_UNSCALED_TARGETS["any_of"][0],
-                          _UNSCALED_TARGETS["any_of"][2]]}
-
-
+_UNSCALED_TARGETS = {"any_of": [
+    {"ptx": "8.6", "sm": 100, "targets": ["sm_100a", "sm_101a", "sm_101f"]},
+    {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+    {"ptx": "9.0", "sm": 110, "target": "sm_110a"},
+    {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
+]}
+# Scaling D and written scale-vector selectors retain their original 100-only gates.
+_SCALED_TARGETS = {"any_of": [
+    {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+    {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+]}
+_I8_TARGETS = {"any_of": [
+    {"ptx": "8.6", "sm": 100, "targets": ["sm_100a", "sm_101a"]},
+    _UNSCALED_TARGETS["any_of"][2],
+]}
 _MX8_VEC_TARGETS = {"any_of": [{"ptx": "8.6", "sm": 100, "target": "sm_100a"}]}
-_MX8_BLOCK_TARGETS = {
-    "any_of": [
-        {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
-        {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
-    ],
-}
+_MX8_BLOCK_TARGETS = {"any_of": [
+    {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+    {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
+    {"ptx": "8.8", "sm": 110, "targets": ["sm_101a", "sm_101f"]},
+]}
 _MXNV_TARGETS = {"any_of": [
-    {"ptx": "8.7", "sm": 100, "target": "sm_100a"},
+    {"ptx": "8.7", "sm": 100, "targets": ["sm_100a", "sm_101a", "sm_101f"]},
     *_UNSCALED_TARGETS["any_of"][1:],
 ]}
-_MXNV_VEC_TARGETS = {"any_of": [
-    {"ptx": "8.7", "sm": 100, "target": "sm_100a"},
-]}
+_MXNV_VEC_TARGETS = {"any_of": [{"ptx": "8.7", "sm": 100, "target": "sm_100a"}]}
 _SPARSE_MX4_TARGETS = {"any_of": [
-    {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+    {"ptx": "8.6", "sm": 100, "targets": ["sm_100a", "sm_101a"]},
     {"ptx": "8.8", "sm": 103, "target": "sm_103a"},
     {"ptx": "9.0", "sm": 110, "target": "sm_110a"},
 ]}
 _SPARSE_MXNV_TARGETS = {"any_of": [
-    {"ptx": "8.7", "sm": 100, "target": "sm_100a"},
+    {"ptx": "8.7", "sm": 100, "targets": ["sm_100a", "sm_101a"]},
     *_SPARSE_MX4_TARGETS["any_of"][1:],
 ]}
 
@@ -444,12 +443,11 @@ def _validate_tcgen_mma_variant_base(variant: VariantSpec) -> None:
         raise ValueError("dense MMA typed qualifiers changed")
     expected = set()
     for placement in ("shared", "tensor"):
-        for mask in (False, True):
-            prefix = f"{placement}_{'mask' if mask else 'no_mask'}"
-            if kind in ("i8", "f8f6f4"):
-                expected.add(prefix)
-            else:
-                expected.update((f"{prefix}_no_scale", f"{prefix}_scale"))
+        prefix = f"{placement}_mask"
+        if kind in ("i8", "f8f6f4"):
+            expected.add(prefix)
+        else:
+            expected.update((f"{prefix}_no_scale", f"{prefix}_scale"))
     if {layout.name for layout in variant.operand_layouts} != expected:
         raise ValueError("dense MMA structural layout set changed")
     for layout in variant.operand_layouts:
@@ -462,18 +460,18 @@ def _validate_tcgen_mma_variant_base(variant: VariantSpec) -> None:
             placement = "tensor"
         else:
             raise ValueError("dense MMA A operand has unsupported kind")
-        mask = "disable_output_lane" in names
+        if "disable_output_lane" not in names:
+            raise ValueError("dense MMA requires an output-lane mask")
         scale = "scale_input_d" in names
         if kind in ("i8", "f8f6f4") and scale:
             raise ValueError("dense kind has no D-scale source operand")
-        expected_name = (f"{placement}_{'mask' if mask else 'no_mask'}"
+        expected_name = (f"{placement}_mask"
                          + ("" if kind in ("i8", "f8f6f4") else
                             f"_{'scale' if scale else 'no_scale'}"))
         if layout.name != expected_name:
             raise ValueError("dense MMA layout identity disagrees with typed roles")
-        required = ("d", "a", "b", "idesc") + (
-            ("disable_output_lane",) if mask else ()
-        ) + ("enable_input_d",) + (("scale_input_d",) if scale else ())
+        required = ("d", "a", "b", "idesc", "disable_output_lane",
+                    "enable_input_d") + (("scale_input_d",) if scale else ())
         if names != required:
             raise ValueError("dense MMA operand topology changed")
         if layout.availability != (_SCALED_TARGETS if scale else {}):
@@ -482,15 +480,13 @@ def _validate_tcgen_mma_variant_base(variant: VariantSpec) -> None:
                 kinds["b"] is not OperandKind.REGISTER or
                 kinds["idesc"] is not OperandKind.REGISTER or
                 kinds["enable_input_d"] is not OperandKind.PREDICATE_SOURCE or
-                (mask and kinds["disable_output_lane"] is not
-                 OperandKind.REGISTER_VECTOR) or
+                kinds["disable_output_lane"] is not OperandKind.REGISTER_VECTOR or
                 (scale and kinds["scale_input_d"] is not OperandKind.IMMEDIATE)):
             raise ValueError("dense MMA source roles changed")
         expected_types = {"d": "u32", "a": (
             "b64" if placement == "shared" else "u32"),
             "b": "b64", "idesc": "b32", "enable_input_d": None}
-        if mask:
-            expected_types["disable_output_lane"] = "b32"
+        expected_types["disable_output_lane"] = "b32"
         if scale:
             expected_types["scale_input_d"] = "u32"
         for operand in layout.operands:
@@ -504,13 +500,12 @@ def _validate_tcgen_mma_variant_base(variant: VariantSpec) -> None:
                 )
             ):
                 raise ValueError("dense MMA operand type changed")
-        if mask:
-            vector = next(item for item in layout.operands
-                          if item.name == "disable_output_lane")
-            if (vector.vector_arities != tuple(range(1, 9)) or
-                    vector.vector_allowed_register_types !=
-                    ("b32", "u32", "s32", "f32")):
-                raise ValueError("dense MMA mask carrier domain changed")
+        vector = next(item for item in layout.operands
+                      if item.name == "disable_output_lane")
+        if (vector.vector_arities != tuple(range(1, 9)) or
+                vector.vector_allowed_register_types !=
+                ("b32", "u32", "s32", "f32", "f16x2")):
+            raise ValueError("dense MMA mask carrier domain changed")
 
 
 @dataclass(frozen=True)
@@ -523,7 +518,7 @@ class F16SourceTopology:
 
     group: int
     a_placement: str
-    mask_count: int | None
+    mask_count: int
     scale_source_value: int | None
 
 
@@ -531,8 +526,8 @@ def normalize_f16_source_topology(raw: dict[str, Any]) -> F16SourceTopology:
     """Validate the approved source topology without parsing operand spellings.
 
     The canonical typed pipeline still owns modifier order/provenance and
-    register/predicate payloads. This check preserves absence versus an empty
-    mask and rejects scale values outside the original integer domain.
+    register/predicate payloads. A mask must contain exactly four/eight entries;
+    absent or empty masks reject. Scale remains optional in its original domain.
     """
 
     expected = {"group", "a_placement", "mask_count", "scale_source_value"}
@@ -546,9 +541,8 @@ def normalize_f16_source_topology(raw: dict[str, Any]) -> F16SourceTopology:
         raise ValueError("dense f16 requires CTA group one or two")
     if a_placement not in ("shared", "tensor"):
         raise ValueError("dense f16 A placement must be shared or Tensor Memory")
-    if count is not None and (type(count) is not int or
-                              count != (4 if group == 1 else 8)):
-        raise ValueError("present output-lane mask has wrong cardinality")
+    if type(count) is not int or count != (4 if group == 1 else 8):
+        raise ValueError("required output-lane mask has wrong cardinality")
     if scale is not None and (type(scale) is not int or not 0 <= scale <= 15):
         raise ValueError("D scale requires original integer 0..15")
     return F16SourceTopology(group, a_placement, count, scale)
@@ -595,7 +589,7 @@ class Tf32SourceTopology:
 
     group: int
     a_placement: str
-    mask_count: int | None
+    mask_count: int
     scale_source_value: int | None
 
 
@@ -615,15 +609,15 @@ def normalize_tf32_known_facts(raw: dict[str, Any]) -> Tf32KnownFacts:
 
 @dataclass(frozen=True)
 class I8SourceTopology:
-    """Known typed i8 placement and optional mask entry count.
+    """Known typed i8 placement and required mask entry count.
 
-    The count is absent or exactly four/eight for group one/two; no scale
+    The count is exactly four/eight for group one/two; no scale
     source value exists in this kind's source grammar.
     """
 
     group: int
     a_placement: str
-    mask_count: int | None
+    mask_count: int
 
 
 def normalize_i8_source_topology(raw: dict[str, Any]) -> I8SourceTopology:
@@ -646,11 +640,11 @@ def normalize_i8_known_facts(raw: dict[str, Any]) -> I8KnownFacts:
 
 @dataclass(frozen=True)
 class F8F6F4SourceTopology:
-    """Canonical unscaled low-bit source placement and optional mask count."""
+    """Canonical unscaled low-bit source placement and required mask count."""
 
     group: int
     a_placement: str
-    mask_count: int | None
+    mask_count: int
 
 
 def normalize_f8f6f4_source_topology(

@@ -1,7 +1,9 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 
+#include "ptx_address_register_type.hpp"
 #include "ptx_resolved_ir_packed_literal.hpp"
+#include "ptx_resolved_ir_private.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -44,6 +46,83 @@ bool component_matches_source(const ResolvedRegisterRef& ref, SourceRange range,
            (owner == SourceRange{} || fabric_range_inside(range, owner))));
 }
 
+/** Identify ordinary all-null payloads independently of caller-maintained mirrors. */
+bool ordinary_all_sink_candidate(const OperandDescriptor& descriptor,
+                                 const OperandView& operand) {
+  if (operand.actual_shape != OperandShape::Vector ||
+      descriptor.minimum_elements != 0 || descriptor.maximum_elements != 0)
+    return false;
+  if (operand.register_vector && !operand.register_vector->elements.empty() &&
+      std::ranges::all_of(operand.register_vector->elements,
+                          [](const auto& lane) { return !lane; }))
+    return true;
+  return !operand.value_vector && !operand.mov_value_vector &&
+         !operand.mov_hardware_vector && operand.vector_arity != 0 &&
+         operand.vector_sink_count >= operand.vector_arity;
+}
+
+/** Recognize only the selected scalar/arity pairs whose payload is 256 bits. */
+bool is_all_sink_type_arity(ScalarType type, std::optional<uint8_t> arity) {
+  if (!arity)
+    return false;
+  switch (type) {
+    case ScalarType::B32:
+    case ScalarType::S32:
+    case ScalarType::U32:
+    case ScalarType::F32:
+      return *arity == 8;
+    case ScalarType::B64:
+    case ScalarType::S64:
+    case ScalarType::U64:
+    case ScalarType::F64:
+      return *arity == 4;
+    default:
+      return false;
+  }
+}
+
+/** Join selected descriptor fields to actual owning all-null lanes and mirrors. */
+bool permits_all_sink_destination(const OperandDescriptor& descriptor,
+                                  const OperandView& operand, ScalarType type,
+                                  std::optional<uint8_t> arity,
+                                  const Context& context) {
+  const auto* vector = operand.register_vector;
+  if (descriptor.role != OperandRole::Destination ||
+      descriptor.access != OperandAccess::Write ||
+      descriptor.vector_type_policy != VectorTypePolicy::Element ||
+      !descriptor.allow_vector_sink ||
+      descriptor.vector_sink_payload_bits != 256 ||
+      descriptor.source_value_vector || descriptor.minimum_elements != 0 ||
+      descriptor.maximum_elements != 0 ||
+      descriptor.type_expression.kind !=
+          OperandTypeExpressionKind::ModifierField ||
+      descriptor.type_expression.modifier_field_id.empty() ||
+      descriptor.vector_arity_modifier_field_id.empty() ||
+      !is_all_sink_type_arity(type, arity) || !vector || operand.value_vector ||
+      operand.mov_value_vector || operand.mov_hardware_vector ||
+      vector->elements.empty() ||
+      vector->elements.size() > kMaxOperandElements ||
+      vector->elements.size() != *arity ||
+      operand.vector_arity != vector->elements.size() ||
+      operand.vector_sink_count != vector->elements.size() ||
+      vector->source.kind != ResolvedVectorSourceKind::BraceList ||
+      vector->source.whole_base ||
+      !valid_register_vector_source(*vector, operand.locations, true,
+                                    context.instruction_range))
+    return false;
+  for (size_t index = 0; index < vector->elements.size(); ++index) {
+    if (vector->elements[index] || operand.vector_element_registers[index] ||
+        operand.vector_element_shapes[index] != OperandShape{} ||
+        operand.vector_element_types[index] != ScalarType::Invalid ||
+        operand.vector_element_immediates[index] ||
+        operand.vector_immediate_source_bits[index] ||
+        operand.vector_immediate_bits[index] ||
+        operand.vector_immediate_negative[index])
+      return false;
+  }
+  return true;
+}
+
 std::string format_version(PtxVersion version) {
   return fmt::format("{}.{}", version.major, version.minor);
 }
@@ -63,6 +142,32 @@ void append_ptx_upper_bound_diagnostic(
                                format_version(target.ptx_version)),
     });
   }
+}
+
+/** Append the exclusive numeric SM limit failure at the selected source range. */
+void append_sm_upper_bound_diagnostic(
+    const AvailabilityDescriptor& availability, const TargetInfo& target,
+    const SourceRange& range, CheckDiagnostics& diagnostics) {
+  if (availability.sm_before && target.sm_version >= *availability.sm_before) {
+    diagnostics.push_back({
+        .kind = CheckDiagnosticKind::UnsupportedSmVersion,
+        .range = range,
+        .message = fmt::format(
+            "Availability requires SM < {} (exclusive), but target SM is {}.",
+            *availability.sm_before, target.sm_version),
+    });
+  }
+}
+
+/** Compare feature identity through explicit catalog rename data without rewriting source identity. */
+bool matches_feature_target(const base::TargetIdentity& actual,
+                            base::TargetArchitecture required,
+                            base::TargetFlavor flavor) noexcept {
+  const base::TargetIdentity expected{.architecture = required,
+                                      .flavor = flavor};
+  return actual.flavor == flavor &&
+         base::target_feature_architecture(actual) ==
+             base::target_feature_architecture(expected);
 }
 
 bool has_enabled_family_feature(
@@ -86,6 +191,125 @@ bool allows_shape(OperandShape allowed, OperandShape actual) noexcept {
 const SourceRange& diagnostic_range(std::span<const SourceRange> locations,
                                     const Context& context) noexcept {
   return locations.empty() ? context.instruction_range : locations.front();
+}
+
+/** Validate an engaged token-form policy against the existing actual view mirrors.
+ * Non-token descriptors remain outside this rule; unknown declaration types are
+ * allowed only when both the actual reference and its projected cache omit them.
+ */
+std::optional<CheckDiagnostic> check_mbarrier_token_form(
+    const OperandDescriptor& descriptor, const OperandView& operand,
+    const Context& context) {
+  if (!descriptor.mbarrier_state_token_form)
+    return std::nullopt;
+  const auto form = *descriptor.mbarrier_state_token_form;
+  const auto range = diagnostic_range(operand.locations, context);
+  if (form != MbarrierStateTokenForm::Register &&
+      form != MbarrierStateTokenForm::RegisterOrSink &&
+      form != MbarrierStateTokenForm::Sink)
+    return CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = range,
+        .message = "Mbarrier state token has an unknown form policy."};
+  if (form != MbarrierStateTokenForm::Register &&
+      (descriptor.role != OperandRole::Destination ||
+       descriptor.access != OperandAccess::Write))
+    return CheckDiagnostic{.kind = CheckDiagnosticKind::RuleViolation,
+                           .range = range,
+                           .message =
+                               "Mbarrier state token with a sink-capable "
+                               "policy requires a write destination."};
+  if (operand.actual_shape != OperandShape::Register ||
+      operand.is_sink != (operand.register_ref == nullptr) ||
+      (operand.is_sink && operand.register_type) ||
+      (operand.register_ref &&
+       operand.register_type != operand.register_ref->declared_type))
+    return CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+        .range = range,
+        .message =
+            "Mbarrier state token view has inconsistent register/sink facts."};
+  if ((form == MbarrierStateTokenForm::Register && operand.is_sink) ||
+      (form == MbarrierStateTokenForm::Sink && !operand.is_sink))
+    return CheckDiagnostic{.kind = CheckDiagnosticKind::UnsupportedOperandShape,
+                           .range = range,
+                           .message =
+                               "Mbarrier state token register/sink form is not "
+                               "allowed by its policy."};
+  return std::nullopt;
+}
+
+/** Reconcile a General-register claim with known class facts, without requiring
+ * declaration identity or equating contextualized numeric type caches.
+ * Predicate type facts cannot be reclassified as General by changing a class cache.
+ */
+bool valid_general_register_class(
+    const ResolvedRegisterRef* actual,
+    std::optional<ResolvedRegisterClass> cached_class = std::nullopt,
+    std::optional<ScalarType> cached_type = std::nullopt) {
+  return (!cached_class || *cached_class == ResolvedRegisterClass::General) &&
+         cached_type != ScalarType::Pred &&
+         (!actual ||
+          (actual->register_class == ResolvedRegisterClass::General &&
+           actual->declared_type != ScalarType::Pred));
+}
+
+/** Diagnose an affirmative ordinary declaration claim using central type metadata.
+ * Absent standalone facts and non-General register classes retain their own rules;
+ * contextual operand dtypes and logical instruction formats are not declarations.
+ */
+std::optional<CheckDiagnostic> register_declaration_diagnostic(
+    const ResolvedRegisterRef* actual, SourceRange range) {
+  if (!actual || actual->register_class != ResolvedRegisterClass::General ||
+      !actual->declared_type)
+    return std::nullopt;
+  const auto* metadata =
+      base::find_scalar_type_metadata(*actual->declared_type);
+  if (metadata && metadata->register_declaration_usage ==
+                      base::ScalarDeclarationUsage::Fundamental)
+    return std::nullopt;
+  return CheckDiagnostic{
+      .kind = CheckDiagnosticKind::OperandTypeMismatch,
+      .range = range,
+      .message =
+          "An ordinary .reg declaration requires a known fundamental "
+          "scalar type."};
+}
+
+/** Check General class and reject whole vectors borrowed as scalar vector leaves.
+ * The caller has already established a nonzero arity within kMaxOperandElements;
+ * the enclosing named-vector root is deliberately not inspected here.
+ */
+void check_scalar_vector_leaves(const OperandView& operand,
+                                std::string_view field_id,
+                                const Context& context,
+                                CheckDiagnostics& diagnostics) {
+  const SourceRange& fallback = diagnostic_range(operand.locations, context);
+  for (size_t index = 0; index < operand.vector_arity; ++index) {
+    const auto* reg = operand.vector_element_registers[index];
+    if (operand.vector_element_shapes[index] != OperandShape::Register)
+      continue;
+    const SourceRange range =
+        index < operand.locations.size() ? operand.locations[index] : fallback;
+    if (!valid_general_register_class(reg, std::nullopt,
+                                      operand.vector_element_types[index])) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+          .range = range,
+          .message =
+              fmt::format("Scalar element of vector operand '{}' requires "
+                          "a General-register class.",
+                          field_id)});
+    } else if (auto declaration = register_declaration_diagnostic(reg, range)) {
+      diagnostics.push_back(std::move(*declaration));
+    } else if (reg && reg->vector_width)
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+          .range = range,
+          .message = fmt::format("Scalar element of vector operand '{}' "
+                                 "cannot use a whole vector.",
+                                 field_id)});
+  }
 }
 
 const FieldView* find_field(std::span<const FieldView> fields,
@@ -115,6 +339,24 @@ const ModifierValueView* find_modifier(
         return modifier.kind_id == kind_id;
       });
   return it == modifiers.end() ? nullptr : &*it;
+}
+
+/** Borrow the effective declared dtype from either ordinary or intrinsic carriers. */
+std::optional<ScalarType> cvt_register_type(
+    const OperandView* operand) noexcept {
+  if (operand == nullptr)
+    return std::nullopt;
+  return operand->register_type ? operand->register_type
+                                : operand->special_register_type;
+}
+
+/** Alternate floating/fixed formats use Bit storage, unlike packed integers. */
+bool cvt_requires_bit_carrier(ScalarType type) noexcept {
+  const auto* metadata = base::find_scalar_type_metadata(type);
+  return metadata != nullptr &&
+         metadata->register_declaration_usage ==
+             base::ScalarDeclarationUsage::InstructionOnly &&
+         metadata->kind == base::ScalarKind::Float;
 }
 
 /** Return whether a scalar is an integer or bit-size conversion type. */
@@ -199,7 +441,8 @@ std::pair<uint64_t, bool> integer_constraint_value(
 }
 
 /**
- * Recheck integer-source use-width bits and raw 32-bit packed FP8 literals.
+ * Recheck integer-source use-width bits and canonical raw packed floating words.
+ * Packed floating words have no integer origin, including an optional zero.
  * Fixed integer constraints use the original source value for legality, while
  * consumers observe the converted bits; both representations must agree.
  */
@@ -207,23 +450,40 @@ CheckResult check_source_immediate_consistency(const OperandView& operand,
                                                const Context& context) {
   if (!operand.immediate_bits || !operand.immediate_type)
     return {};
+  if ((*operand.immediate_type == ScalarType::F16 ||
+       *operand.immediate_type == ScalarType::BF16) &&
+      (*operand.immediate_bits > 0xffffU || operand.integer_source_bits ||
+       operand.immediate_is_negative.value_or(false)))
+    return std::unexpected(CheckDiagnostics{
+        CheckDiagnostic{.kind = CheckDiagnosticKind::ImmediateValueMismatch,
+                        .range = diagnostic_range(operand.locations, context),
+                        .message = "A scalar half immediate requires a "
+                                   "canonical floating 16-bit word."}});
+  if ((*operand.immediate_type == ScalarType::E4m3 ||
+       *operand.immediate_type == ScalarType::E5m2) &&
+      (*operand.immediate_bits > 0xffU || operand.integer_source_bits ||
+       operand.immediate_is_negative.value_or(false)))
+    return std::unexpected(CheckDiagnostics{
+        CheckDiagnostic{.kind = CheckDiagnosticKind::ImmediateValueMismatch,
+                        .range = diagnostic_range(operand.locations, context),
+                        .message = "A scalar FP8 immediate requires a "
+                                   "canonical floating 8-bit word."}});
   const bool packed_raw32 =
-      ::ptx_frontend::resolved_ir::detail::is_raw32_fp8x4_type(
+      ::ptx_frontend::resolved_ir::detail::is_packed32_literal_type(
           *operand.immediate_type);
   if (packed_raw32 &&
       (*operand.immediate_bits > std::numeric_limits<uint32_t>::max() ||
-       (!operand.integer_source_bits &&
-        operand.immediate_is_negative.value_or(false)))) {
+       operand.integer_source_bits ||
+       operand.immediate_is_negative.value_or(false))) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::ImmediateValueMismatch,
         .range = diagnostic_range(operand.locations, context),
         .message = fmt::format(
-            "Packed FP8 immediate '{}' has invalid raw 32-bit metadata.",
+            "Packed floating immediate '{}' has invalid raw 32-bit metadata.",
             operand.field_id),
     }});
   }
-  if (!operand.integer_source_bits ||
-      (!is_integer_type(*operand.immediate_type) && !packed_raw32))
+  if (!operand.integer_source_bits || !is_integer_type(*operand.immediate_type))
     return {};
   const uint8_t byte_width = base::scalar_size_of(*operand.immediate_type);
   if (byte_width == 0 || byte_width > sizeof(uint64_t))
@@ -231,16 +491,26 @@ CheckResult check_source_immediate_consistency(const OperandView& operand,
   const uint8_t bit_width = byte_width * 8;
   const uint64_t mask = bit_width == 64 ? std::numeric_limits<uint64_t>::max()
                                         : (uint64_t{1} << bit_width) - 1;
-  if (*operand.immediate_bits == (*operand.integer_source_bits & mask))
-    return {};
-  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
-      .kind = CheckDiagnosticKind::ImmediateValueMismatch,
-      .range = diagnostic_range(operand.locations, context),
-      .message = fmt::format(
-          "Immediate operand '{}' has bits inconsistent with its integer "
-          "source value.",
-          operand.field_id),
-  }});
+  if (*operand.immediate_bits != (*operand.integer_source_bits & mask))
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+        .range = diagnostic_range(operand.locations, context),
+        .message = fmt::format(
+            "Immediate operand '{}' has bits inconsistent with its integer "
+            "source value.",
+            operand.field_id),
+    }});
+  if (operand.immediate_is_negative.value_or(false) &&
+      (*operand.integer_source_bits & (uint64_t{1} << 63)) == 0)
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+        .range = diagnostic_range(operand.locations, context),
+        .message = fmt::format(
+            "Immediate operand '{}' has a negative flag inconsistent with its "
+            "integer source value.",
+            operand.field_id),
+    }});
+  return {};
 }
 
 void append_value_availability_diagnostics(const OperandView& operand,
@@ -265,6 +535,8 @@ void append_value_availability_diagnostics(const OperandView& operand,
   }
   append_ptx_upper_bound_diagnostic(availability, context.target, range,
                                     diagnostics);
+  append_sm_upper_bound_diagnostic(availability, context.target, range,
+                                   diagnostics);
   if (context.target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -309,6 +581,55 @@ concept ModifierValueDescriptor =
     std::same_as<std::remove_cvref_t<Descriptor>,
                  ModifierValueDomainDescriptor>;
 
+/** Validate active memory identity without inspecting unrelated payload members. */
+bool valid_memory_identity(
+    MemoryStateSpace space,
+    std::optional<ParameterAddressQualifier> qualifier) noexcept {
+  switch (space) {
+    case MemoryStateSpace::Generic:
+    case MemoryStateSpace::Global:
+    case MemoryStateSpace::Shared:
+    case MemoryStateSpace::Local:
+    case MemoryStateSpace::Constant:
+      return qualifier == ParameterAddressQualifier::Default;
+    case MemoryStateSpace::Parameter:
+      return qualifier == ParameterAddressQualifier::Default ||
+             qualifier == ParameterAddressQualifier::Entry ||
+             qualifier == ParameterAddressQualifier::Function;
+    default:
+      return false;
+  }
+}
+
+/** Reject malformed participating metadata even when it cannot match a row. */
+template <ModifierValueDescriptor Descriptor>
+bool valid_modifier_memory_identity(const Descriptor& descriptor,
+                                    const ModifierValueView& actual) noexcept {
+  return (actual.value_kind != ModifierValueKind::MemoryStateSpace ||
+          valid_memory_identity(actual.memory_state_space,
+                                actual.parameter_qualifier)) &&
+         (descriptor.value_kind != ModifierValueKind::MemoryStateSpace ||
+          valid_memory_identity(descriptor.memory_state_space,
+                                descriptor.parameter_qualifier));
+}
+
+/** Unknown current projections are invalid even if no descriptors are provided. */
+bool valid_modifier_memory_identity(const ModifierValueView& actual) noexcept {
+  return actual.value_kind != ModifierValueKind::MemoryStateSpace ||
+         valid_memory_identity(actual.memory_state_space,
+                               actual.parameter_qualifier);
+}
+
+/** Known qualified Parameter identities are present independently of locations. */
+bool modifier_is_present(const ModifierValueView& actual) noexcept {
+  return actual.is_present ||
+         (actual.value_kind == ModifierValueKind::MemoryStateSpace &&
+          actual.memory_state_space == MemoryStateSpace::Parameter &&
+          actual.parameter_qualifier &&
+          (*actual.parameter_qualifier == ParameterAddressQualifier::Entry ||
+           *actual.parameter_qualifier == ParameterAddressQualifier::Function));
+}
+
 /** Compare one generated typed modifier value with a projected resolved value. */
 template <ModifierValueDescriptor Descriptor>
 bool matches_modifier_value(const Descriptor& descriptor,
@@ -339,7 +660,8 @@ bool matches_modifier_value(const Descriptor& descriptor,
     case ModifierValueKind::VectorArity:
       return descriptor.vector_arity == actual.vector_arity;
     case ModifierValueKind::MemoryStateSpace:
-      return descriptor.memory_state_space == actual.memory_state_space;
+      return descriptor.memory_state_space == actual.memory_state_space &&
+             descriptor.parameter_qualifier == actual.parameter_qualifier;
     case ModifierValueKind::MemoryConsistency:
       return descriptor.memory_consistency == actual.memory_consistency;
     case ModifierValueKind::MemoryScope:
@@ -417,6 +739,8 @@ void append_address_constraint_availability_diagnostics(
   }
   append_ptx_upper_bound_diagnostic(availability, context.target, range,
                                     diagnostics);
+  append_sm_upper_bound_diagnostic(availability, context.target, range,
+                                   diagnostics);
   if (context.target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -513,6 +837,16 @@ void append_parameter_address_diagnostics(
     const OperandDescriptor& descriptor, const OperandView& operand,
     std::optional<MemoryStateSpace> selected_state_space,
     const Context& context, CheckDiagnostics& diagnostics) {
+  if (operand.tensor_operand) {
+    const auto& address = operand.tensor_operand->tensor_map.address;
+    const auto* symbol = std::get_if<ResolvedSymbolRef>(&address.base);
+    if (!valid_parameter_role_cache(symbol, address.enclosing_function_kind))
+      diagnostics.push_back(
+          {.kind = CheckDiagnosticKind::ParameterDirectionMismatch,
+           .range = diagnostic_range(operand.locations, context),
+           .message = "Resolved parameter-role cache contradicts known "
+                      "declaration or frame facts."});
+  }
   const auto& constraint = descriptor.parameter_constraint;
   // A known non-parameter base belongs to the exact state-space diagnostic;
   // do not infer parameter identity from the selected modifier alone.
@@ -684,19 +1018,7 @@ OperandView project_tensor_operand(
           !address.offset || address_offset_fits_signed32(*address.offset),
       .address_alignment = alignment,
       .enclosing_function_kind = address.enclosing_function_kind,
-      .parameter_direction = symbol && symbol->declaration_kind &&
-                                     *symbol->declaration_kind ==
-                                         binding::SymbolKind::InputParameter
-                                 ? ParameterDirection::Input
-                             : symbol && symbol->declaration_kind &&
-                                     *symbol->declaration_kind ==
-                                         binding::SymbolKind::ReturnParameter
-                                 ? ParameterDirection::Return
-                             : symbol && symbol->declaration_kind &&
-                                     *symbol->declaration_kind ==
-                                         binding::SymbolKind::CallParameter
-                                 ? ParameterDirection::CallArgument
-                                 : ParameterDirection::None,
+      .parameter_direction = parameter_direction_from_symbol(symbol),
       .tensor_rank = tensor.rank,
       .tensor_operand = &tensor,
       .vector_arity = tensor.coordinates.elements.size(),
@@ -764,24 +1086,27 @@ bool is_available(const AvailabilityDescriptor& availability,
   if (availability.any_of_count != 0) {
     for (size_t index = 0; index < availability.any_of_count; ++index) {
       const AvailabilityClause& clause = availability.any_of[index];
-      if ((clause.ptx_before && target.ptx_version >= *clause.ptx_before) ||
+      if ((clause.sm_before && target.sm_version >= *clause.sm_before) ||
+          (clause.ptx_before && target.ptx_version >= *clause.ptx_before) ||
           target.ptx_version < clause.minimum_ptx_version ||
           target.sm_version < clause.minimum_sm_version ||
           (clause.requires_map_f64_to_f32 && !target.map_f64_to_f32) ||
           (clause.has_exact_target &&
            (!target.identity ||
-            target.identity->architecture != clause.exact_target_architecture ||
-            target.identity->flavor != clause.exact_target_flavor)) ||
+            !matches_feature_target(*target.identity,
+                                    clause.exact_target_architecture,
+                                    clause.exact_target_flavor))) ||
           (!clause.required_family.empty() &&
            !has_enabled_family_feature(target.enabled_family_features,
                                        clause.required_family)))
         continue;
       if (!clause.exact_targets.empty() &&
           (!target.identity ||
-           std::ranges::find(clause.exact_targets,
-                             AvailabilityTarget{target.identity->architecture,
-                                                target.identity->flavor}) ==
-               clause.exact_targets.end()))
+           !std::ranges::any_of(
+               clause.exact_targets, [&](const AvailabilityTarget& required) {
+                 return matches_feature_target(
+                     *target.identity, required.architecture, required.flavor);
+               })))
         continue;
       bool capabilities_match = true;
       for (size_t capability = 0; capability < clause.capability_count;
@@ -797,7 +1122,9 @@ bool is_available(const AvailabilityDescriptor& availability,
     }
     return false;
   }
-  return (!availability.ptx_before ||
+  return (!availability.sm_before ||
+          target.sm_version < *availability.sm_before) &&
+         (!availability.ptx_before ||
           target.ptx_version < *availability.ptx_before) &&
          target.ptx_version >= availability.minimum_ptx_version &&
          target.sm_version >= availability.minimum_sm_version &&
@@ -836,6 +1163,9 @@ CheckResult check_availability(const VariantDescriptor& variant,
 
   append_ptx_upper_bound_diagnostic(availability, target,
                                     context.instruction_range, diagnostics);
+
+  append_sm_upper_bound_diagnostic(availability, target,
+                                   context.instruction_range, diagnostics);
 
   if (target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
@@ -1050,6 +1380,33 @@ CheckResult check_operands(
   CheckDiagnostics diagnostics;
 
   for (const OperandView& operand : operands) {
+    if (operand.actual_shape == OperandShape::IndirectCallee &&
+        (operand.register_ref || operand.register_type ||
+         operand.register_class || operand.register_vector_width)) {
+      const auto* actual = operand.register_ref;
+      const auto type = actual ? actual->declared_type : operand.register_type;
+      const bool scalar =
+          actual ? !actual->vector_width : !operand.register_vector_width;
+      const bool general =
+          actual ? actual->register_class == ResolvedRegisterClass::General
+                 : (!operand.register_class ||
+                    *operand.register_class == ResolvedRegisterClass::General);
+      const bool owner_fits =
+          !actual || !actual->component || !type ||
+          base::scalar_size_of(*type) * actual->component->declaration_width <=
+              16;
+      if (!general || !scalar || !owner_fits ||
+          (actual && actual->symbol_id && !type) ||
+          (type && !ptx_frontend::resolved_ir::detail::
+                       is_function_address_register_type(*type))) {
+        diagnostics.push_back(
+            {.kind = CheckDiagnosticKind::OperandTypeMismatch,
+             .range = diagnostic_range(operand.locations, context),
+             .message = "Indirect function address requires a scalar General "
+                        "integer or bit register no wider than 64 bits."});
+        continue;
+      }
+    }
     if (operand.call_table_ref &&
         (operand.call_table_ref->spelling.empty() ||
          operand.locations.size() != 1 ||
@@ -1070,6 +1427,13 @@ CheckResult check_operands(
           return &item;
       return nullptr;
     }();
+    if (descriptor) {
+      if (auto invalid =
+              check_mbarrier_token_form(*descriptor, operand, context)) {
+        diagnostics.push_back(std::move(*invalid));
+        continue;
+      }
+    }
     if (operand.call_table_ref &&
         (!descriptor || !descriptor->allow_call_table))
       diagnostics.push_back(
@@ -1081,8 +1445,11 @@ CheckResult check_operands(
         (operand.register_vector &&
          operand.register_vector->source.kind ==
              ResolvedVectorSourceKind::NamedVector) ||
-        (operand.mov_value_vector && operand.mov_value_vector->source.kind ==
-                                         ResolvedVectorSourceKind::NamedVector);
+        (operand.mov_value_vector &&
+         operand.mov_value_vector->source.kind ==
+             ResolvedVectorSourceKind::NamedVector) ||
+        (operand.value_vector && operand.value_vector->source.kind ==
+                                     ResolvedVectorSourceKind::NamedVector);
     bool matches_view =
         !operand.register_vector ||
         operand.vector_arity == operand.register_vector->elements.size();
@@ -1099,7 +1466,7 @@ CheckResult check_operands(
             matches_view && operand.vector_element_registers[index] ==
                                 (lane ? &*lane : nullptr);
       }
-    const bool valid_source =
+    bool valid_source =
         operand.mov_value_vector
             ? valid_mov_vector_source(*operand.mov_value_vector,
                                       operand.locations, false,
@@ -1110,9 +1477,58 @@ CheckResult check_operands(
                                                 operand.locations, false,
                                                 context.instruction_range) &&
                    (!named || (descriptor && descriptor->allow_named_vector &&
-                               descriptor->vector_type_policy ==
-                                   VectorTypePolicy::Element &&
+                               (descriptor->vector_type_policy ==
+                                    VectorTypePolicy::Element ||
+                                descriptor->vector_type_policy ==
+                                    VectorTypePolicy::Aggregate) &&
                                !descriptor->source_value_vector)));
+    if (operand.value_vector ||
+        (descriptor && descriptor->source_value_vector)) {
+      const auto* value = operand.value_vector;
+      bool matches_value =
+          descriptor && descriptor->source_value_vector && value &&
+          operand.actual_shape == OperandShape::Vector &&
+          operand.vector_arity == value->elements.size() &&
+          operand.vector_arity <= kMaxOperandElements &&
+          !operand.register_vector && !operand.mov_value_vector;
+      if (matches_value) {
+        for (size_t index = 0; index < value->elements.size(); ++index) {
+          const auto& lane = value->elements[index];
+          if (const auto* reg = std::get_if<ResolvedRegisterRef>(&lane)) {
+            matches_value =
+                matches_value &&
+                operand.vector_element_shapes[index] ==
+                    OperandShape::Register &&
+                operand.vector_element_registers[index] == reg &&
+                !operand.vector_element_immediates[index] &&
+                operand.vector_element_types[index] ==
+                    reg->declared_type.value_or(ScalarType::Invalid);
+          } else {
+            const auto& immediate = std::get<ResolvedImmediate>(lane);
+            matches_value =
+                matches_value &&
+                operand.vector_element_shapes[index] ==
+                    OperandShape::Immediate &&
+                operand.vector_element_immediates[index] == &immediate &&
+                !operand.vector_element_registers[index] &&
+                operand.vector_element_types[index] == immediate.type &&
+                operand.vector_immediate_bits[index] == immediate.bits &&
+                operand.vector_immediate_source_bits[index] ==
+                    immediate.integer_source_bits &&
+                operand.vector_immediate_negative[index] ==
+                    immediate.is_negative;
+          }
+        }
+      }
+      valid_source = valid_source && matches_value &&
+                     valid_value_vector_source(*value, operand.locations, false,
+                                               context.instruction_range) &&
+                     (!named || (descriptor && descriptor->allow_named_vector &&
+                                 descriptor->source_value_vector &&
+                                 descriptor->access == OperandAccess::Read &&
+                                 descriptor->vector_type_policy ==
+                                     VectorTypePolicy::Element));
+    }
     if (!valid_source)
       diagnostics.push_back(
           {CheckDiagnosticKind::InvalidVectorOperand,
@@ -1128,14 +1544,61 @@ CheckResult check_operands(
                             .message = "Register component has invalid "
                                        "explicit-selector provenance."});
     };
-    check_component(operand.register_ref,
-                    diagnostic_range(operand.locations, context));
-    if (operand.actual_shape == OperandShape::Address && operand.register_ref &&
-        operand.register_ref->component)
+    if (operand.actual_shape == OperandShape::Register &&
+        !valid_general_register_class(operand.register_ref,
+                                      operand.register_class,
+                                      operand.register_type)) {
       diagnostics.push_back(
-          {CheckDiagnosticKind::OperandTypeMismatch,
-           diagnostic_range(operand.locations, context),
-           "Address bases do not admit register components."});
+          {.kind = CheckDiagnosticKind::UnsupportedOperandShape,
+           .range = diagnostic_range(operand.locations, context),
+           .message =
+               "A scalar Register operand requires a General-register class."});
+      continue;
+    }
+    if (operand.actual_shape == OperandShape::Register) {
+      if (auto declaration = register_declaration_diagnostic(
+              operand.register_ref,
+              diagnostic_range(operand.locations, context))) {
+        diagnostics.push_back(std::move(*declaration));
+        continue;
+      }
+    }
+    if (operand.actual_shape == OperandShape::Register &&
+        operand.register_ref && operand.register_ref->vector_width)
+      diagnostics.push_back(
+          {.kind = CheckDiagnosticKind::UnsupportedOperandShape,
+           .range = diagnostic_range(operand.locations, context),
+           .message = "A scalar register operand cannot use a whole vector."});
+    if (operand.actual_shape == OperandShape::Address && operand.register_ref &&
+        operand.register_ref->component) {
+      const auto outer = diagnostic_range(operand.locations, context);
+      const auto leaf = operand.register_ref->component->range;
+      check_component(operand.register_ref, leaf);
+      const auto* metadata = operand.register_ref->declared_type
+                                 ? base::find_scalar_type_metadata(
+                                       *operand.register_ref->declared_type)
+                                 : nullptr;
+      if (!metadata ||
+          metadata->register_declaration_usage !=
+              base::ScalarDeclarationUsage::Fundamental ||
+          (metadata->kind != base::ScalarKind::Signed &&
+           metadata->kind != base::ScalarKind::Unsigned &&
+           metadata->kind != base::ScalarKind::Bit) ||
+          metadata->size_bytes > 8 ||
+          metadata->size_bytes *
+                  operand.register_ref->component->declaration_width >
+              16)
+        diagnostics.push_back(
+            {CheckDiagnosticKind::OperandTypeMismatch, leaf,
+             "Selected address register requires a physical integer/bit vector "
+             "owner and a scalar element no wider than 64 bits."});
+      if (!fabric_range_inside(leaf, outer))
+        diagnostics.push_back(
+            {CheckDiagnosticKind::OperandTypeMismatch, outer,
+             "Address register component is outside its address operand."});
+    } else
+      check_component(operand.register_ref,
+                      diagnostic_range(operand.locations, context));
     for (const auto* reg : operand.paired_register_refs)
       check_component(reg, diagnostic_range(operand.locations, context));
     for (size_t index = 0;
@@ -1173,6 +1636,47 @@ CheckResult check_operands(
                                  descriptor.target_field_id),
       });
       continue;
+    }
+
+    if (descriptor.integer_immediate_type) {
+      if (!::ptx_frontend::resolved_ir::detail::
+              valid_integer_immediate_type_policy(descriptor)) {
+        diagnostics.push_back(
+            {CheckDiagnosticKind::RuleViolation,
+             diagnostic_range(operand->locations, context),
+             "Invalid integer immediate alternative for this descriptor."});
+        continue;
+      }
+      if (operand->actual_shape == OperandShape::Immediate) {
+        const auto primary = descriptor.type_expression.fixed_scalar_type;
+        const bool raw =
+            operand->immediate_type == descriptor.integer_immediate_type;
+        const bool numeric = operand->immediate_type == primary;
+        if (operand->immediate_type && !raw && !numeric) {
+          diagnostics.push_back(
+              {CheckDiagnosticKind::OperandTypeMismatch,
+               diagnostic_range(operand->locations, context),
+               "Immediate type is neither the logical floating "
+               "format nor its raw Bit alternative."});
+          continue;
+        }
+        // The validated finite policy permits only a 16- or 32-bit word.
+        const auto word_bits =
+            base::scalar_size_of(*descriptor.integer_immediate_type) * 8;
+        const auto word_mask = (uint64_t{1} << word_bits) - 1;
+        if (!operand->immediate_type || !operand->immediate_bits ||
+            *operand->immediate_bits > word_mask ||
+            (numeric && (operand->integer_source_bits ||
+                         operand->immediate_is_negative.value_or(false))) ||
+            (raw && !operand->integer_source_bits &&
+             operand->immediate_is_negative.value_or(false))) {
+          diagnostics.push_back({CheckDiagnosticKind::ImmediateValueMismatch,
+                                 diagnostic_range(operand->locations, context),
+                                 "Floating source requires a canonical "
+                                 "logical or raw Bit word."});
+          continue;
+        }
+      }
     }
 
     // Every source-backed data immediate retains both the evaluated source
@@ -1396,6 +1900,8 @@ CheckResult check_operands(
                 descriptor.target_field_id),
         });
       } else {
+        check_scalar_vector_leaves(*operand, descriptor.target_field_id,
+                                   context, diagnostics);
         const auto mismatched = std::ranges::find_if(
             operand->vector_element_shapes.begin(),
             operand->vector_element_shapes.begin() + operand->vector_arity,
@@ -1505,6 +2011,21 @@ CheckResult check_operands(
     // trustworthy effective state space. Do not infer one from spelling.
 
     const auto& expression = descriptor.type_expression;
+    // No selected type/arity exists on an untyped descriptor to grant all sinks.
+    if (expression.kind == OperandTypeExpressionKind::None &&
+        ordinary_all_sink_candidate(descriptor, *operand) &&
+        !permits_all_sink_destination(descriptor, *operand, ScalarType::Invalid,
+                                      std::nullopt, context)) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::InvalidVectorOperand,
+          .range = diagnostic_range(operand->locations, context),
+          .message = fmt::format(
+              "Vector operand '{}' requires a selected type and arity for an "
+              "all-sink destination.",
+              descriptor.target_field_id),
+      });
+      continue;
+    }
     if (expression.kind == OperandTypeExpressionKind::None) {
       append_value_availability_diagnostics(*operand, context, diagnostics);
       continue;
@@ -1624,6 +2145,9 @@ CheckResult check_operands(
             invalid(
                 lane_range.front(),
                 "Vector MOV source requires a scalar non-predicate register.");
+          else if (auto declaration =
+                       register_declaration_diagnostic(reg, lane_range.front()))
+            diagnostics.push_back(std::move(*declaration));
         } else if (const auto* immediate = std::get_if<ResolvedImmediate>(
                        &values.elements[index])) {
           lane.actual_shape = OperandShape::Immediate;
@@ -1819,6 +2343,9 @@ CheckResult check_operands(
         });
         continue;
       }
+      if (!descriptor.source_value_vector)
+        check_scalar_vector_leaves(*operand, descriptor.target_field_id,
+                                   context, diagnostics);
       if (descriptor.source_value_vector) {
         if (descriptor.access != OperandAccess::Read ||
             operand->locations.size() != operand->vector_arity) {
@@ -1838,14 +2365,23 @@ CheckResult check_operands(
             if (!reg || reg->register_class != ResolvedRegisterClass::General ||
                 reg->vector_width || (reg->symbol_id && !reg->declared_type) ||
                 (reg->declared_type &&
-                 !scalar_types_compatible(*reg->declared_type, expected_type,
-                                          descriptor.register_width_policy)))
+                 ((!descriptor.allowed_register_types.empty() &&
+                   scalar_size_of(*reg->declared_type) !=
+                       scalar_size_of(expected_type)) ||
+                  !::ptx_frontend::resolved_ir::detail::
+                      element_register_type_allowed(
+                          *reg->declared_type, expected_type,
+                          descriptor.register_width_policy,
+                          descriptor.allowed_register_types))))
               diagnostics.push_back(CheckDiagnostic{
                   .kind = CheckDiagnosticKind::OperandTypeMismatch,
                   .range = lane_range,
                   .message = "Value-vector lane requires a compatible scalar "
                              "general register.",
               });
+            else if (auto declaration =
+                         register_declaration_diagnostic(reg, lane_range))
+              diagnostics.push_back(std::move(*declaration));
           } else if (shape == OperandShape::Immediate) {
             const auto* immediate = operand->vector_element_immediates[index];
             if (!immediate || immediate->type != expected_type ||
@@ -1866,8 +2402,19 @@ CheckResult check_operands(
           }
         }
       }
+      // Owning null lanes cannot be hidden by a stale or caller-forged sink count.
+      const bool owns_all_sinks =
+          operand->register_vector &&
+          !operand->register_vector->elements.empty() &&
+          std::ranges::all_of(operand->register_vector->elements,
+                              [](const auto& lane) { return !lane; });
+      const bool all_sink_destination = permits_all_sink_destination(
+          descriptor, *operand, expected_type, required_vector_arity, context);
       if ((!descriptor.allow_vector_sink && operand->vector_sink_count != 0) ||
-          operand->vector_sink_count >= operand->vector_arity) {
+          operand->vector_sink_count > operand->vector_arity ||
+          ((operand->vector_sink_count == operand->vector_arity ||
+            owns_all_sinks) &&
+           !all_sink_destination)) {
         diagnostics.push_back(CheckDiagnostic{
             .kind = CheckDiagnosticKind::InvalidVectorOperand,
             .range = range,
@@ -1937,9 +2484,11 @@ CheckResult check_operands(
           const SourceRange& lane_range = index < operand->locations.size()
                                               ? operand->locations[index]
                                               : range;
-          if (std::ranges::find(descriptor.allowed_register_types,
-                                element_type) ==
-              descriptor.allowed_register_types.end()) {
+          if (!::ptx_frontend::resolved_ir::detail::
+                  element_register_type_allowed(
+                      element_type, expected_type,
+                      descriptor.register_width_policy,
+                      descriptor.allowed_register_types)) {
             diagnostics.push_back(CheckDiagnostic{
                 .kind = CheckDiagnosticKind::OperandTypeMismatch,
                 .range = lane_range,
@@ -2009,6 +2558,8 @@ CheckResult check_operands(
               to_string(expected_type)),
       });
     } else if (operand->immediate_type &&
+               !(descriptor.integer_immediate_type &&
+                 operand->actual_shape == OperandShape::Immediate) &&
                !scalar_types_compatible(*operand->immediate_type,
                                         expected_type)) {
       diagnostics.push_back(CheckDiagnostic{
@@ -2219,7 +2770,7 @@ CheckResult check_operand_layout_modifiers(
 
   CheckDiagnostics diagnostics;
   for (const ModifierValueView& actual : actual_values) {
-    if (!actual.is_present)
+    if (!modifier_is_present(actual))
       continue;
     if (!std::ranges::contains(layout.forbidden_modifiers, actual.slot))
       continue;
@@ -2264,6 +2815,9 @@ CheckResult check_operand_layout_availability(const VariantDescriptor& variant,
 
   append_ptx_upper_bound_diagnostic(availability, target,
                                     context.instruction_range, diagnostics);
+
+  append_sm_upper_bound_diagnostic(availability, target,
+                                   context.instruction_range, diagnostics);
 
   if (target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
@@ -2314,7 +2868,21 @@ CheckResult check_modifier_value_availability(
     std::span<const ModifierValueView> actual_values, const Context& context) {
   CheckDiagnostics diagnostics;
   for (const ModifierValueView& actual : actual_values) {
-    if (!actual.is_present)
+    if (!valid_modifier_memory_identity(actual) ||
+        std::ranges::any_of(descriptors, [&actual](const auto& entry) {
+          return entry.kind_id == actual.kind_id &&
+                 !valid_modifier_memory_identity(entry, actual);
+        })) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
+          .range = diagnostic_range(actual.locations, context),
+          .message = fmt::format(
+              "Modifier '{}' has an invalid memory identity.", actual.kind_id),
+      });
+      continue;
+    }
+
+    if (!modifier_is_present(actual))
       continue;
 
     const auto it = std::ranges::find_if(
@@ -2341,6 +2909,7 @@ CheckResult check_modifier_value_availability(
       continue;
     }
     append_ptx_upper_bound_diagnostic(availability, target, range, diagnostics);
+    append_sm_upper_bound_diagnostic(availability, target, range, diagnostics);
     if (target.ptx_version < availability.minimum_ptx_version) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -2383,6 +2952,20 @@ CheckResult check_modifier_value_domain(
     std::span<const ModifierValueView> actual_values, const Context& context) {
   CheckDiagnostics diagnostics;
   for (const ModifierValueView& actual : actual_values) {
+    if (!valid_modifier_memory_identity(actual) ||
+        std::ranges::any_of(descriptors, [&actual](const auto& entry) {
+          return entry.kind_id == actual.kind_id &&
+                 !valid_modifier_memory_identity(entry, actual);
+        })) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
+          .range = diagnostic_range(actual.locations, context),
+          .message = fmt::format(
+              "Modifier '{}' has an invalid memory identity.", actual.kind_id),
+      });
+      continue;
+    }
+
     const auto it = std::ranges::find_if(
         descriptors, [&actual](const ModifierValueDomainDescriptor& entry) {
           return matches_modifier_value(entry, actual);
@@ -2465,10 +3048,37 @@ CheckResult check_cvt_rule(std::span<const ModifierValueView> modifiers,
                               "and destination types.");
   }
 
+  // Logical formats remain available here even when a layout uses a physical
+  // Bit type. Width compatibility is checked independently by the layout.
+  for (const auto& operand : operands) {
+    const ScalarType format =
+        operand.field_id == "dst"            ? destination_type
+        : operand.field_id == "scale_factor" ? ScalarType::UE8M0x2
+        : operand.field_id == "src" || operand.field_id == "src1" ||
+                operand.field_id == "src2"
+            ? source_type
+            : ScalarType::Invalid;
+    if (!cvt_requires_bit_carrier(format) && format != ScalarType::F16x2)
+      continue;
+    const auto actual = cvt_register_type(&operand);
+    if (!actual || base::scalar_kind(*actual) == base::ScalarKind::Bit ||
+        (format == ScalarType::F16x2 && *actual == ScalarType::F16x2))
+      continue;
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::OperandTypeMismatch,
+        .range = diagnostic_range(operand.locations, context),
+        .message = fmt::format(
+            "cvt format '{}' operand '{}' requires {} register storage.",
+            base::find_scalar_type_metadata(format)->source_spelling,
+            operand.field_id,
+            format == ScalarType::F16x2 ? "native f16x2 or Bit" : "Bit"),
+    }});
+  }
+
   const auto has_exact_width = [](const OperandView* operand, ScalarType type) {
-    return operand == nullptr || !operand->register_type.has_value() ||
-           base::scalar_size_of(*operand->register_type) ==
-               base::scalar_size_of(type);
+    const auto actual = cvt_register_type(operand);
+    return !actual ||
+           base::scalar_size_of(*actual) == base::scalar_size_of(type);
   };
   const bool exact_destination = destination_type == ScalarType::BF16 ||
                                  destination_type == ScalarType::BF16x2 ||
@@ -2545,12 +3155,17 @@ CheckResult check_cvt_rule(std::span<const ModifierValueView> modifiers,
        source_type == ScalarType::BF16) ||
       (destination_type == ScalarType::BF16 && source_type == ScalarType::F16);
   if (f16_bf16_pair) {
-    if (rounding_mode == RoundingMode::Invalid ||
-        is_float_rounding(rounding_mode)) {
+    if (is_integer_rounding(rounding_mode) || is_float_rounding(rounding_mode))
       return {};
+    if (rounding_mode == RoundingMode::Invalid) {
+      if (destination_type == ScalarType::F16)
+        return {};
+      return cvt_rule_violation(
+          context, "f16 to bf16 conversion requires explicit rounding.");
     }
     return cvt_rule_violation(
-        context, "bfloat conversion pairs only admit floating rounding.");
+        context,
+        "f16/bf16 conversion pairs require floating or integer rounding.");
   }
   if (destination_type == ScalarType::BF16 && source_type == ScalarType::F32) {
     if (is_float_rounding(rounding_mode))
@@ -3220,6 +3835,9 @@ CheckResult check_tcgen_mma_sources(
         "TCGEN WS zero-column descriptor requires scalar General "
         "b64/u64/s64.",
         CheckDiagnosticKind::OperandTypeMismatch);
+  if (!ws && scale_selector == nullptr && mask == nullptr)
+    return cvt_rule_violation(
+        context, "Non-WS unscaled MMA requires an output-lane mask.");
   if (mask) {
     const size_t expected = group == TcgenCtaGroup::One ? 4 : 8;
     if (mask->value.elements.size() != expected)
@@ -3232,7 +3850,7 @@ CheckResult check_tcgen_mma_sources(
         return cvt_rule_violation(
             context,
             "TCGEN MMA output-lane mask requires scalar General "
-            "b32/u32/s32/f32 register entries.",
+            "b32/u32/s32/f32/f16x2 register entries.",
             CheckDiagnosticKind::OperandTypeMismatch);
     }
   }
@@ -3786,6 +4404,8 @@ CheckResult check_memory_vector(
   }
   append_ptx_upper_bound_diagnostic(availability, context.target, vector_range,
                                     diagnostics);
+  append_sm_upper_bound_diagnostic(availability, context.target, vector_range,
+                                   diagnostics);
   if (context.target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,

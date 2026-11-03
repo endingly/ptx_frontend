@@ -12,7 +12,7 @@ frontend 证据，不代表 GPU 执行、broadcast/truncation 语义或 assemble
 | v2 u32 constant-expression MOV → alias/overlap MOV → ST | Folded typed value、parameterized register member 和 source form 在所有权转移后保留。同 lane 的 destination alias 仍为重复；source 重复和 source/destination overlap 合法。 |
 | Named v2 f64 NC/LDU → MOV → ST | Memory 与 MOV 保留各自 type policy。既有 availability 不混用：NC 需 PTX 3.1 / SM 32，generic LDU 需 PTX 2.0 / SM 20，explicit-global LDU 需 PTX 2.0 并叠加 f64 SM 13，f64 MOV 需 SM 13。 |
 | Named-array constant address → vector LD → MOV → ST | 声明 `.v4 .f32 A[]` 的 index stride 仍为标量四字节，不是十六字节。`A[4]` 贡献十六字节，可满足 v4 alignment；动态 index 将已知对齐降为 `gcd(base alignment, 4)`，仅保证四字节对齐时同一 vector access 被拒绝。 |
-| 邻接的不支持组合 | Atom/red 保持 brace-only；scalar bit pack/unpack 保留 sink/B128 门槛，不接纳 named aggregate、float packing 或 scalar-to-scalar B128。现代 256-bit memory 使用合法 scalar brace lane，不依赖超宽普通 named 声明，也不扩宽 vector MOV。 |
+| 邻接的不支持组合 | Atom/red 保持 brace-only；scalar bit pack/unpack 接受总宽严格匹配的 named ordinary aggregate，并保留 sink/B128 门槛；floating instruction type 与 scalar-to-scalar B128 仍不支持。现代 256-bit memory 使用合法 scalar brace lane，不依赖超宽普通 named 声明，也不扩宽 vector MOV。 |
 
 Owned revalidation 检查完整 source form、component origin/order、实际声明宽度、
 type/arity 和 source owner，并对被篡改 payload 提供带位置的失败。这些集成检查
@@ -47,17 +47,19 @@ Whole hardware vector 仍为独立 width-four intrinsic-u32 read，只兼容 u32
 nested whole vector、address、function 与 symbol 不能作为 source lane。
 `mov.v2.u32 V, 1` 等 bare scalar vector source 仍是 frontend 不支持的子集，
 不宣称 ISA-invalid 或 broadcast/truncation 语义。Scalar `.b16/.b32/.b64/.b128`
-pack/unpack 保持 brace-only，包括 B128 PTX 8.3 / SM 70 门槛；不加入 named scalar
-aggregate、floating pack 或 scalar-to-scalar B128。其他 family fence 与现代 256-bit
+pack/unpack 接受 brace 或总宽严格匹配的完整 ordinary named vector，并保留 B128
+PTX 8.3 / SM 70 门槛；floating instruction type 与 scalar-to-scalar B128 仍不支持。其他 family fence 与现代 256-bit
 brace memory form 不变。Source 释放及 module copy/move 后，owned validation
 重联完整 base/lane 声明与 source owner。
 
 ## 具名数组地址
 
-专用 address-source MOV 与普通 LD（ISA §9.7.9.8）/ ST（§9.7.9.11）
-接纳 `A[index]`。LDNC、LDU、ST.async/bulk、atom/red、cp.async、prefetch、
-matrix、tensor、texture family 仍不在此支持子集内；这不声称它们的 PTX ISA
-语法非法。接纳策略由最终 variant 的规范元数据决定，并在 owned IR 中独立复查。
+专用 address-source MOV 与通用 address operand 接纳 `A[index]`，包括 LDNC/LDU、
+atomic/reduction、cache、async-copy、barrier、tensor-map、response object 与 fabric
+本地 memory 地址。接纳策略按 typed binding 决定：明确要求 register-only 的 async
+数据地址仍受限制，不影响同一指令的通用 barrier-object 地址。Tensor operand、fabric
+handle、texture/surface access 保留独立语法。生成的 source 与 owned 检查采用相同的
+role policy；既有 target、state-space、alignment 和 control 规则继续适用。
 具名形式不与 `.unified` suffix 组合。已知 unified storage 的 LD 仍需既有
 bracket-qualified 路径，ST 仍因只读约束被拒绝；MOV 可以取其地址（包括具名
 indexing）而不进行解引用。
@@ -65,7 +67,8 @@ indexing）而不进行解引用。
 `ResolvedAddress::named_index` 拥有整数 index 的 bits/signedness 或精确绑定的
 标量 register、可选整数 displacement、源码 operator、标量字节 stride 和 range；
 它与原有 byte offset 互斥。`A[1]` 按声明的标量 base element 大小缩放：
-u32、v2.u32 和多维 u32 数组均为四字节，u64 为八字节。array shape 来自按
+u32、v2.u32 和多维 u32 数组均为四字节，u64 为八字节。Instruction data type、transfer
+granule 与 opaque object 大小不决定该 scalar stride。array shape 来自按
 SymbolId 关联的 owned storage/parameter record；缺少此上下文的 standalone
 resolve 明确失败。负数或越界常量不会仅因数组 bounds 被拒绝。
 
@@ -124,7 +127,7 @@ legacy memory-vector payload 最多 128 bit：`.v2` 到 64-bit type，`.v4` 到
 静态 natural alignment 会检查已绑定 data symbol 的常量 byte offset 和 absolute immediate；
 register 与 standalone unresolved address 保持 unknown。其余 source form、其余 memory
 qualifier extension、CFG、SSA 和目标 lowering 仍是后续 pass，不应改变此层的结构。
-`ResolvedIndirectCallee` 为 non-predicate `.reg` indirect target 或已绑定的 function-local
+`ResolvedIndirectCallee` 为 scalar General integer/bit `.reg` indirect target 或已绑定的 function-local
 `.callprototype`/`.calltargets` label 提供 descriptor-independent identity；所属
 `ResolvedFunction` 另行拥有对应的有序 metadata payload 与 normalized ABI，operand 因而保持紧凑，
 但 metadata 不会丢失。final 类 `CallDirect` 现有三个额外的 `IndirectCall` layout
@@ -239,10 +242,10 @@ validator 都拒绝未知 option 或额外 architecture 项。词法合法但未
 仍可解析，在 validation 阶段产生 `UnknownTarget`。每个显式 catalog 中的
 `sm_<number>[a|f]` profile 都接受 `compute_<number>[a|f]` 同义形式，architecture、
 flavor、enabled family feature 和 capability 相同。词法解析及 owned source region
-保留实际书写的 prefix；语义 availability 和显式 checker target 比较使用 architecture
-与 flavor。`TargetIdentity::operator==` 仍比较 source spelling，source provenance
-一致性检查保持精确。未知 number 或未支持 flavor（包括 `compute_101a`、
-`compute_101f`）不会获得 catalog profile。Texture mode 继续检查重复与模块级冲突；
+保留实际书写的 prefix；语义 availability 和显式 checker target 比较通过显式 catalog
+rename 对应关系使用 validation-feature architecture 与 flavor。`TargetIdentity::operator==` 仍比较 source spelling，source provenance
+一致性检查保持精确。未知 number 或未支持 flavor（包括 `compute_102a`、
+`compute_102f`）不会获得 catalog profile。Texture mode 继续检查重复与模块级冲突；
 此契约不增加 DWARF 内容检查或浮点指令转换。
 源码形式依据归档的 [PTX ISA 9.3 target directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)。
 
@@ -338,7 +341,7 @@ diagnostic，而 AST-free validation 会拒绝缺少该 typed payload 的 `.unif
 instruction range/opcode 与全部 owned record 都是 semantic provenance。frontend 保留 `.language`
 以及 function ABI/resource contract；`.file`、`.loc`、`.section`、`.pragma` 属于 syntax/debug 或
 advisory metadata，不作为可执行 resolved payload；owned symbol table 另保留 `.file` 声明 payload 以验证 debug identity。generated C++ struct layout 或 binary ABI 不保证稳定。
-原始 module directive 仍需要 AST；owned model 是已声明 subset 的 semantic handoff，不是完整源码
+其他原始 module directive 仍需要 AST；owned model 是已声明 subset 的 semantic handoff，不是完整源码
 序列化契约。
 
 `ResolveDiagnostic` 拥有 message 和 source range 的值。模块解析保留原阶段的
@@ -370,6 +373,34 @@ Syntax AST/symbol table 保存，不复制成未解析的 Resolved IR 字符串�
 也验证 `.loc` metadata；`.file`、`.loc`、`.section` 与 `.pragma` 不产生可执行 Resolved IR node，
 也不附着到 instruction。
 
+存在的 `file_size` 是经过检查的 unsigned64 单个整数 token，包括零（unavailable）与
+UINT64_MAX。Decimal、前导零 octal、binary、hexadecimal 及可选 `u`/`U` suffix 复用
+既有 checked integer-magnitude decoder；overflow、符号、浮点值、表达式与非整数叶
+均拒绝，不做截断。仍拥有原始 text/range 与缺省状态，不增加 decoded-size cache。
+Current symbol table 与 supplied/rebound 的 size 在可选 context 门槛之前独立检查；
+合法 replacement metadata 不能遮蔽非法 current data，而各自合法但不同的 `.file`
+dataset 仍保持 debug-neutral source identity。Timestamp 独立的 `time_t` domain，以及
+既有 index、filename、optional-pair、range 与 reference 规则均不变。
+
+`ResolvedModule::pragmas` 按源码遍历顺序拥有 `ResolvedPragma`：`placement`
+（`Module`、`EntryHeader` 或 `Statement`）、`scope_id`、拥有式 raw `AstSyntax`
+string leaf 与整条 directive 的 `range`。Module 使用 module scope；header 使用实际
+entry declaration occurrence；statement 经 lexical block 到达实际 function definition，
+不使用 canonical symbol 的首个 prototype scope。Pragma string 不创建名字，也不定义
+frontend backend/loop/execution 解释。空的 quoted content 合法；保留的空 list、非 quoted
+leaf、非法 scope/placement 或 whole/leaf range 均拒绝。已知 current 与 supplied module
+range 各自包含自身 record；全零 owner range 延后 containment。检查 list 内顺序，但不排序 record
+或将其与历史文本关联；grouped spelling/range 不替代 CST comma/trivia 的精确序列化。
+
+Copy、assignment 与 move 将整个 vector 和 module table 一同拥有；function-only copy
+不会取得 module advisory metadata。两个验证 API 均对 current record 做 intrinsic 检查，
+supplied AST projection 独立检查并采用其版本执行 PTX 2.0 门槛；合法 neutral replacement
+可删除 pragma 并降至 PTX 1.5，不受旧 presence 否决。AST-free availability 使用当前
+module version。缺少 target 也不跳过已知旧版本；只有未知 version 在 `AvailableContext`
+中延后。合法 replacement 不能遮蔽非法 current data，反向亦然。此 public layout 新增
+要求 consumer rebuild；显式 public `ptx_syntax_sections.hpp` value dependency 提供
+`AstSyntax`，module-only header 仍保持 `AstModule` 与 `AstInstruction` incomplete。
+
 显式 `.file` timestamp/file-size metadata（包括 `0, 0`）要求 PTX ISA 3.2 或更高版本；
 普通 `.file` 不受此门槛限制。此检查基于可选字段是否存在，不要求 SM 或 debug option，
 即使没有可识别 target，已知的旧版本也会被拒绝。`AvailableContext` 在 version 缺失时延后检查；
@@ -380,10 +411,10 @@ AST-backed validation 使用传入 AST 的 version 及独立重新绑定的 file
 `ResolvedFunction::parameter_declarations` 拥有通过验证的 `.param` 声明：先按列表顺序
 保存 return formal，再保存 input formal，最后按词法遍历顺序保存 body-local declarator
 （含嵌套 block）。每个 `ResolvedParameterDeclaration` 保留 `symbol_id`、`scope_id`、role
-（`EntryInput`、`DeviceInput`、`DeviceReturn` 或 `BodyLocal`）、基础 `scalar_type`、有效字节
+（`EntryInput`、`DeviceInput`、`DeviceReturn`、`BodyLocal` 或 `LegacyEntryInput`）、基础 `scalar_type`、有效字节
 `alignment`、`explicit_alignment`、`vector_width`、从外到内的 `array_extents`、经溢出检查的
 `byte_extent` 与可选 pointee property。scalar 的维度列表为空；受支持的 unsized device input
-array 的维度值及 byte extent 为空。所属 function 与 symbol table 即使在局部同名遮蔽时仍
+array 仅外轴为空，保留并检查已知内轴，byte extent 为空。所属 function 与 symbol table 即使在局部同名遮蔽时仍
 保留词法 identity。Source text 与 Syntax AST 销毁后仍可检查这些值。Non-pointer 没有
 pointer property；未写 pointed state space 的 pointer 为 generic，省略 pointee alignment
 时默认为四字节。该唯一 parameter table 不包含 `.reg` formal 或 `.callprototype`
@@ -397,6 +428,15 @@ call-context 工作：它取得 canonical prototype/definition signature，检�
 adjacency 约束。generated checker 仍只负责一个 resolved instruction 及 target-aware descriptor
 规则。
 
+完整 module 的 direct call 要求实际绑定的 device-function SymbolId 在调用前已有
+declaration/definition。共享 source/owned pass 通过保留的 lexical event 与 declaration
+occurrence 检查 call 内唯一、正坐标、非空 target range；未知或歧义 order 会拒绝。
+兼容的先行 prototype 与现代 self-recursion 合法；alias 使用自身 identity 的可见性，
+不借用更早的 canonical target。Copy/clone 后的 owned call 可在该 event 改指向另一
+兼容且已声明的函数，不按 diagnostic spelling 重联；later-only target 与 malformed
+location 拒绝。Source association 独立检查。Instruction fragment 保留 partial-context
+解析，indirect register/metadata/table call 继续使用各自规则。
+
 `<ptx_frontend/semantic/ptx_function_contract.hpp>` 提供不依赖 Syntax AST 的 canonical
 function-signature contract。其 parameter contract 使用 semantic state-space 与 pointer-space
 enum、`ScalarType` 和 typed vector shape，以及只为诊断保留的 invalid spelling；数值字段是
@@ -404,18 +444,85 @@ optional tagged value：omitted、已验证 constant 或 invalid structural key�
 直接消费这些 normalized value，不再重解析 alignment text 或旧 array-extent string protocol；
 invalid structural data 绝不会被静默替换为 default。
 
-call-staging 邻接性按当前词法 body 的执行指令序列检查。普通变量声明、`.loc` 和
-`.pragma` 不打断 call 前的参数 store 或 call 后的返回值 load。标签、嵌套 block 及
-call/branch metadata 仍是扫描边界；嵌套 body 使用自身 symbol scope 独立检查。
-实际插入的执行指令与带 predicate 的 staging 访问仍然非法。声明所在的位置不会改变
-call 必须使用的已绑定参数 identity。
+call-staging 邻接性按 owned 执行指令序列检查。变量/debug directive、metadata 声明、
+裸 label 与词法 brace 均透明。嵌套 block 中的 transfer 可使用仍可见的同一 outer
+object；不同 shadowed 声明或超出作用域的 actual 仍非法。任何插入的执行指令都会
+打断邻接性，transfer 不可带 predicate，call 本身仍可带 predicate。解析及 AST-free
+validation 从 byte-address 与 named-array 形式（包括 symbolic index）推导相同的
+绑定 object/member identity；offset 不改变 call 必须使用的本地 object。本检查不证明
+运行时 index bounds、逐字节初始化覆盖或任意 incoming control path 的正确性。
+
+Parameter record 也保留 fundamental `.f16x2` 与合法 `.param` v2/v4 shape，
+包含 lane-aware extent、自然 vector alignment 和 AST-free padded entry limit。
+[参数声明 contract](parameter_declarations.md) 区分 packed scalar dtype、显式 vector lane
+与 numeric packed-literal reference gap。
+
+owned symbol table 还保存有序 `.loc` 事件，不生成可执行 instruction，也不在 function
+内复制 payload。共同 validator 分别检查 current owned records 与重新绑定的 replacement
+records。`inlined_at` triple 必须匹配 module lexical 顺序中更早的 **base** triple；
+当前 base 在检查其引用之后才加入。nested block、function 边界与 target region 不重置序列。
+物理 range 只检查归属及单项字段顺序，不用于事件排序。记录依实际 function-definition
+occurrence scope 关联 body，而非 canonical function 最早的 owned scope。
+两个 dataset 都必须自身合法；不同的合法 debug dataset 仍符合 debug-neutral source identity。
+数字 triple 以 unsigned magnitude 比较，支持不同 radix/suffix、零 line/column 与完整
+uint64；这是 frontend capacity，不是 DWARF 位宽声明。file index 必须独立绑定 `.file`，
+function name 必须绑定当前 typed `.debug_str` identity。basic `.loc` 要求 PTX 1.0，
+inline attribute 要求 PTX 7.2，无架构下限。缺少 version 时 `AvailableContext` 可推迟
+availability 判断，但不能推迟 numeric、identity 或 precedence 错误。
+这不表示 instruction attachment、解码 line table 或 string-address execution。
+
+私有 iterative SCC check 在每次 validation 重算 current canonical local-definition
+call relation。Direct cycle 是 syntactic recursion；依赖实际 consumed finite target-set/table
+alternative 的 cycle 是 statically possible recursion。每个参与 caller 的 selected context
+均需已知 PTX 2.0 / SM 20；source-aware 以 supplied context 检查同一 current owned graph，
+原始 acyclic AST 不能遮蔽 coherent current callee edit。Copy/clone 不保留陈旧 graph state。
+Call identity/ABI/table join 先于建图，edge collection 不遍历 non-call instruction 的 lane。
+不保留 public graph/cache。External/prototype/dynamic open edge 不提供 whole-program
+acyclic 证明，`AvailableContext` 延后也不是 acyclic certificate；不建模 CFG 或 runtime
+stack/linker execution。
+
+Canonical symbol、storage occurrence record 与 function contract 中的 current weak
+linkage 对已知版本要求 PTX 3.1，不依赖 target context。每个 Weak symbol（包含
+symbol-only function）与 storage record 使用既有全部 region 版本相等约束保证的 common
+module version；function occurrence contract 仍使用各自准确的 selected region；function contract 或 canonical symbol
+任一 weak fact 均足够，包含未使用 prototype。Source-aware validation 在 supplied context
+下检查 current fact，并独立检查每个 supplied weak occurrence；weak qualifier 仍是
+nonneutral source identity。只有缺少 version 可在 `AvailableContext` 中延后，strict context
+与 unknown-target 诊断保留。Copy 保留现有 typed fact；不新增 cache-equality、历史 qualifier
+registry、public layout 或 linker simulation。
+
+Current retained `.branchtargets` 与 `.calltargets` 均要求 PTX 2.1 / SM 20，
+包含未使用和 nested declaration。它们复用下面的 minimum-only 机制：AST-free 使用
+准确的 selected-region context，source-aware 对 current record 和独立 supplied typed
+node 使用 supplied active context。缺少 full context 时也拒绝已知失败的 prerequisite。
+Target-list payload 仍属于 nonneutral source identity；不新增 CFG、execution、public layout
+或 member/signature policy。
+
+即使 unused 或 nested，current retained call prototype 也会检查 availability。
+base 要求 PTX 2.1 / SM 20，`.noreturn` 要求 PTX 6.4 / SM 30，两个 ABI-preservation
+suffix 均要求 PTX 9.0 / SM 80。AST-free validation 只采用 function 已验证的 selected
+region；source-aware validation 以 supplied active context 分别检查 current prototype
+字段与独立 supplied prototype syntax，version/target retarget 不增加历史 payload 限制。
+这四个 conjunctive minimum-only rule 分别判断已知 version 与 recognized profile：
+即使另一事实缺失，已知失败仍拒绝。`AvailableContext` 只推迟未知 prerequisite；strict
+missing-context 与 unknown-target 诊断保持。每个 target event 清除此前 recognized
+profile，不猜 version/target number，也不引入 generic partial-DNF 解释。
+普通 function/instruction availability 保留 full-context gate；count、variant、identity
+与 signature 合同不变，不证明 physical register preservation。
 
 ## Named memory-vector source
 
 普通 `ld`/`st`、`ld.global.nc` 和 `ldu` 的 data operand 在既有 brace 外接受普通
 named `.reg .v2`/`.reg .v4`。声明宽度必须等于 arity，实际声明总大小不超过 128 bit；
 memory equal-or-wider element 规则不变。现代 256-bit vector、async store、
-atomic/reduction、matrix、texture 与 scalar pack/unpack operand 仍只接受 brace。
+atomic/reduction、matrix 与 texture operand 保留各自的 brace 限制。
+scalar bit pack/unpack 也按下述 exact aggregate-width policy 接受 named ordinary vector。
+
+通用 checker 边界要求 effective scalar `Register` operand 的
+`ResolvedRegisterRef::vector_width` 为空；完整 vector 不可冒充 scalar。显式 component
+仍为 scalar：effective width 为空，component metadata 保留所属声明宽度。真正的
+`Vector` operand 仍通过专门检查保留 whole base 与有序 lane provenance。AST-free
+copy 与 instruction clone 同样适用这些规则。
 
 `ResolvedRegisterVector::elements` 保留各 lane；owned `ResolvedVectorSource` 区分
 `BraceList`/`NamedVector`，保存完整书写范围，仅 named form 拥有真实 whole
@@ -429,7 +536,7 @@ consumer 仍拒绝。Reference traversal 包含 wholebase 与每个 lane；AST-f
 validation 重联声明和来源 owner。实际 brace 总保存 fullrange；历史手工 standalone
 brace 可省略，但提供的畸形范围必须拒绝。Owned validation 要求完整 provenance 与
 instruction/lane containment，named provenance 始终不可省略。Data-source opt-in
-不扩展 array-address policy：LDNC/LDU named-array 地址仍排除。不宣称 GPU 执行或
+data-source admission 与通用 array-address role policy 独立。不宣称 GPU 执行或
 assembler parity。
 
 ## 位置与基本值
@@ -455,6 +562,10 @@ modifier 得到的编译期常量，或由 optional modifier 的 YAML `default` 
 `ResolvedImmediate` 保存 use-width bits 和 `ScalarType`。integer form 还会
 保留求值后的 64-bit source bits 与数值上的 signed-negative 性质，因此
 fixed-control checker 不必重新解释 literal 文本，也不会信任已经窄化的值。
+原 integer source bits 存在时，在确认 use-width bits 与 source 一致之后，true negative
+flag 要求原 word 的 bit63 为1。Bit63 为1且 flag 为 false 可以表示 unsigned source。
+负的原始值可以窄化为正的 use-width bits；destination type 与窄化后的符号均不能重建
+source signedness。没有 source cache 的 scalar legacy input 保留既有行为。
 
 `AstImmediateKind` 保留 lexer 对 literal 的分类。二进制 `0b`/`0B` 拼写保留为 `BinaryInteger`。整数 decimal/octal/binary/hex（包括可选 `U`
 后缀）先在 PTX 64-bit signed/unsigned source domain 中求值；unary minus 保留该 source
@@ -466,16 +577,28 @@ representability；fixed scalar type 只表达 provenance。generated range、ex
 multiple-of control 比较保留的 source bits，而无约束的 control 显式选择严格 conversion。
 按 formal parameter type 检查的 call literal 与 address offset 继续执行严格的 target-width
 representability 检查。signed `-0` 在数值上是 zero，而 floating negative
-zero 保留其 IEEE sign bit。decimal float 目前支持转换至 `F32` 与 `F64`；
+zero 保留其 IEEE sign bit。decimal float 支持转换至 `F32`、`F64` 及等 source width 的 `B64`；
 单个 leading `+` 只在 decimal decoding 时规范化，而 leading `-`、signed zero 与
-exponent sign 保持通常的 floating semantics。raw `0f`/`0d` bit-pattern rule 不变。
+exponent sign 保持通常的 floating semantics。exact-F32 `0f` literal 拒绝括号与两个 unary sign，包括 lexer 合并的 signed spelling；
+exact-F64 `0d` literal 通过公共 numeric conversion 接受 unary sign 并保留 negative zero。
 `0f<8 hex>` 与 `0d<16 hex>` 分别作为 `F32` 与 `F64` 的原始 IEEE bit pattern。
+原本允许 constant 的 scalar data slot 也接受 unsigned direct exact-F32
+进入 `B32`，以及 decimal/exact-F64 literal 或受支持的 binary64 expression 进入 `B64`。
+这一规则依据 source precision：exact-F32 进入 `B64`、binary64 source 进入 `B32`、
+floating source 进入 `B8`/`B16`/`B128` 均被拒绝。typed immediate 保留 bit destination 与
+raw payload，不伪造 integer-source provenance；owned call literal 重验保留 lexical
+source kind 与 spelling。integer-only control 和 register-only slot 仍遵循各自 role
+要求。exact-F32 operator 仍被排除，包括未选中的 branch。
 其他浮点格式需要其明确的量化规则后再加入，不能静默按整数处理。
 
 `ResolvedRegisterRef` 拥有完整源码拼写与 `ResolvedRegisterClass`。在 module resolution
 中，它还保存 declaration `SymbolId`、可选 parameterized member index 和声明
 `ScalarType`；因此 named register（如 `%tmp`）与 `name<count>` member 都有稳定身份。
-numbered-register index 仍只是可选便捷属性，不能单独充当身份。普通 `.xyzw/.rgba`
+numbered-register index 仍只是可选便捷属性，不能单独充当身份。已知 bound register
+family 必须保留 semantic member；当前 spelling 在实际 declaration scope 的 lookup
+必须得到同一 `SymbolId` 与 member。普通非 family reference 不要求 member。清除
+numbered 便捷 index 不改变身份；一致修改当前 spelling/member 不要求重写已保留的
+source identity 或 supplied original AST。普通 `.xyzw/.rgba`
 选择保留相同 base 身份与 parameterized member，并拥有 `ResolvedRegisterComponent`：
 canonical lane、实际声明宽度、base spelling/range、完整 component range，以及书写的
 selector spelling/range。有效 shape 是 scalar，因此 `vector_width` 为空；
@@ -483,10 +606,27 @@ selector spelling/range。有效 shape 是 scalar，因此 `vector_width` 为空
 base/member/lane，故 `V.x` 与 `V.r` 同址，而 `V.x` 与 `V.y` 不同。
 Scalar 与 brace 校验要求合法 `ExplicitSelector` 来源，并同实际 operand 位置关联。
 `NamedProjection` 元数据不由这些 source form 接受，也不伪造书写 selector。
-Owned validation 重新关联 base identity、声明 shape/type 与源码范围。Call、address
-base 与 named-array index 不接受新增 component 语法或移植的 component reference。
-Fabric handle 保留独立的 identifier-only 语法，拒绝两种 component origin。
-Hardware component 仍是独立注册表 domain，只保留既有 selector。
+Owned validation 重新关联 base identity、声明 shape/type 与源码范围。普通 address
+base 与 named-array register index 通过同一个 carrier 接受显式 `.xyzw/.rgba`
+scalar selection。例如 `[V.x+4]` 保留 byte displacement，而 `A[V.x-1]` 保留数组
+scalar-element stride 与书写的减法。数组 object 仍是 data identifier。选中的 owner
+必须是实际的 General `.reg .v2/.v4` 声明，且满足现有总宽度至多 128 bit 的限制；
+其 scalar element 必须符合既有至多 64 bit 的 integer/bit address role。group member
+identity 与 lane identity 保持独立。dynamic alignment、memory offset 的 scaled checked
+范围与 MOV 较宽的 offset domain 均不变；不推断 runtime address、index bound、layout
+或 allocation。
+
+这是将普通 scalar-element inheritance 应用于既有 address/index role，不表示手册明确
+展示了这些 source spelling。公共 CST/AST variant 追加既有 member alternative，
+public producer 与 consumer 因此必须一起 rebuild。不同 selector alias 的书写仍有不同
+source identity。满足当前规则的 owned alias/lane 修改不认证 producer history；合法的
+supplied AST 不能掩盖非法 current metadata。即使 target check 延后，component leaf
+range 也必须位于 address 与 instruction 内，选中 physical owner 的 128-bit 上限也仍须满足。
+缺少 target context 时，`AvailableContext` 仍按既有规则延后完整 instruction role 检查，
+不构成 complete validation。call 支持显式普通 scalar component 输入、返回和间接 register target。共享 address
+child parsing 不会改变 Fabric、opaque-resource 与 tensor-map role 的独立语义排除。
+`NamedProjection` 不能冒充显式 scalar selector。Hardware component 仍是独立注册表
+domain，只保留既有 selector。
 无 binding context 的
 standalone resolver 保留旧边界：只接受 numbered register，并令 symbol/type 字段为空。
 Owned-module validation 会按结构遍历生成的 operand reference，包括寄存器备选值和嵌套
@@ -538,6 +678,14 @@ predicate register 和整数常量及其取反形式；MOV 的 `pred_or_sreg` �
 special register。两种 shape 都不接收浮点常量。standalone resolution 仍接受无需声明
 上下文的 numbered predicate register。
 
+Predicate constant、logical `!` 与 WGMMA scale-d numeric control 必须先具有 integer
+result source，再进行 truth/range conversion。`B64` conversion carrier 不证明 integer
+origin：decimal/exact-F64 literal 与 floating-valued expression 在这些 role 中仍不合法，
+即使 payload 为零或一。返回 integer 的 floating comparison 及对该 integer result 的
+`!` 仍合法。等宽 floating `B64` bit-data operand 保留独立 compatibility rule。owned
+predicate constant 仅保存 canonical Boolean；validation 不重建 normalization 已抹去的
+source syntax。
+
 `MovScalar` 负责 scalar 动态 type modifier：`.b16/.u16/.s16`、
 `.b32/.u32/.s32/.f32` 与 `.b64/.u64/.s64/.f64`，并保留既有的
 `.b16/.b32/.b64` pack/unpack layout。`MovB128PackUnpack` 是具有 fixed `.b128` 的独立生成
@@ -545,6 +693,16 @@ public variant，只用于 vector pack/unpack。`ResolvedRegisterVector` 保存 
 `ResolvedRegisterRef`，空元素表示 destination-only `_` sink。resolver 与 checker 都要求
 bit-size instruction type、vector 总位宽等于 instruction 位宽，并拒绝 source sink、全 sink
 destination 与 sub-byte element。`MovB128PackUnpack` 携带 PTX 8.3 / SM 70 availability。
+
+既有 aggregate layout 在 brace 外接受普通 named `.reg .v2`/`.v4` vector；arity 来自
+已绑定声明，而非隐式 MOV modifier。named source metadata 保留真实 whole base 与
+canonical `NamedProjection` lane，identifier range、declaration type、`SymbolId` 和
+parameterized-member identity 完全一致；不伪造显式 component selector 或 brace syntax。
+layout selection 仅在 descriptor 授权的 aggregate/scalar alternative 处使用 declaration
+shape。unknown name 与 context-free input 不会被推断为 named aggregate；既有 scalar
+行为与诊断保留，包括无需声明的 scalar symbol-address source。width/type 与 target error
+不会重试其他 layout。scalar 与带 vector modifier 的普通 vector MOV 保留既有 layout。
+source form、opcode、type 与 source identity 在 owned module copy 和 instruction clone 后保留。
 
 `ResolvedFunctionRef` 保存源码 spelling、稳定 function `SymbolId` 与 `.func/.entry` 类别。
 device-function 地址沿用 `mov` 的 PTX 1.0 baseline；kernel function 地址携带 PTX 3.1 /
@@ -588,14 +746,21 @@ descriptor 将期望元素数链接到该 field，而不是按 arity 复制 vari
 element type policy：每个 register element 都按 instruction type 检查，允许
 `EqualOrWider` register width。legacy payload 最多 128 bit；generated cross constraint
 另加入 PTX 8.8/SM 100 的精确 256-bit `.v8` × 32-bit 与 `.v4` × 64-bit form，地址已知时
-要求 global，并允许部分 sink。默认 register-width policy 为 `SameWidth`，
-保持 `mov/add/sub`、immediate 与 special-register 的既有行为；只有 `ld` destination 与
-`st` source register descriptor 选择 `EqualOrWider`，因此声明 register 位宽可大于等于
+要求 global，允许部分 sink 及全 sink load destination。默认 register-width policy 为 `SameWidth`，
+保持 `mov/add/sub`、immediate 与 special-register 的既有行为；`ld` destination、
+`st` source register descriptor 及适用的 `cvt` data operand 选择 `EqualOrWider`，
+因此声明 register 位宽可大于等于
 instruction type。通过 size 检查后，任一侧为 bit type 即兼容，fundamental signed/unsigned
 integer 互相兼容，float 只接受 exact type/size，integer/float 仍不兼容。这同时覆盖声明
-register 不超过 64-bit 的 wider load destination 与 store source（包括 store truncation）。
-wider actual `.b128` register 用于 narrower selected instruction 时，仍由 `EqualOrWider`
-policy 明确拒绝；exact `.b128` declaration 可用于 selected `.b128` memory instruction。
+register 最宽为 `.b128` 的 wider load destination、store source（包括 store truncation）
+与适用的 conversion operand，遵循 PTX ISA 9.3 Tables 27/28。中央 declaration semantics
+将 `.b128` 归类为 fundamental，同时拒绝 instruction-only declaration format 和超过
+128 bit 的 register vector。声明资格不会绕过 instruction、format、PTX-version 或 SM
+gate：selected `.b128` memory instruction 仍要求 PTX 8.3 / SM 70。
+无 size suffix 的 `isspacep` 地址 source role 使用 fixed u64 use type 与
+`WordOrDoubleword`：普通 B/S/U32、B/S/U64 register 均合法，不要求与 module address
+size 相等；更宽、floating 和 packed container 仍被排除。此有限 address-role 规则
+不限制通用 data carrier。
 既有 `mov` vector consumer 的 exact `.b128` compatibility 不受影响。当前 memory subset 见
 [LD 覆盖](converage/ld_coverage.md) 与 [ST 覆盖](converage/st_coverage.md)。
 
@@ -638,7 +803,14 @@ cache 的组合；对已知 address space 执行 global/shared、PTX 9.1 的
 `volatile.local` 及 scalar `.mmio.relaxed.sys` 规则，而不猜测 unknown generic
 address。生成的 `memory_vector` cross constraint 以 arity > 4、payload > 128 或 sink
 识别 modern candidate，要求 256 bit、地址已知时 global、以及 PTX 8.8/SM 100；只有这些
-modern load/store vector 可使用部分 sink，all-sink 与 legacy sink 仍拒绝。scalar、legacy
+modern load/store vector 可使用部分 sink。普通 write-only load destination 也接受完整
+brace tuple 的全 sink：选定 `.v8` 配 `.b32/.s32/.u32/.f32`，或 `.v4` 配
+`.b64/.s64/.u64/.f64`。私有许可核对实际 owned null lane、选定 type/arity、
+完整 brace/lane range 以及一致的 borrowed projection；不增加公共 descriptor flag，
+也不从 null lane 推断类型。全 sink store、legacy sink、named root、MOV 和 texture
+result 保持既有约束。global、32-byte alignment、PTX 8.8/SM 100 检查仍执行。
+缺少上下文时 `AvailableContext` 的成功保留既有的整条指令检查延后行为，
+不构成 feature availability 保证。scalar、legacy
 `.v2/.v4` 与 modern 256-bit 的静态 natural alignment 会按 total access size 检查已知 address。
 
 `ResolvedAddress` 另行记录 enclosing function kind。generated address view 仅从已绑定的
@@ -1012,8 +1184,8 @@ instruction 约束仍不属于当前 ABI。
 
 direct-call ABI、function-local call-argument `.param` memory、带限定的 `::entry`/`::func`
 form，以及 call adjacency/predication constraint 均由 module resolution 覆盖。indirect-call
-metadata、由生成的 `MovScalar` type domain 拒绝的 scalar `.b128` 与 wider `.b128` register
-所需的 declaration-type availability 仍不在本切片范围内。legacy scalar/vector `ld/st` cache operator、PTX 8.8 modern memory vector、static
+metadata 与由生成的 `MovScalar` type domain 拒绝的 scalar `.b128` 仍不在本切片范围内。
+wider `.b128` carrier 使用中央 register declaration rule 与所选 instruction 的 width policy。legacy scalar/vector `ld/st` cache operator、PTX 8.8 modern memory vector、static
 memory-address alignment 与 memory consistency qualifier 已纳入本切片。
 
 ## Owned Video 操作数
@@ -1034,19 +1206,17 @@ intrinsic identity 与当前 metadata 保持不变，有效类型与 availabilit
 
 ## 历史浮点控制省略形式
 
-`1.0 <= PTX < 1.4` 支持十二个保留 source omission 的 exact form：
+`1.0 <= PTX < 1.4` 支持十三个保留 source omission 的 exact form：
 `div.f32`、`rcp.f32`、`sqrt.f32`、`rsqrt.f32`、`sin.f32`、`cos.f32`、`lg2.f32`
 与 `ex2.f32` 的解释为 `FloatingPointDefault::ApproximateFlushToZero`；
-`div.f64`、`sqrt.f64` 与 `mad.f64` 为 `RoundNearestEven`；`rsqrt.f64` 为无 FTZ 的
+`div.f64`、`rcp.f64`、`sqrt.f64` 与 `mad.f64` 为 `RoundNearestEven`；`rsqrt.f64` 为无 FTZ 的
 `Approximate`。对应 final class 暴露 `inline static constexpr floating_point_default`，
 没有 source mode/rounding/FTZ member；DIV 也省略 `.full`。resolution 不插入 explicit
 modifier，也不改写 opcode。
 
-FP32 form 保持既有 all-target rule。FP64 form 要求 SM >= 13；只有 `div.f64` 与
+FP32 form 保持既有 all-target rule。FP64 form 要求 SM >= 13；`div.f64`、`rcp.f64` 与
 `sqrt.f64` 额外接受启用 `map_f64_to_f32` 的精确 generic `sm_10`、`sm_11` 或 `sm_12`。
-该 option 不会让 `rsqrt.f64` 或 `mad.f64` 在这些 target 上可用。`rcp.f64` 仍排除：manual 描述旧版 omitted-mode default，
-而 CUDA 13.3.33 拒绝复现的 form。此已记录的 manual/current-assembler discrepancy
-不扩大支持范围。既有 implicit `mad.f32`
+该 option 不会让 `rsqrt.f64` 或 `mad.f64` 在这些 target 上可用。`RcpImplicitF64` 与 `RcpRnF64` 分离，静态 RN 默认解释不伪造写入的控制。原生 SM13 source header 要求 PTX1.2+，映射 SM10/11 支持 PTX1.0，SM12 要求 PTX1.2。历史 CUDA 13.3.33 assembler 差异仅作为证据，不覆盖固定版本 manual 的规范。既有 implicit `mad.f32`
 保持自身 contract。
 
 availability metadata 在 plain requirement 和各 DNF clause 中可指定 exclusive 上界
@@ -1083,3 +1253,607 @@ NVIDIA 在 PTX 6.4 弃用浮点 `.satfinite`，并在 PTX 6.5 移除。省略此
 整数饱和以及 BF16、TF32、FP64 和其他 MMA family 均保持不变。这些是语法及
 静态验证契约，没有验证 GPU 数值执行。参见
 [CUDA 13.3 PTX 9.3 WMMA MMA 参考](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-wmma-mma)。
+
+Header numeric parameter record 保留完整有序 `array_extents` 与检查后的
+`byte_extent`，须与自身 signature 逐轴一致；不同声明/调用之间 ABI 使用总元素数。
+Name-only `ResolvedOpaqueEntryParameter::array_extents` 替换原 `is_array` 与
+`array_extent`，保留有界轴而不推导 opaque 字节数。Function copy 独立拥有这些向量，
+并独立 clone body instruction，见[公共 parameter migration](parameter_declarations.md)。
+
+普通 register-vector operand 与固定 cardinality 的 vector/tensor tuple 都由 scalar
+register leaf 组成。无论 arity 来自 modifier、allowed-arity 列表或固定 tuple bounds，
+该角色对 element 和 aggregate policy 均适用。即使 element dtype 匹配，owned
+whole-vector register 也不能替换单个 leaf。检查定位到对应 lane range，缺失时回退到
+operand／instruction range。显式 scalar component 与真实 named-vector projection 的
+effective vector width 仍为空，按既有 source 契约保持合法。外层 named MOV/memory
+vector root 保留自身完整 vector shape；它不是 scalar leaf。Value-vector source 保留
+既有 scalar-register、immediate 与 provenance 检查。该规则不改变 cardinality、
+dtype/carrier policy、named-source 许可或 immediate range。
+
+[Block-scaled MMA scale selector](converage/mma_scale_selector_coverage.md) 使用 U16
+逻辑值与封闭的 B16/S16/U16 register carrier。两个 scalar leaf、byte mask、独立 A/B
+thread 上限及 unsigned literal conversion，不因 whole-vector shape 或运行时 register 内容而改变。
+
+选定的 multimem data vector、SULD destination 及根 `st.async` v2/v4 source 与 brace 一样接受普通 named register vector。没有 vector modifier 时，Element binding 唯一的固定 arity 决定 lane 数。既有 whole-base identity 与 canonical `NamedProjection` lane 一起独立拥有。MM/SULD 要求 element 同宽；根 `st.async` 保留较宽 carrier 规则。Named 声明仍仅限 v2/v4 且总宽不超过 128 bit；MM v8 仍仅接受 brace。SUST value-vector source 使用下述 source 契约。
+
+`ResolvedValueVector` 现在除有序 `RegOrImm` element 外还拥有 `ResolvedVectorSource source`。默认仍为 BraceList 且无 whole base；完整 brace source 保留混合值、显式 component 及完整 brace range。选定的 78 个 SUST v2/v4 binding 也接受普通 named 声明。Named source 仅以 `source.whole_base` 作为 whole declaration authority；每个 lane 都是从真实 SymbolId/member/type/width 及完整 identifier range 派生的 canonical General-register `NamedProjection`。Immediate、sink、special register 及独立 scalar projection 不能组成 named source。`valid_value_vector_source` 复用 register-vector provenance 校验；未要求完整 provenance 时保留 legacy standalone 空 brace range 的兼容性。Owned module 必须保留完整 source，并在 syntax 销毁后重新连接 base 与每个 lane。
+
+公共 ABI 迁移：必须重新编译 `ResolvedValueVector` 与 `checker::OperandView` 的 consumer。后者新增借用的 `const ResolvedValueVector* value_vector`，仅在同步 check 期间有效且指向实际 owned payload。生成的 projection 在 named permission 或 type check 前核对该 payload 的 arity、lane kind 与 register/immediate pointer。Copy、equality、assignment 和 instruction clone 包含 owned source；`IReferenceObserver::value_vector` 签名不变。其他 value-vector permission 保持默认 false，但不据此笼统断言所有对应 ISA role 都禁止 named syntax。RegOrImm domain 与 numeric conversion 规则未改变。
+
+`checker::OperandDescriptor::mbarrier_state_token_form` 现为 `std::optional<MbarrierStateTokenForm>`，默认缺省，替代原来无条件的 Register 默认值。该公共 member 类型及默认值迁移要求重新编译 consumer。缺省表示非 token descriptor；全部 93 个生成的 typed-token binding 显式设置既有 Register、RegisterOrSink 或 Sink policy，包括 Register input。既有 optional register payload 与 observer 签名不变。私有 common checker 在约束 register presence 前核对实际 Register shape、sink flag、借用 reference 及 optional declared-type cache。允许 sink 的 policy 要求 write destination。其他 scalar type/width/component/declaration 与 availability 规则仍独立；不会全局强制要求未知 declaration type。没有 token policy 的普通 register/predicate/SHFL sink 保持原有规则。调用方提供的缺省选择非 token 检查，不构成 token 认证。Owned copy 与 clone 在 source 销毁后执行相同 form 约束；此 policy 或 B64 carrier 都不证明运行时 phase 内容、进展或 token 真实性。
+
+标量 `Register` view 声明其为 General register。公共 checker 会拒绝实际借用 reference 或 class cache 中已知的非 General class，也拒绝该声明下已知的 predicate type 事实。register-vector 的 cardinality 合法后，同一规则适用于其标量 Register leaf，并以 lane range 定位诊断。真实 named-vector whole base 不是标量 leaf；General 显式 component 与 canonical `NamedProjection` lane 保留既有规则。Predicate 与 special-register view 保留各自的 shape 契约。未知 General type 及没有实际事实的 legacy view 仍由既有检查延后判定：此规则不新增必需 SymbolId 或 declared type，不要求所有 type cache 相等，也不新增通用 instruction-only declaration eligibility 检查。经上下文转换的 numeric type 仍遵循既有转换规则。class 验证不证明寄存器运行时内容。
+
+Mbarrier register carrier 的类型按 role 区分，而书写的 instruction modifier 仍为 `.b64`。Opaque arrival/arrival-drop output 与 opaque `pending_count` state input 接受恰好 64 bit 的 fundamental B64/S64/U64/F64 声明。非 parity test/try-wait state input 的语义类型为 U64，接受 B64/S64/U64，拒绝 F64 及所有其他宽度。Frontend 保留每个实际 declared type、SymbolId、member/component 及 range；不做 numeric floating conversion，也不证明运行时 token 内容或先前操作。对齐的 shared-memory `.b64` object 与 register carrier 是不同对象。CTA RegisterOrSink、cluster 强制 Sink policy 及 availability 仍独立。
+
+Report-value output 保留 frontend 带限定的 logical B8 model，并接受同宽 B8/S8/U8 carrier。固定 PTX 9.3 文本没有无歧义地把该异构 report operand 对应到规范 width/type；较新的官方 uint8 示例支持保留的 model，但不关闭固定参照的缺口。Report carrier 测试证明的是保留的 model，不是无条件的 ISA width 认证。Opaque F64 的接受来自已采纳的固定参照类型解释；辅助 assembler 的拒绝记录为工具差异，不构成新的 frontend 类型限制。
+
+标量 F16 数值常量在 use site 转换为 IEEE binary16。Decimal、已求值浮点表达式、exact F64 bits 与裸 unsigned exact F32 literal 均只执行一次 nearest、ties-to-even 舍入。Binary64 bits 直接转为 binary16；exact F32 输入先精确拓宽。Signed zero、渐进 subnormal、溢出为带符号 infinity，以及保留 sign／高 payload 并 quiet 的 NaN 均遵循确定的前端 literal policy，与指令 rounding、FTZ、saturation 无关；这不模拟 CVT 结果。Integer origin 与浮点常量仍有区别。Exact F32 的 sign、括号及运算仍拒绝；Bit16 不继承 numeric half 转换，F16/F16x2 data initializer 仍禁止。
+
+现有 11 个 generated class 中的 20 个字段从 `WithLocs<ResolvedRegisterRef>` 迁移为 `WithLocs<RegOrImm>`；公共 consumer 必须重编译，并在 `.value` 上使用 `std::get_if<ResolvedRegisterRef>` 或 `std::get_if<ResolvedImmediate>`。Variant 名称、add/sub 共享的 F16/BF16 domain、selector 顺序及所有 width／availability 规则不变。
+
+| Generated class | 迁移字段 |
+| --- | --- |
+| `AddMixedF32`, `SubMixedF32` | `src` 各自 |
+| `FmaMixedF32F16` | `src1`, `src2` |
+| `SetHalfF16F16`, `SetHalfF16F16Boolean` | `src1`, `src2` 各自 |
+| `SetHalfBf16F16`, `SetHalfBf16F16Boolean` | `src1`, `src2` 各自 |
+| `SetHalfIntegerF16`, `SetHalfIntegerF16Boolean` | `src1`, `src2` 各自 |
+| `SetpF16`, `SetpF16Boolean` | `src1`, `src2` 各自 |
+
+Canonical 当前 F16/BF16 immediate 是低 16 位 word，没有 integer-source provenance 或 integer-negative flag。普通 instruction IR 保留当前 typed word，因此合法范围内的一致修改可以有效，无需恢复原 literal。Shared mixed BF16 字段按下述标量转换契约接受 BF16 数值源及 canonical typed BF16 word。Call 保留原 lexical input 或转换前的 F64 expression value，并在 owned validation 中重算 half word。所有其余条件合法的标量 Reg/Param input 复用该转换；现代小宽度 Register-formal ABI 限制、vector no-splat 与 missing-context 要求仍独立。四个 scalar F16 SETP source 还需要单独 typed-policy delivery 实现 explicit raw Bit16 route；当前 numeric 路径不表示 raw integer 在规范上非法。Packed numeric 构造及新增源码权限仍是独立范围。
+
+普通 `cvt.pack.sat` 的 S32 input 除同宽 B32/S32/U32 register 外，也接受 integer constant 与 expression。既有 64-bit evaluator 将每个 input 窄化为低32位 S32 word，并保留原64位 integer bits／sign metadata；因此 `0x100000001U` 的 use word 为1，不要求 target-range。前端不把 input 预先饱和到 destination lane 宽度，也不预计算 packed result。Floating-valued input 仍不兼容 S32；最终 category 为 Integer 的 expression（包括 FP comparison）走 integer 路径。独立 B32 carry source 保留既有 literal／precision 契约，包括同宽 unsigned direct0f bit data；这不使 register-only stochastic `rbits` 接受 literal。Carry topology、destination width 与 target 边界不变。
+
+公共 ABI 迁移：`CvtPackSatU8S32B32`、`CvtPackSat16S32`、`CvtPackSatSmallS32B32` 的 `src1`／`src2` 从 `WithLocs<ResolvedRegisterRef>` 改为 `WithLocs<RegOrImm>`。Consumer 必须重编译，并通过 `std::get_if<ResolvedRegisterRef>` 或 `std::get_if<ResolvedImmediate>` 检查 `.value`。六个字段原位迁移；class、modifier domain、selector 顺序不变。Copy／assignment／clone 保留 typed word、source cache、declaration identity 与 location。普通当前 IR word／reference 修改按当前事实核对；source association 仍是独立的 retained-syntax 检查。
+
+三个 stochastic quad class `CvtRsSatfiniteF8x4F32`、`CvtRsSatfiniteF4x4F32`、`CvtRsSatfiniteF6x4F32` 的 `src.value` 改为 `ResolvedValueVector`，替代 `ResolvedRegisterVector`；consumer 必须重新编译并检查各 `RegOrImm` alternative。Brace source 保留完整 written range 和 lane 顺序，numeric floating source 复用公共 F32 conversion。Integer-origin source 仍不兼容，exact F32 constant 保留裸 unsigned literal 规则。此转换只生成 source F32 word，不执行 stochastic conversion、saturation 或 packed result。Named V4 F32/B32 source 以 `source.whole_base` 为唯一声明 authority，使用 canonical `NamedProjection` lane，并遵守既有 General class、arity、binding 和 128-bit 声明限制。Copy／clone 拥有 provenance 与 lane。借用的 `OperandView.value_vector` 必须指向实际 payload，且 lane pointer、type、range 和 descriptor permission 一致；默认 false 的 named permission 仍有效。Destination carrier policy 与独立 register-only `rbits` 规则（包括 widening policy）保持不变。
+
+普通 register declaration eligibility 根据实际 physical declaration type 与中央 `ScalarTypeMetadata::register_declaration_usage` 分类判断。已知 General-register reference type 必须为 Fundamental，包括经 explicit component、named projection 或 vector register leaf 访问的情形；standalone 缺失声明事实仍保留既有 defer 行为。Logical BF16／TF32／packed instruction format 与 canonical typed immediate word 独立于 physical register declaration。Contextual operand type cache 不替代实际声明 type。Owned validation 另外检查 Register state space 中所有 concrete 普通 `SymbolKind::Variable` 声明，包括未使用声明；缺失或未知 concrete type 均不能证明 eligibility。Predicate 声明与 native scalar F16x2 仍为 Fundamental。保留的 source identity 记录历史 syntax association，不使当前已变更 binding table 免于声明合法性检查。Copy 必须置于拥有相关 symbol table 的 module 中验证。
+
+### 拥有式 debug section 值
+
+`ResolvedModule.sections` 持有源码顺序的 section fragment。公共 `ResolvedDebugSection`
+alias 复用 `syntax_ast::AstSectionDirective` 及其小型 value-only variant；所有 string/range
+都复制，不借用 AST/CST/source，也不保存 numeric cache。默认 module copy/assignment/move/swap
+包含非空整数与 relocation payload。此次 CST/AST/Module 公共迁移改变源码和二进制布局，消费者须重编译。
+
+共同 checker 解码已经 token 化的 magnitude，按 B8/B16/B32/B64 原始区间
+`[-2^(w-1), 2^w-1]` 验证，完整保留 UINT64_MAX 与负 2^63；U 后缀不放宽范围。
+手册 `.b16 -65535` 示例与显式区间冲突，按区间拒绝。B32/B64 符号数据分别持有未知链接地址的
+single symbol、signed byte addend（包括 checked `label-integer` 简写）以及同一逻辑 section 内
+唯一已知 label/section base 的差。同名 section 合并 locality 而保留 fragment 顺序；链接地址与
+relocation 结果仍未知。不推导 string、任意表达式或 symbol/integer 混合列表语法。
+
+已知 PTX 门槛为 section 2.0、label addend 3.2、B16 data 6.0、label definition 7.2、
+label difference 和负数 7.5；负零按数学零处理。缺少上下文沿用既有 validation policy。
+AST-free 检查重验当前 owning record；source-aware 检查按 supplied effective context 独立验证
+当前与 supplied section，并重绑定其 debug label。合法 section 数据变化不导致 executable
+source-identity mismatch，合法 replacement 也不能掩盖非法 current payload。
+这只证明有限源码语法及静态 locality，不证明 DWARF 解码、链接字节值、target-debug DWARF recognition
+或 GPU 执行。
+
+### Target debug 缺失检查与 recognition 边界
+
+只要文件内任一 `.target` 指定 `debug`，缺失条件就适用于整个文件，不依赖 section 与
+前后 target region 的位置。已知 `debug` 且 owning modern section record 与 legacy record 同时为零是确定错误；即使
+`AvailableContext` 缺少 version 也拒绝。`.file`、`.loc` 或保留的 debug-string symbol identity
+不能替代上述 debug serialization record。既有 PTX 3.0 option gate 与完整 context 要求保持独立。
+Source-aware validation 对 current owned options/modern sections/legacy records 和 supplied AST options/modern sections/legacy records
+分别复用私有缺失规则；合法一侧不能掩盖另一侧的确定缺失或非法 typed payload。
+合法且不同的数据集仍保持 section-neutral source association。不增加 presence cache、recognizer enum 或 decoder。
+
+**D-DEBUG-DWARF-PRESENCE-RECOGNITION 仍是 reference boundary，不是 code PASS。**
+固定的 [target 条款](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
+和 [section grammar](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-section)
+没有给 arbitrary name、empty section、label-only section 或非空 typed data 定义充分 recognition
+条件。`.debug_` 前缀、whitelist、非空 payload 或强制 `.debug_info`/`.debug_abbrev` 配对都会发明该条件。
+配对 witness 只是一项结构对照，不是普遍最低要求或 decoder。因此，非零且结构合法的 section record
+验证成功并不证明实际找到了 DWARF information。有限 debug-off/on 边界测试明确记录此限定；
+不声称完整 recognition、链接或二进制真实性。
+
+current owned `.language` value 是不依赖 context 的 intrinsic data：optional 缺省表示
+省略/default `ptx`；engaged vector 必须非空，且每个 raw token 都须通过统一的公共
+semantic decoder。多个值与重复项保留准确顺序及 spelling。两种 module validation API
+即使缺少 version/target，也会在 owning function range 重查 current value，合法
+supplied source 不能掩盖 current 非法 token。合法 current name/code/list 修改或移除
+optional 不要求与历史 payload 相等。replacement AST identity 仍保存 raw 顺序：
+将 `"ptx"` 改为 `3` 或重排合法 list 仍可触发既有 source-association mismatch；
+redeclaration 则继续比较 ordered decoded aliases。presence 要求 PTX 9.3、适用于所有
+ target；已知过旧 selected/supplied version 即使无 target 也拒绝，只有 version 缺失
+才可在 `AvailableContext` 下推迟 availability。domain 从不推迟，strict context 要求不变。
+新 decoder 是 additive exported semantic function，client 须使用匹配的 installed
+header/library；不增加 payload layout 或 backend language execution 保证。
+
+Owned entry-input `.ptr` 的可用性从既有 parameter record 推导，在要求完整 target
+context 前先检查 PTX 2.2 门槛。Coherent 版本 retarget 同时更新所选 region 与 function
+metadata；AST 销毁后的 copy 与 instruction clone 仍执行同一检查。带源码验证则将
+supplied effective version 应用于当前 pointer presence，不把历史缓存版本作为否决条件。
+既有 pointer type、shape、alignment 与 pointee-space 检查保持独立；可用性诊断采用
+既有 function-range fallback。
+
+Parameter modifier metadata 使用精确的 typed identity
+`(MemoryStateSpace::Parameter, ParameterAddressQualifier)`。domain 与
+availability descriptor 追加默认值为 `Default` 的 `parameter_qualifier`；
+`ModifierValueView` 追加默认 engaged `Default` 的 optional 成员。
+原有 positional aggregate initializer 的含义保持不变，但公共布局的 ABI
+发生变化，consumer 必须使用匹配的头文件和库重新构建。未知投影
+（`nullopt`）、无效 enum 或带 qualifier 的非 Parameter space 均独立于 target
+和拼写 presence 被拒绝。非默认 Parameter qualifier 在清空 location 后仍具有
+语义 presence，因此普通 Parameter 不会命中 8.3 的 qualified availability row。
+
+生成的 view 读取与同一 normalized modifier binding 关联的当前直接 address，
+或选中的直接 symbol；嵌套 symbol 的默认值不构成第二份 written qualifier。
+固定形式使用唯一 canonical identity，register alternative 不需要虚构 qualifier
+payload。关联的真实 written qualifier 必须一致。现有 typed parameter-address
+preservation policy 可从固定普通 modifier 派生 Entry frame qualifier；该 frame
+事实单独验证，不改变固定 modifier identity。既有 frame、readonly、declaration、
+source identity 以及 Shared/atomic qualifier guard 继续生效。
+
+两个 `validateModule` overload 均在缺少 version/target 导致 instruction 检查跳过
+之前验证 current-owned Parameter address。精确 variant/layout operand descriptor
+提供封闭 address-space domain 与当前关联 state-space 的相等约束。空 domain
+仍不施加限制，也不推断 runtime register pointee。Device formal 的地址
+materialization 继续遵循既有 policy，可得到 Local space。已知 entry input
+不能提供显式要求可写的 operand 或 Return parameter operand。
+`OperandAccess::Read` 表示 operand value access，不代表 memory effect；MOV
+地址获取和 tensor-map 读取仍合法。
+
+`detail::IReferenceObserver::operand_context` 追加为默认 no-op virtual callback。
+非空 descriptor 为紧随其后的顶层 address-bearing payload callback 建立 bracket，
+nullptr 重置。descriptor 与 span 仅在同步 bracket 内借用；collector 复制所需
+scalar/domain 事实，不保留借用指针。原 payload callback 和顺序保持不变。
+已有派生 source observer 无需新增 override，但 virtual slot 改变 ABI，observer
+与 producer library 必须使用匹配头文件重新构建。
+
+
+## 历史 entry body input
+
+PTX 1.0–1.3 entry body `.param` 在唯一 `parameter_declarations` 表中保留
+`LegacyEntryInput` role，以及 scope/group/array identity。Signature 仍只描述语法
+header ABI，空 header 不等于没有 host input；lexical metadata 顺序不分配 launch
+地址或 packing。只有 entry body role 歧义才要求 version 并报告
+`MissingValidationContext`，不按 SM 猜 role。已 typed module 缺 context 时保留 role。
+
+`ResolvedSymbolRef::parameter_role` 从 actual record 同步派生，structural kind 仍为
+`CallParameter`。Address/MOV/tensor 共用 input/return/call-slot 方向映射。两个
+validator 都在 context skip 前重连当前 record/cache，检查 readonly、entry frame、
+direct call-actual 排除、shape/scope 和 logical capacity。Legacy LD 不要求 call
+return staging，MOV 保持 `.param`；现代 BodyLocal staging 不变。Checked logical
+总量使用 per-member bytes 乘 compact count，检查32764-byte已知 global ceiling，
+不重复乘 axes/vector，也不套用1.4的256-byte header cap。
+`D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` 对精确历史 physical launch packing
+仍 qualified。详见[parameter contract](parameter_declarations.md)的窗口与边界。
+
+
+共用 current operand-domain pass 将 actual `EntryInput` 与 `LegacyEntryInput`
+record 都识别为 readonly entry object，在 context skip 前使用当前 typed
+layout/field requirement，覆盖非 LD/ST consumer。MOV 读取地址仍合法；明确要求
+writable operand 时拒绝。Legacy readonly 保留原 label 与 instruction range，
+仅合并相同 local cause，不按 opcode 推测 writer，也不新增历史指令权限。
+
+## SM 可用性的数值独占上界
+
+plain availability 与每个 `any_of` clause 支持可选的 `sm_before: 70`。它与 `sm: 30` 共同表示 `30 <= SM < 70`；省略下界时为零，省略上界时无界。字段必须是严格的 uint32 整数且大于下界；typed normalization 与 rendering 拒绝零、布尔、浮点、字符串、显式 null、溢出及空或逆序区间。JSON Schema 检查整数及范围约束，typed 边界还拒绝整数值浮点数。最多六个有序 alternative 和 `any_of` 不得混合 plain field 的规则保持不变，不引入 target 交集求解器。
+
+`AvailabilityClause::sm_before` 和 `AvailabilityDescriptor::sm_before` 在 `ptx_before` 后追加默认缺省的 `std::optional<uint32_t>` member；此 aggregate 布局变化要求重新编译公共 consumer。谓词直接比较具体 `TargetInfo::sm_version`，不依赖 profile 拼写或 flavor；既有 exact-target、family、capability 和 mapping 条件仍为合取。variant、layout、modifier、operand-value、parameter-address 和 memory-vector 的 plain 失败均产生有位置的 `UnsupportedSmVersion`；DNF 失败仍为 `UnsupportedAvailability`。
+
+旧式 SHFL 使用 `any_of: [{ptx: "3.0", ptx_before: "6.4", sm: 30}, {ptx: "3.0", sm: 30, sm_before: 70}]`。source module 仍要求已知 profile 及合法 profile/version header。`AvailableContext` 中缺少 version 或已知 target 时继续推迟整个 instruction availability 检查，即使其他已知事实看似不兼容；成功不构成完整 ISA 认证。严格验证报告 `MissingValidationContext`；显式未知 profile 仍为 `UnknownTarget`。不新增 partial DNF evaluator 或 opcode 特定 context 规则。
+
+## 历史101 source profile 与验证 feature
+
+`sm_101`/`compute_101` 及 A 形式从 PTX8.6 起支持，F 形式从 PTX8.8 起支持；PTX9.0/9.3 仍接受，rename 不引入上界。110 source profile 仍从 PTX9.0 起支持。`TargetIdentity` 保留 architecture101、flavor 和精确书写；`same_target_identity` 比较 source architecture/flavor，因此101A与110A仍不同。
+
+新增 base 函数 `target_feature_architecture(identity)` 读取显式 private catalog 数据：三个101 key 投影到 feature architecture110，其他 key 保持原 architecture；未收录的 typed key 不会因此被识别。公共 `TargetProfile` 与 `TargetInfo` 布局不变。source/owned/semantic factory 用此 feature level 作为 numeric SM，同时保留 source identity，并传递既有110基础能力 `cluster`、`aggregate_smem`、`reserved_smem`、`graph_exec`。Generic101 没有 family；101A/F 仅启用 canonical `sm_110f`，不继承100f/103f，也不支持 FP64 mapping option。此有限对应基于公布的 rename 与 family 关系，不是物理硬件或 driver 保证。
+
+availability 的 singular 与 span exact-target 要求通过该 helper 比较 validation-feature architecture 与精确 flavor；此关系不同于 source identity 和存储 key 相等。手动提供的 `TargetInfo::sm_version` 仍是 caller 的具体 feature 事实，checker 不会覆盖它。source profile 引入版本、instruction/PTX 门槛、capability 与 shape 条件仍独立。
+
+历史指令数据仅修改已采用的231个 parent：219个保留100A clause并加入101A，仅原有110F分支时加入101F；12个 block-selector parent 追加8.8历史101A/F clause。854个原110条件及其版本门槛全部保留，DNF上限仍为六，25个受限 cluster gather4/im2col-W parent 不变。TCGEN 闭合 row 保留 kind、scaled-D 与显式 scale-vector 限制：历史 written block16/32 门槛为8.8，100-only vector 和 scaled-D 路径仍限定100。生成的 operational query 先验证精确 source profile 及其最低版本，再匹配 feature；未知 word 与地址仍为未决义务，不从实时 register 推断事实。
+
+两个 module validator 均独立检查当前 function 的 `source_region`、`source_version`、精确 `source_target` 与当前 owned region 一致。合法 replacement AST 不能掩盖矛盾 cache。101/110 context 自身一致且当前 payload 在 supplied effective context 下合法时，允许通过 supplied header retarget；保留的 availability 不成为历史否决。缺少完整 instruction context 时继续既有 `AvailableContext` 推迟及严格 `MissingValidationContext` 政策。
+
+
+### 已弃用的最大 CTA 提示
+
+Entry header 从 PTX ISA 1.3 起接受 `.maxnctapersm ncta`，适用于所有已识别
+source target，包含 PTX 2.0 及后续版本；弃用不表示版本上界。独立的 AST/owned
+`MaxNctaPerSm` kind 表达优化提示：仍可执行额外 CTA，因此不是 runtime occupancy
+硬上限。`.maxntid` 可省略，`.minnctapersm` 可作为独立 resource 同时存在。
+
+完整 unsigned integer token 经检查后进入现有 `uint32_t` resource value，允许
+零及 `UINT32_MAX`，溢出不截断。该范围仅为 frontend 已建模容量；公开语法未指定
+此位宽，检查不证明硬件 occupancy 或 driver 可执行性。CST/AST 存活时保留书写的
+radix、suffix 和 range；owned contract 仅保留 kind、normalized values、explicit
+count 和 range，不增加平行 raw spelling 字段。
+
+两个 validator 都检查当前 payload shape、entry placement 和已知 range containment。
+已知 PTX 版本低于 1.3 时，即使 target 不完整也拒绝；`AvailableContext` 缺少版本时
+只延迟 availability，intrinsic 检查继续。Source-aware 路径采用 supplied effective
+version。当前 numeric value 的一致修改合法；替换 AST 中书写的 resource kind 或
+value 仍受现有 source association 规则检查。
+
+源码依据：[PTX ISA 最大 CTA 指令](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#performance-tuning-directives-maxnctapersm)。
+
+
+### 历史调试序列化
+
+大小写敏感的 `@@DWARF` marker 在 module、function body 或 nested block statement
+位置引入一条闭合 production；支持所有已识别 source target 的 PTX ISA **[1.2, 2.0)**，
+不授予 function header 位置。`.byte` 为 unsigned hexadecimal list（0..255），
+`.4byte` 为 0..UINT32_MAX，`.quad` 为 0..UINT64_MAX；list 必须非空。后两者还支持
+单个普通或单前导点 symbolic label，保留为未链接值，不要求普通 PTX symbol binding。
+
+`0x`/`0X` 以及可选 `U`/`u` 后缀继承现有 PTX integer token；后缀是派生选择，并非
+历史语法的显式措辞。一元正负号、decimal/octal/binary 数值、symbol/numeric 混合 list、
+addend、difference、label definition 和任意 host assembly 不在模型中。支持公开例子
+的 `.section name, "", @progbits` header；将 name 泛化为普通或单前导点 identifier
+来自该例子，flags 仍须恰为空字符串，type 仍须恰为 `progbits`。
+
+空白、注释和换行分隔 token，不结束 record。一个结构完整的 payload 加可选分号
+结束 record，后续 token 返回普通 PTX grammar；错误恢复保留后续 marker、block
+和 function。Lossless CST 保存注释及 source text；owning AST value 保留精确
+marker、word/header spelling 和 record 内 range，`@`、`progbits` 是独立 leaf。
+
+`ptx_syntax_legacy_dwarf.hpp` 仅含小型 owning value，不引入 module、instruction
+或 expression AST 定义。Module/body variant 复用同一个 `AstLegacyDwarfRecord`；
+`ResolvedModule::legacy_dwarf_records` 是唯一有序 `{value, scope_id}` stream。
+Scope 来自模块 symbol table 的实际 declaration occurrence 和 block；canonical
+function 的 preferred owned scope 不能代替实际 definition occurrence。Metadata 不生成
+executable node、label slot 或 instruction provenance index；module/function source
+identity 忽略它，普通程序结构仍影响 identity。
+
+Current 和 supplied dataset 独立检查 typed word、range、scope ownership 及格式窗口。
+Source-aware 对两者采用 supplied effective version，AST-free 使用当前 module context。
+已知越界版本即使缺少完整 target 也拒绝；`AvailableContext` 缺少版本时仅延迟格式
+窗口，intrinsic 检查继续，Strict 缺失 context 仍拒绝。合法当前 metadata 修改和合法
+不同 dataset 无需旧 source byte equality；跨格式替换须移除或重建当前不兼容格式数据。
+
+`.target debug` 的确定缺失为每个 dataset 独立满足 **modern section 为零且 legacy
+record 为零**。未知 linked label、header 或非空 byte 仅避免确定缺失，不能认证实际
+DWARF recognition、解码、linked address 或 binary authenticity。已知完整 legacy
+context 无法同时满足 pre-2.0 格式及 PTX-3.0 debug option；缺版本测试仅是 partial
+context control。
+
+依据：[历史 debug marker](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-atatdwarf)
+及[历史格式窗口](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives)。
+
+
+### 间接函数地址 carrier
+
+间接函数地址使用 General `.reg` 的 effective scalar，其 element type 必须是
+fundamental signed、unsigned 或 bit 的 8、16、32、64 位类型。floating、packed/alternate
+instruction-only type、`.b128`、predicate、special register 和 whole vector 不满足此 role。
+普通 selected component 使用同一 element-type 规则，并保留真实 owner identity、selector
+range 及 vector declaration 的 128 位上限。源码 call component 与已构造的 public register-component value 使用同一 invariant。
+
+这是从 [PTX §6.4.1](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#addresses-as-operands)
+与 [§9.7.13.5](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-instructions-call)
+的函数地址 register 要求作出的 **derived** address-carrier 解释，不声称 `call` 显式枚举
+全部十二种 carrier type。32/64 位 address value 不构成 register 至少 32 位的下限，
+也不要求 `.address_size 64` 必须使用 64 位 register。类型资格不证明窄 register 的实际值
+能表示函数地址，不计算 linked code address，也不证明 runtime target-set membership。
+
+source resolution、direct typed check 与两种 module validation API 都在缺失 version/target
+导致 defer 之前检查此 role。owned 检查重连真实 symbol declaration，拒绝虚假或删除的
+类型 cache；合法 supplied source 不能掩盖非法 current data。generated view 借用实际 active
+RegRef alternative，不把 metadata/table alternative 重新解释为 register。完全未知的
+standalone fact 保持原有 unknown/context 行为。formal input/return ABI 与普通 floating
+call input 的规则继续独立。
+
+
+### call 的 selected scalar operand
+
+call 输入及唯一的括号内返回值支持普通 `.xyzw/.rgba` register selection。
+target 支持 identifier 或显式选中的 indirect register；末尾 prototype/target-set/table
+metadata 仍仅接受 identifier。匿名 brace actual 与 direct function projection 仍不支持。
+`ResolvedCallParameterRef::component` 是默认 disengaged 的 owning optional；null
+保留 whole-variable 合同及旧 aggregate construction。
+
+源码及两种 owned-module validation 都先核对真实 General `.reg` v2/v4 声明、
+SymbolId、parameterized member、element type/state、physical owner 的 128 位上限
+以及显式 selector provenance，然后才向既有 call ABI comparison 提供 effective scalar。
+array、pointer、size 与 alignment 约束不会被抹去。删除或伪造 cache 不能掩盖已知声明。
+返回值的 `WithLocs` 保留外层括号 range；selected leaf 必须位于 group 和 instruction 内。
+observer 的值拷贝、module copy 和 instruction clone 都拥有自己的 selection。
+
+modern register formal 的最小宽度仍是 formal ABI 规则，不是全局 component 下限；
+合法且匹配的 subword `.param` formal 沿用既有 scalar actual 策略。whole named-vector
+actual、constant 与 parameter-memory staging 保持原规则。这是 derived scalar-element
+inheritance，不模拟 pointer 执行，不插入 hidden move 或 synthetic scalar declaration。
+满足当前规则的 coherent edit 仍合法；written source identity 独立检查。公共 CST/AST
+variant 和 owning call reference 要求 producer 与 consumer 一起 rebuild；instruction
+schema、generated layout 和 callback 不变。
+
+### 备用标量字面量转换
+
+标量 BF16、E4M3 和 E5M2 数值转换复用现有字面量 helper 与已求值 F64 路径，直接从 binary64 位模式以整数位运算完成一次最近偶数舍入。无符号裸 exact F32 字面量先精确扩宽。保留带符号零与渐进次正规数。BF16 在 `(2-2^-8)*2^127` 处溢出为带符号无穷，E5M2 的对应阈值为 61440；两者的 NaN 保留符号和高位 payload，并设置 quiet 位。E4M3 没有无穷编码：精确的 464 中点舍入到有限值 448，更大的有限绝对值及无穷输入均转为带符号 `0x7f` NaN，NaN 输入也转为该编码。这些是已采用的确定性前端字面量策略，独立于运行时舍入、FTZ 和饱和，不执行 GPU 转换。
+
+返回的 immediate 保留逻辑格式，BF16 仅使用低 16 位，FP8 仅使用低 8 位，且不携带整数来源或整数负号元数据。所有位宽内的当前字编码仍合法，包括 signaling NaN；转换器的 quiet 选择不要求之后的当前字重放字面量历史。整数来源、窄 Bit 容器和 packed 格式不会因此获得标量浮点转换。exact F32 原有的符号、括号及表达式限制不变。公共类型、签名及源码权限均不改变。
+
+当前源码模型恰有五个 BF16 数值输入字段：mixed ADD/SUB 的 `src`，以及 `CvtF32Bf16`、`CvtF32Bf16Ftz`、`CvtNonF32BaseFromBf16` 的源。mixed 结果和另一输入仍为 F32；所选舍入、位宽和可用性检查保持独立。E4M3/E5M2 在此没有获准的标量 opcode 源，helper 与通用 checker 覆盖不能证明源码或模块 clone 支持。其余 BF16 寄存器专用、向量、packed、call 和存储权限仍属独立范围。受支持的 F16 call 仍按保留的转换前来源重算。部分 target 上下文的指令延期策略不变。
+
+### Packed32 exact word 与 native call formal
+
+Exact-word 契约仅覆盖既有 literal helper 的 F16x2、BF16x2、E4M3x4 与 E5M2x4。无已求值 `source_value` 的裸 unsigned 直接 `0f` 字面量保留完整 32 位 payload 与所选 logical type，包括 raw sign 及类似 signaling NaN 的编码；不执行 component 转换、舍入、quiet、饱和或 splat。Integer origin、decimal/F64 numeric packing、带符号或括号的 exact F32 expression，以及向 packed16 截断均不因此获得 producer。未定义的 numeric one-to-many mapping 保持 reference boundary，而非 packed literal 的一概规范禁令。
+
+普通当前 packed word 必须在位宽内、没有 integer-source metadata（包括 optional zero），且没有 integer-negative flag。位宽内的一致当前字修改不认证已擦除的字面量历史。Call literal 已保留 spelling/kind 或已求值输入，因此其余条件合法的 scalar native F16x2 Reg/Param formal 必须经同一 helper 重算保留的直接 word。仅改 typed word 或注入 integer origin 会被拒绝；同时一致修改保留的直接 spelling 与 typed bits 可以仍有效，保存的 AST identity 则独立核对。既有 direct、prototype、target-list 与 storage-function-list 四条 signature 路径共用该规则。Vector formal、return actual grammar、formal ABI readiness 与 BF16x2 的 instruction-only 分类保持不变。
+
+该私有 helper 契约不向九个 multimem vector 字段、六个相邻 scalar packed 字段或 atomic 字段授予 literal 权限。既有 scalar alternate RNE/NaN 策略与 integer-origin 区分仍独立。公共结构、metadata 与生成字段不变；记录 delivery 完成前仍需 current Debug、installed-only consumer 检查及独立 actual-diff 验收。
+
+### 所引用 debug function-name 字节
+
+Function-name reference 契约增加对当前 typed `.debug_str` payload 的有限检查，不依赖 target/version availability。同名 fragment 按保留顺序连接；label 仅标记 byte position，不隐含 terminator。Label 或 section base 加上经过检查的 unsigned64 offset 选择首 byte。已知 B8 integer leaf 先通过原始有符号／无符号范围检查，再解释为 byte。所选已知 ASCII prefix 必须在已知 logical-section 末尾之前遇到显式零；允许空名称。零之前的已知128..255 byte、到已知末尾仍无零的 nonzero sequence，或位于已知末尾及之外的起点，均在 label 或选址 offset range 产生 RuleViolation。遇到零即完成该 reference 的证明，之后无关 byte 不影响此项检查。
+
+原始范围合法的 B16/B32/B64 numeric word 可从精确的 width-bounded bit pattern 提供与顺序无关的事实。Byte-count summary 区分零、非零 ASCII 与 high-bit chunk，不选择 serialization。非零 ASCII word 继续检查后续数据；全零的所选 suffix 或含零的完整 ASCII word 可证明终止；无零且含 high-bit 的完整 word 为非法。若 zero chunk 数量大于 skipped byte 数量，suffix 必然保留 terminator。可能已终止、也可能继续的纯 ASCII suffix 保留两种结果，之后已知 NUL 可完成所有仍 active 的选择。若所有剩余顺序均非法但原因不同，diagnostic 使用合并的 ASCII/NUL 内容错误。
+
+真正依赖顺序的 zero/high-bit word，以及可能跳过所有零的 suffix 仍为 not-proven。Symbolic/relocated byte value 也保持 unknown，经过检查的 extent 仍可证明 bounds。前端不猜 endianness、不把 unknown 替换为零、不分配 dense image，也不解码 DWARF。Unknown content 不构成合法 linked string 证书，不能豁免此前的确定错误；已证明的 NUL 使该 reference 之后的数据无关。Label 与 fragment boundary 不补 NUL，不能假定另一 section 或外部 object 补全名称。
+
+Current-owned sections/table 与 supplied replacement sections/rebound table 分别独立检查。一致的当前 byte 修改及各自合法但不同的 debug dataset 无需重放原始内容，仍可有效。缺少上下文不能遮蔽已知内容错误。完整 unsigned64 location leaf 仍可 parse 与 bind；超出已知有限 section 的 offset 是更强的 byte-bounds 错误，不是 numeric overflow。原始 source 若在 ownership 前被拒绝，不得声称 owned/copy/clone/lifetime 成功；这些检查来自另行合法的 terminated source。公共结构、source identity、location precedence、section locality/range/version 与生成 metadata 不变。Source 接受与当前校验经由同一个私有 reference check 应用此谓词。
+
+### 浮点 value-vector source 契约
+
+恰有九个既有 `src` 字段采用 `WithLocs<ResolvedValueVector>`：v2/v4/v8 的 weak、ordered 浮点 store 与浮点 add reduction。Class、selector/layout identity、element type domain、arity、default、availability 和 address 均保持不变。公共 field/factory/observer payload 从 `ResolvedRegisterVector` 迁移，consumer 必须使用匹配的生成头与库重建。每个既有 register lane 包装为 `RegOrImm`，保留 location 与 `ResolvedVectorSource`，并用 `std::get_if` 区分 alternative。原有 null register element 不是 immediate，也不会获得 sink 权限。
+
+全部64个所选 type 分支具有 typed value carrier。其中32个有单数值 numeric producer（15个 F16/F32 与17个 BF16/E4M3/E5M2），20个有裸 unsigned 直接 `0f` 的完整32位 exact-word producer（F16x2/BF16x2/E4M3x4/E5M2x4）。12个 E4M3x2/E5M2x2 分支没有 exact16 lexical producer，也没有已采用的 numeric packing constructor：literal-source 与相应 source-lifetime positive 保持 Source_N_A。其真实 register control 与独立构造的 canonical low16 typed word 仍可验证；源码 producer 缺席不是 typed-data 禁令。Numeric scalar 转换复用既有 binary64 单次舍入策略；packed32 原样保留所有 written word bits，不 splat、量化或 quiet。Integer-valued source expression 仍不兼容 logical Float lane。
+
+Mixed brace 可同时含 register 与 immediate。50个 v2/v4 named 分支保留真实 General whole-base declaration identity、精确 NamedProjection lane、element SameWidth 及16字节 declaration 上限。14个 v8 分支仍仅接受 brace；既有128-element projection buffer 与256-bit generic capacity 不变，本 cohort 至多需要8 lane／128 bit。Immediate projection 不是 user sink。同步 observer 接收实际 payload 与全部 lane range（包括第8 lane），不得保留 callback reference。Copy／assignment／clone 必须从自身 owner 重新取得 view。
+
+普通 typed word 要求所选 logical type、位宽内 bits，且没有 integer-origin／negative flag；一致的当前字修改不重放已擦除的浮点 source history。当前 payload／pointer／range／provenance 检查与保留的 source identity 检查彼此独立。Address alignment、所选 type／modifier／target gate 及不完整上下文延期策略仍适用。本契约不扩展六个 scalar packed 分支、atomic input、packed numeric constructor 或 load destination，也不声称 runtime multimem mapping 或 GPU 执行。记录 delivery 完成前仍需 current generation、Debug、fresh installed public consumer 与独立 actual-diff 证据。
+
+## 显式标量 Bit16 来源
+
+实现已经通过完整 model/default 审核、normal generation、定向 Debug 检查及匹配的 installed consumer；独立最终验收仍待完成。
+`integer_immediate_type` 是尾部 optional `ScalarType` member，默认缺省。
+仅八个既有 scalar SETP source row 选择 B16：F16/BF16 普通及 Boolean form 的
+src1/src2。四个 BF16 source member 从 register reference 迁移为 `RegOrImm`，
+采用 logical BF16 和 SameWidth；四个 F16 member 的 kind/type/width 不变。
+Descriptor ABI 变化要求重新编译所有 consumer。
+
+来源只求值一次。整数结果选择显式 raw B16 arm：`1` 是 word `0x0001`，
+`0x10001` 窄化为同一 word 并保留 64-bit integer origin。浮点结果沿用既有 logical
+converter：`1.0` 为 F16 `0x3c00` 或 BF16 `0x3f80`。直接 unsigned `0f` 保留
+既有 root route 和 lexical precision，不通过包装或试转换分类。缺省 policy 的普通
+logical floating operand 仍拒绝 integer origin，packed format 也不变。此 scalar B16 支持本身不扩展
+atomic、storage、call 或其他 scalar 权限；独立 packed SETP 扩展见下文。
+
+当前 immediate 由实际 type 选择 arm，两个 word 都限制在 16 bit。Logical numeric
+word 没有 integer origin 或 integer negative flag；B16 origin 可以缺省，存在时仍检查
+mask/sign 一致性，cache-free word 要求 negative flag 为 false。合法 word/arm 修改
+不认证已经擦除的源码历史；变更 supplied syntax 仍执行独立的 source association。
+Instruction check 的证明使用完整 target context，AvailableContext 延后不构成合法性证书。
+F16 实际 carrier 仍为 B16 或 F16，BF16 仍为实际 B16，并保留 intrinsic declaration/class
+检查；不改变 Base compatibility。
+
+
+## Packed SETP raw 与 exact word
+
+扩展复用既有尾部 optional `integer_immediate_type`，有限配对仅为
+F16/BF16 对 B16，以及 F16x2/BF16x2 对 B32，不新增 descriptor field 或 immediate
+payload。普通和 Boolean `SetpF16x2`/`SetpBf16x2` 的 src1/src2 共八个公开 member
+变为 `WithLocs<RegOrImm>`。四个 BF16x2 binding 从 physical B32/Exact 改为 logical
+BF16x2/SameWidth；F16x2 logical type/width、predicate-pair destination、Boolean
+combine、comparison domain、FTZ 与 target minimum 均不变。
+
+来源只求值一次：Integer 结果按既有 narrowing/range policy 选择 raw B32，保留
+求值后的 64-bit source/sign 信息。`1` 是 `0x00000001`，`0x100000001` 窄化为同一
+low word。bare unsigned direct `0f3fc03fc0` 经公共 packed-word helper 选择 logical
+F16x2 或 BF16x2，完整保留 32 bit，不执行 numeric packing、splat、rounding 或 NaN
+quieting。Decimal/F64 numeric packed constructor 尚无采用的 producer；signed、
+wrapped、arithmetic `0f`、`0h` 或 F64 truncation 不因本 policy 获得来源权限。
+
+Integer-source B32 arm 保留与 low32 一致的 source64/sign 信息。本准备不从独立
+scalar F16/Bit16 决定推导 cache-free current Bit32 word 的接纳或拒绝；其确切
+current flags 与结果等待有界实际父版本证据。合法 logical packed-word current
+修改使用独立的 direct-word producer。Logical packed word 不带 integer-origin cache（包括 optional
+zero）或 integer-negative flag。合法 current typed-word 修改不认证已擦除的源码
+历史；supplied source association 仍独立检查。F16x2 的实际 register carrier 为 B32
+或 native F16x2，BF16x2 仅为 B32；保留 declaration/class/whole-container 检查。
+缺失 context 的延后不构成合法性证明。既有八个 scalar B16 policy 与缺省 policy
+来源均不变。
+
+定向检查覆盖有限 source-policy 配对、源码类别、当前值、声明引用、generated view
+及 owning copy/clone 行为。Consumer 必须使用匹配的 generated header/library 重建。
+这些前端检查不证明 GPU 执行行为或完整 PTX 覆盖。
+
+### 命名矩阵片段
+
+符合条件的 MMA 片段、WGMMA 目标及寄存器 A 片段、WMMA MMA 的 A/B/C
+片段，在具体角色恰好包含两个或四个物理寄存器时，接受普通 `.reg.v2` 或
+`.reg.v4` 声明的整体标识符。Element 策略逐项检查物理 lane 类型；逻辑矩阵元素
+类型与既有 cardinality 保持独立。整个声明不得超过 128 位。这不增加命名
+v1/v8/v128 语法，也不使 `.v4.f64` 声明合法。
+
+拥有所有权的 IR 保留整体声明 SymbolId、按顺序排列的 NamedProjection 及其
+源码范围。释放源码与 AST、复制、赋值或 clone 后，当前状态验证仍检查这些
+事实；permission 标志不能代替 provenance。既有合法的大型花括号片段继续支持。
+
+当 WGMMA 寄存器 A 与共享描述符形式具有相同的标识符语法时，私有 resolver
+根据实际词法声明形状及配对的类型化 descriptor 选择：整体向量进入已授权片段
+路径，标量寄存器进入描述符路径。错误的向量数量或类型仍然报错；未知声明
+不能证明其为标量。公共 syntax-only selector 继续保持无上下文契约，可以报告
+歧义。选择不依赖目标可用性或试探性解析。WMMA load/store 操作数及 WMMA MMA 目标、
+地址与描述符、scale ID、稀疏 metadata 等排除角色保持既有花括号、标量或元组
+规则。GPU 调度与运行时资源有效性仍不属于前端验证范围。
+
+规范 loader 仅在每一对 layout 组合均能证明分离时接受声明域可分的重叠。
+新增证明要求交集仅为 IdentifierRef、显式 named Element permission、既有精确
+二或四 lane 数量，以及标量 SharedMatrixDescriptor 竞争项。事实缺失、Aggregate
+策略、通用标量角色或其他共有语法均不能提供该证明。目标与默认值不能消除
+重叠；此验证证明保持公共 selector 在指令范围上报告的精确歧义诊断。
+
+### Shared matrix descriptor carrier 中的 scalar component
+
+既有 `SharedMatrixDescriptor` source kind 接纳 identifier 或显式 ordinary vector member。合法 `.reg .v2 .b64 A` declaration 占128位；`A.x`／`A.y`（或 `.r`／`.g`）选择一个 scalar64-bit descriptor-register carrier。这是 component extraction，不是 whole-vector descriptor 或 register-A fragment。同一 kind 规则覆盖既有 dense/sparse shared A/B 与 register-A B descriptor role，不按 opcode 或 A 位置特判。不改变 YAML type/domain 或公共 payload/API。
+
+Binding 仍要求真实 General declaration、其既有允许的 physical integer/Bit64 type、实际 SymbolId/family index、范围内 explicit selector、base/leaf/outer range 与有效 scalar width。已知 F64／其余 Float、错误 width/class 或 InstructionOnly declaration 不被转换为 Bit word。`.v4.b64` 超过 ordinary128位 declaration 上限。`A<2>` 声明带后缀的变量而不声明 bareA；scalarA1 与 vector-familyA1.x 是不同的显式情形，不隐式选择首元素或 index。Source component 需要既有 declaration context，不猜 standalone width/SymbolId。
+
+Shared scalar descriptor（`IdentifierRef|VectorMember`）与 whole named matrix fragment（`IdentifierRef|VectorPack`）的 syntax 交集仍仅为 IdentifierRef。公共 syntax-only ambiguity、独立建立的 for-all layout-pair certificate 与 private actual-declaration selection 仍独立。错误 whole vector 或32-bit component 不得 fall through 后被 scalar64 descriptor 分支救活。其余 scalar/member mapping、fragment member 权限、partial-context 优先级与 target policy 均不变。
+
+Current owned validation 重新关联实际 component fact 与 declaration；合法的一致 retarget 是数据修改，而矛盾事实在有健康 supplied syntax 时仍失败。Saved source identity 则独立拒绝真正不同的合法 operand AST。既有 descriptor view／collector 与同步 observer 在 source 销毁、copy／assignment／move／function copy／Instruction clone 后继续传递实际 RegRef/range，且每个 owner 重新取得 borrow。该 source-admission 契约不证明 runtime descriptor bit、shared addressing、同步或 matrix 运算。记录 delivery 完成前仍需实际 current-parent Debug／生成 syntax／public-link 证据及独立 actual-diff 验收。
+
+当前 module validation 也会在 availability-context skip 前，按既有128位 declaration 上限检查 selected register 的完整 owner。coherent256位 current owner 在两个 module validation API 中均于 component range 报出容量专用诊断；缺少 target context 不能隐藏此已知失败。既有实际 SymbolTable join 仍拒绝矛盾或缺失的 cached facts。本检查不新增 standalone instruction-check 保证。
+
+### TCGEN 必需的 named output-lane mask
+
+恰有24个既有普通 unscaled、非 WS 的 dense/sparse MMA mask layout 在 brace 之外接纳 named source。公共 physical carrier 顺序为 B32/U32/S32/F32/F16x2，native F16x2 同时追加到两种形式。仅改变 named permission 与该公共 carrier list。必需的 `disable_output_lane` member 仍为 `WithLocs<ResolvedRegisterVector>`，kind、B32 type、Element policy、layout identity 与 syntax arity1..8 均不变。不恢复已删除的省略 mask layout，不合成零/default mask，也不从 mask register 推断 descriptor word 或执行结果。
+
+Named Element lowering 复用独立建立的 actual-declaration-width inference：普通 General `.reg .v2/.v4` whole declaration、兼容 physical type、至多128位 extent、完整 source range 与精确 NamedProjection lane。不猜4、不按 opcode/target 选择，不添加 ordinary namedv8，也不改变 fixed Element/Aggregate 行为。既有 CTA-group checker 仍要求 group1 恰有4 entry、group2 恰有8 entry。Group1 `.v4` 合法；group1 `.v2` 与 group2 ordinary named `.v4` 在完整检查时失败。Lowering draft 或缺少上下文的延期不证明 group 合法。对普通 declaration syntax，group2 仍使用八项 brace。
+
+当前实际 payload、whole-base SymbolId/type/class/width 与全部4/8 lane provenance/range 仍具权威性；callback 仅同步借用，copy/assignment/clone 后从新 owner 重新取得 view。对另一个真实且兼容 declaration 的一致 retarget 可通过当前检查，而不同的 saved operand AST 仍独立产生 source-identity mismatch。Special/predicate/array/component-as-whole/InstructionOnly/wrong-width declaration 与 null sink lane 不获得权限。Matrix named machinery 是独立验收的 prerequisite，该 mask facet 不重新实现它。其余 mask、WS/MX/collector/ashift/scaled role、target DNF/profile window 与 required-presence/cardinality logic 保持不变。记录 delivery 完成前仍需实际 current Debug、fresh unique installed 七库 consumer 证据及独立 actual-diff 验收。
+
+### 普通 BF16 FMA/SET 源成员
+
+`FmaMixedF32Bf16`、`SetHalfIntegerBf16` 与
+`SetHalfIntegerBf16Boolean` 的 `src1`、`src2` 现为
+`WithLocs<RegOrImm>`。既有类名、identity 与字段顺序保持不变；C++ consumer
+须以匹配的 header/library 重建，并对 `.value` 使用
+`std::get_if<ResolvedRegisterRef>` 或 `std::get_if<ResolvedImmediate>`。
+
+这六个源接受 numeric Float literal 与 Float-result expression。既有逻辑 BF16
+converter 将 `1.5`、`1.0+0.5`、`0d3ff8000000000000` 与 `0f3fc00000`
+转换为 BF16 类型及 `0x3fc0` word。FMA 使用已固定的 `input_type` modifier，
+SET 使用固定逻辑 BF16。Integer literal 与 Integer-result expression 仍被排除，
+包括值为零的 optional integer-origin；此授权不增加 integer-immediate policy。
+实际寄存器声明仍仅接受普通标量 `.b16` carrier；SameWidth 不授权
+`.f16/.u16/.s16`、special register、整体向量或 instruction-only `.bf16` 独立声明。
+
+Owned validation 检查当前逻辑类型、低十六位与 flags，不要求 Float lexical
+history。释放源码/AST、copy、assignment 或 clone 后，一致的 canonical 当前
+word 编辑仍可合法。保留的错误类型、高位、integer origin 或 negative metadata
+仍为错误。Source association 独立核对 supplied AST 与 retained syntax identity。
+此标量 numeric conversion 不增加 packed pair/splat 或截断规则；packed exact-word
+与 constructor policy 仍相互独立。不执行指令 rounding、saturation、comparison、
+predicate combination 或运行语义；target、destination、其他 source 及全部 packed
+SET form 的契约保持不变。
+
+
+### 标量 F16 atomic 源成员
+
+`AtomGlobalAddNoftzF16::src` 与 `RedGlobalAddNoftzF16::src` 在普通和 cache-policy
+两个布局中都使用 `WithLocs<RegOrImm>`。consumer 需要重新构建，并通过 `get_if`
+或 `visit` 选择 `ResolvedRegisterRef` / `ResolvedImmediate`；既有类身份、成员范围和
+布局顺序不变。cache policy 仍是独立的 B64 寄存器操作数，atomic 目标仍保留
+register-or-sink 契约。
+
+只有这四个标量 F16 源角色继承浮点常量使用权限，逻辑 F16 与 SameWidth 保持不变；
+实际 B16/F16 general 寄存器及既有合法分量继续可用。数值浮点表达式复用公共
+binary16 转换器（`1.5` 得到 F16 字 `0x3e00`），整数来源不获得浮点源权限。
+当前规范 F16 字不需要浮点词法历史，但必须只含 low16 位，且不带整数来源缓存或
+浮点负号元数据。IEEE 符号位与 NaN payload 位是数据。这是标量数值转换，
+不是 packed 原始字、成对值或 splat 构造。
+
+既有同宽 Bit 兼容规则也接受当前规范 B16 字，例如不带整数来源或负号元数据的
+`0x3e00`。这是既有 current-data 兼容性，独立于原 AST 拼写；它不增加 Bit literal
+来源权限，不改变 F16 producer 或整数源排除规则。其他 Bit flag 与 packed-format
+规则均不变。
+
+普通形式仍要求 PTX6.3/SM70，global cache-policy 布局仍要求 PTX7.4/SM80。
+地址、对齐、ordering、scope、`noftz`、source identity 及既有
+AvailableContext/RequireCompleteContext 规则独立保留。Packed F16x2、BF16/BF16x2、
+atomic 向量、compare/swap 及所有其他源权限不变。前端检查不证明 GPU 运行时行为或
+opaque cache-policy 内容。
+
+### 标量 BF16 atomic 源成员
+
+`AtomGlobalAddNoftzBf16::src` 与 `RedGlobalAddNoftzBf16::src` 在
+`no_hint`、`with_policy` 两个 layout 中均使用 `WithLocs<RegOrImm>`。
+Consumer 须以匹配的 header/library 重建，并对 `.value` 使用
+`std::get_if<ResolvedRegisterRef>` 或 `std::get_if<ResolvedImmediate>`。
+既有两个类的 identity、成员名不变。Atomic destination 仍为 B16/Exact
+register-or-sink，cache policy 仍为 B64 register。Address、alignment、qualifier、
+modifier order 与 target floor 独立于该 source permission；标量 F16、packed 与
+vector atomic cohort 保持各自独立契约。
+
+四个源 key 使用逻辑 BF16、SameWidth 和既有 converter。Numeric Float 源
+`1.5`、`1.0+0.5`、`0d3ff8000000000000` 与 `0f3fc00000` 产生既有
+BF16 `0x3fc0` golden。实际寄存器 source 仍须满足 intrinsic type 与 bit-compatible
+规则，只接受普通标量 B16 声明；SameWidth 不授权 F16/U16/S16、独立 BF16
+声明、special register 或整体向量。Integer-origin literal/expression 仍被排除，
+不增加 integer-immediate policy 或转换路径。
+
+转换器存储逻辑 BF16；逻辑 BF16 的当前 payload 要求低十六位以及干净的 origin/negative flags，
+不要求 Float lexical history。因此 AST 销毁、copy、assignment 或 clone 后，一致的
+canonical word 仍可验证；保留的错误高位、type/origin/class/provenance 或 range
+事实仍然报错。Source association 独立核对 supplied AST 与 retained syntax，不认证
+当前 word 的历史。同步 observer 仅在 traversal 中借用实际成员与范围。此标量
+numeric 规则不增加 packed pair/splat/截断授权。前端验证 representation 与
+availability，不执行 atomic update、memory ordering、cache 行为或 BF16 算术。
+
+当前寄存器族引用保留真实声明和成员身份：删除必需的族成员索引或使其与当前拼写矛盾均无效。
+当前拼写与成员索引一致的重定向、仅删除数字编号便利缓存仍有效；验证不认证旧操作数拼写。
+缺少部分上下文时仍检查已知引用矛盾，同时保留现有整条指令检查的延迟规则。
+交付证据必须覆盖实际生成的视图及真实借用回调，手工投影视图不能替代这些检查。
+
+本来源许可不改变手工构造当前值的既有 Bit 容器兼容性。
+
+## Packed32 atomic source members
+
+恰有四个既有公开 `src` 成员从 `WithLocs<ResolvedRegisterRef>` 迁移为 `WithLocs<RegOrImm>`：`AtomGlobalAddNoftzF16x2`、`AtomGlobalAddNoftzBf16x2`、`RedGlobalAddNoftzF16x2` 和 `RedGlobalAddNoftzBf16x2`。每个成员同时服务于 `no_hint` 与 `with_policy`，共八个 source key。Consumer 必须用匹配的当前头文件与七个 frontend archive 重新构建；旧 prefix 不能认证这一生成成员变化。既有 class identity、factory、字段顺序及可选 cache-policy 存储保持不变。
+
+使用 `std::get_if<ResolvedRegisterRef>(&form.src.value)` 或 `std::get_if<ResolvedImmediate>(&form.src.value)`，读取实际 alternative。BF16x2 source 使用逻辑 BF16x2 / `SameWidth`，允许的声明寄存器仍是 B32；BF16x2 目标保留 B32 / `Exact`。Native F16x2 source 保留 F16x2/B32 兼容性。B64 cache-policy 寄存器、地址/target/modifier 规则、声明 guard 和 component 来源彼此独立。
+
+只有裸写、无符号、直接 `0f` 可以产生 packed word；全部 32 位（包括符号和 NaN）原样保留。Numeric pair/splat、新 `0h` 与截断 `0d` producer 为 Source_N_A / reference-qualified。源码 converter 产生选中的逻辑 packed 类型。Canonical 低 32 位 F16x2/BF16x2 current-word 正例在没有 integer origin 且 floating-negative metadata 为 false 时无需 lexical history 即可合法。既有 current Bit-carrier 兼容性保持不变；这些示例不收窄继承的 `SameWidth` 策略，也不制定新的 B32 规则。副本、赋值与 clone 拥有自己的 word、SymbolId 和位置。借用的 `OperandView` 与同步 `reg_or_imm` observer 值必须指向当前 owner；callback 不得保留这些值，也不得修改或重入 owner。Source/AST 生命周期和传入源码 identity 分别核对。参见 [atomic 覆盖](converage/atomic_reduction_coverage.md#packed32-source-words-and-member-migration)；本 payload 迁移不证明运行时 atomic 行为或 numeric packed construction。
+
+### 标量 packed32 源成员
+
+既有类 `MultimemStFloatPackedNoneScalarDefaultWeak`、
+`MultimemStFloatPackedNoneScalarDefaultOrdered` 与
+`MultimemRedFloatPackedAddScalarDefaultRed` 的 `src` 使用
+`WithLocs<RegOrImm>`。Consumer 须以匹配的 installed header/library 重建，并对
+`.value` 使用 `std::get_if<ResolvedRegisterRef>` 或 `std::get_if<ResolvedImmediate>`。
+仅有三个源字段变化；各自保留既有 `modifier(type)` 的 F16x2/BF16x2 domain 与
+SameWidth。Variant identity、成员名、control、address/global/alignment、target
+契约保持不变，先前九个 ValueVector 源字段的 API 也保持不变。
+
+六个分支均通过既有 shared helper 接受裸 unsigned 直接 `0f` packed32 word。
+全部 32 位都是数据，包括 encoded sign、signaling/quiet NaN-looking pattern；
+不量化、splat 或 quiet NaN。F16x2 保留普通 B32/native F16x2 register carrier，
+BF16x2 保留 B32。既有 scalar component provenance 规则仍适用，不授权整体向量
+或新 tuple source。Integer-origin literal/result、unary sign、括号、operator、
+decimal/F64 packed constructor、numeric pair 和隐式 packing 仍被排除；不增加
+`0d` 低位截断或新 lexical format。
+
+源码 converter 产生选中的逻辑 packed 类型。Canonical current-word 正例使用该类型、
+最多 32 位、没有 integer origin（optional zero 仍是 present）且 `is_negative=false`。
+既有 current Bit-carrier 兼容性保持不变；这些示例不收窄继承的 `SameWidth` 策略，
+也不制定新的 B32 规则。Canonical current-word 修改不认证已擦除的 producer history。Copy/assignment/clone 与 AST-free 检查保留实际成员、范围及
+provenance；supplied AST association 独立核对 retained syntax identity。同步
+observer 仅在 traversal 中借用真实 owner。前端不执行 multimem mapping、store、
+reduction、ordering 或 GPU 行为。
+
+Scalar packed 检查针对选定逻辑 F16x2/BF16x2 的 canonical word。Bit 类型 B32 **current** word 的兼容性是独立的继承策略问题，此处仍未证明；标量 F16 Bit16 控制不能决定该问题。本限定不增加 source literal 或 constructor 权限。
+
+### Atomic vector value 源
+
+既有 26 个 `AtomVector*`/`RedVector*` 类在两个保留的 layout 中，以
+`WithLocs<ResolvedValueVector>` 暴露 `src`。Consumer 须以匹配的 header/library
+重建，并逐个 `RegOrImm` lane 使用 `std::get_if<ResolvedRegisterRef>` 或
+`std::get_if<ResolvedImmediate>`。Destination 仍为 register vector；可选 B64
+cache policy、精确 class identity、字段名、arity/type domain、qualifier 与 target
+gate 保持原契约。源仍要求 brace-only，不增加整体 named vector 或 source sink 授权。
+
+全部 128 个 type/arity/layout 分支接受 floating immediate lane，并可按既有规则
+与物理寄存器 carrier 混用。80 个 F16/BF16/F32 numeric 分支复用既有逻辑
+converter；48 个 F16x2/BF16x2 分支接受裸 unsigned 直接 `0f` exact32 word。
+Packed word 保留所有位，包括 encoded sign、NaN payload；不量化、splat 或 quiet。
+所有 floating source lane 均排除 Integer literal/result。Packed decimal、F64、
+unary/括号/operator 或 pair constructor 仍属 reference-qualified unavailable；
+typed current-word 容量不等于 numeric source constructor。
+
+逻辑 immediate type 独立于物理寄存器类型。显式 Element allowlist 保留：F16 的
+B16/F16/U16/S16，BF16 的 B16，F16x2 的 B32/F16x2，BF16x2 的 B32，以及
+F32 的 B32/F32/U32/S32。Membership 不得绕过物理 lane 位宽、General/scalar
+class、intrinsic 声明资格、component、owner 或 provenance 检查。无显式列表时
+继续使用既有 compatibility。Bit register lane 为中性，整数与浮点 register family
+不可混用；immediate Float lane 不参与该 register-family 判断。标量 operand
+compatibility 不变。
+
+当前 canonical logical Float lane 检查位宽内 bits、没有 integer origin
+（optional 零仍表示存在）及干净的 negative metadata。不能从标量 F16 规则推断
+其他逻辑格式下 current Bit16/Bit32 arm 的结果；这些情况需要各自格式的证据。一致的 canonical 编辑不要求
+已擦除的 Float lexical history；source association 独立检查 supplied AST identity。
+实际 ValueVector owner pointer 与全部 shape/type/register/immediate/bit/range
+mirror 必须相符；同步 observer 仅在 traversal 中借用真实 owner。真实 AST 释放、
+copy/assignment/function copy/clone 后仍保留所有权。Register sink、whole container
+或陈旧 mirror 不能代替只读 scalar lane。前端不执行 atomic 算术、ordering、cache
+效应或运行时 global-memory 行为。

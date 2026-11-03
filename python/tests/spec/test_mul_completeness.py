@@ -8,6 +8,7 @@ from ptx_frontend.spec.model import (
     ModifierPresence,
     OperandKind,
     OperandRegisterWidthPolicy,
+    OperandTypeExpressionKind,
 )
 from ptx_frontend.spec.resources import packaged_spec_dir
 
@@ -147,11 +148,11 @@ class MulCompletenessTests(unittest.TestCase):
         )
 
     def test_models_half_and_bfloat_modifier_and_container_boundaries(self) -> None:
-        """Require half flags only where PTX 9.3 permits them and exact packed widths."""
+        """Keep native half carriers distinct from exact alternate packed formats."""
 
         for name, type_name, container in (
             ("mul_half", "f16", None),
-            ("mul_half_x2", "f16x2", "b32"),
+            ("mul_half_x2", "f16x2", None),
             ("mul_bfloat", "bf16", "b16"),
             ("mul_bfloat_x2", "bf16x2", "b32"),
         ):
@@ -162,6 +163,15 @@ class MulCompletenessTests(unittest.TestCase):
                 tuple(value.value for value in modifiers["rounding"].values), ("rn",)
             )
             self.assertEqual(modifiers["type"].value, type_name)
+            if name == "mul_half_x2":
+                operands = variant.operand_layouts[0].operands
+                self.assertEqual(tuple(operand.kind for operand in operands),
+                                 (OperandKind.REGISTER,) * 3)
+                for operand in operands:
+                    self.assertIsNotNone(operand.type_expression)
+                    self.assertIs(operand.type_expression.kind, OperandTypeExpressionKind.MODIFIER)  # pyright: ignore[reportOptionalMemberAccess]
+                    self.assertEqual(operand.type_expression.modifier_name, "type")  # pyright: ignore[reportOptionalMemberAccess]
+                    self.assertIs(operand.register_width_policy, OperandRegisterWidthPolicy.SAME_WIDTH)
             if container is not None:
                 operands = variant.operand_layouts[0].operands
                 self.assertEqual(

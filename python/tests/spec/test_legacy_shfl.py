@@ -25,21 +25,22 @@ class LegacyShuffleTests(unittest.TestCase):
         cls.resolved = {item.variant_id: item for item in from_instruction_spec(cls.instruction).variants}
 
     def test_exact_inventory_targets_and_emission(self) -> None:
-        """Every mode carries the complete exact generic target set and PTX3.0."""
+        """Every mode retains the exact two-clause version/SM window."""
         names = {f"shfl_{mode}_b32" for mode in ("up", "down", "bfly", "idx")}
         self.assertEqual(set(self.variants) - {f"shfl_sync_{mode}_b32" for mode in
                                              ("up", "down", "bfly", "idx")}, names)
-        expected = {"any_of": [{"ptx": "3.0", "targets": [f"sm_{sm}" for sm in (30, 32, 35, 37, 50, 52, 53, 60, 61, 62)]}]}
+        expected = {"any_of": [{"ptx": "3.0", "ptx_before": "6.4", "sm": 30},
+                               {"ptx": "3.0", "sm": 30, "sm_before": 70}]}
         for name in names:
-            with self.subTest(variant=name):
+            with self.subTest(name=name):
                 self.assertEqual(self.variants[name].availability, expected)
                 self.assertEqual(dict(self.resolved[name].availability), expected)
                 emitted = emit_availability(expected)
-                self.assertIn(".any_of_count = 1", emitted)
-                self.assertEqual(emitted.count(".minimum_ptx_version = {3, 0}"), 1)
-                self.assertIn(".exact_targets = checker::kAvailabilityTargets<", emitted)
-                for sm in (30, 32, 35, 37, 50, 52, 53, 60, 61, 62):
-                    self.assertIn(f"AvailabilityTarget{{ {{{sm}}}, base::TargetFlavor::Generic }}", emitted)
+                self.assertIn(".any_of_count = 2", emitted)
+                self.assertEqual(emitted.count(".minimum_ptx_version = {3, 0}"), 2)
+                self.assertIn(".sm_before = 70", emitted)
+                self.assertIn(".ptx_before = checker::PtxVersion{ 6, 4 }", emitted)
+                self.assertNotIn(".exact_targets", emitted)
 
     def test_complete_destination_layout_and_control_contract_matrix(self) -> None:
         """Reuse synchronized data/predicate and b/c contracts, omitting only the mask."""
@@ -80,6 +81,51 @@ class LegacyShuffleTests(unittest.TestCase):
         self.assertEqual(source.count(".actual_shape = check_end::OperandShape::ShflDestination,"), 8)
         for mode in ("Up", "Down", "Bfly", "Idx"):
             self.assertIn(f"Shfl{mode}B32", source)
+
+    def test_exclusive_numeric_sm_bound_pipeline_and_validation(self) -> None:
+        """Preserve plain/DNF bounds through schema, normalization, IR and rendering."""
+        from copy import deepcopy
+        from jsonschema import Draft202012Validator
+        from ptx_frontend.spec.resources import packaged_spec_schema
+        from ptx_frontend.spec.load_yaml import load_yaml
+        from ptx_frontend.spec.normalize.availability import normalize_availability
+        from ptx_frontend.code_gen.render_models.availability import build_availability
+        schema = load_yaml(packaged_spec_schema())
+        validator = Draft202012Validator({"$ref": "#/$defs/availability", "$defs": schema['$defs']})
+        for plain in ({'sm': 30, 'sm_before': 70}, {'sm_before': 4294967295}):
+            for raw in (plain, {'any_of': [plain]}):
+                self.assertTrue(validator.is_valid(raw))
+                self.assertEqual(normalize_availability(raw), raw)
+                from dataclasses import replace
+                variant = replace(self.instruction.variants[0], availability=raw)
+                instruction = replace(self.instruction, variants=(variant,))
+                projected = from_instruction_spec(instruction).variants[0]
+                self.assertEqual(dict(projected.availability), raw)
+                model = build_availability(raw)
+                clause = model.minimum or model.clauses[0]
+                self.assertEqual(clause.sm_before, plain['sm_before'])
+                self.assertIn(f".sm_before = {plain['sm_before']}", emit_availability(raw))
+        for value in (0, -1, True, False, 70.0, '70', None, 2**32):
+            for raw in ({'sm_before': value}, {'any_of': [{'sm_before': value}]}):
+                # JSON Schema treats integral floats as mathematical integers; the typed
+                # normalizer/render boundary additionally requires the Python int domain.
+                if type(value) is not float:
+                    self.assertFalse(validator.is_valid(raw))
+                with self.assertRaises((TypeError, ValueError)):
+                    normalize_availability(raw)
+                with self.assertRaises((TypeError, ValueError)):
+                    build_availability(raw)
+        for plain in ({'sm': 70, 'sm_before': 70}, {'sm': 71, 'sm_before': 70}):
+            for raw in (plain, {'any_of': [plain]}):
+                with self.assertRaises(ValueError): normalize_availability(raw)
+                with self.assertRaises(ValueError): build_availability(raw)
+        mixed = {'any_of': [{'sm': 30}], 'sm_before': 70}
+        self.assertFalse(validator.is_valid(mixed))
+        with self.assertRaises(ValueError): normalize_availability(mixed)
+        with self.assertRaises(ValueError): build_availability(mixed)
+        with self.assertRaises(ValueError): normalize_availability({'any_of': [{'sm_before': 70}]*7})
+        self.assertIsNone(build_availability({'sm': 30}).minimum.sm_before)
+        self.assertNotIn('.sm_before', emit_availability({'sm': 30}))
 
 
 if __name__ == "__main__":

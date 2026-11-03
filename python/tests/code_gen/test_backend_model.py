@@ -363,7 +363,7 @@ class BackendModelTests(unittest.TestCase):
         self.assertNotIn(".register_type", opaque_projection)
 
     def test_operand_views_use_semantic_domain_mappings(self) -> None:
-        """Semantic value and default mappings control all emitted equivalents."""
+        """Map classified direction outputs without duplicating semantic role logic."""
 
         raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
         raw["domains"][CppDomain.SCALAR_TYPES.value]["default"] = "TestScalar::Invalid"
@@ -418,6 +418,16 @@ class BackendModelTests(unittest.TestCase):
                         'instruction.address',
                         backend,
                     ),
+                    emit_check_operand_view(
+                        ResolvedField(
+                            name="mov_source",
+                            value_kind=ResolvedValueKind.MOV_SOURCE,
+                            origin=ResolvedFieldOrigin.OPERAND,
+                            source_name="mov_source",
+                        ),
+                        'instruction.mov_source',
+                        backend,
+                    ),
                 )
             )
 
@@ -434,12 +444,19 @@ class BackendModelTests(unittest.TestCase):
             "TestSpace::Constant",
         ):
             self.assertIn(spelling, emitted)
+        self.assertEqual(
+            emitted.count("const auto semantic_direction = parameter_direction_from_symbol(symbol);"),
+            3,
+        )
+        for direction in ("None", "Input", "Return"):
+            self.assertEqual(emitted.count(f"return TestDirection::{direction};"), 3)
+            self.assertNotIn(f"return ParameterDirection::{direction};", emitted)
+        self.assertEqual(emitted.count("return semantic_direction;"), 3)
+        self.assertIn("valid_parameter_role_cache", emitted)
+        self.assertNotIn("symbol->declaration_kind ==", emitted)
         for retired_spelling in (
             "ScalarType::Invalid",
             "ScalarType::Pred",
-            "ParameterDirection::None",
-            "ParameterDirection::Input",
-            "ParameterDirection::Return",
             "MemoryStateSpace::Global",
             "MemoryStateSpace::Shared",
             "MemoryStateSpace::Local",

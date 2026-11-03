@@ -30,6 +30,7 @@ namespace ptx_frontend::resolved_ir {
 
 struct ResolvedRegisterRef;
 struct ResolvedRegisterVector;
+struct ResolvedValueVector;
 struct ResolvedVectorSource;
 struct ResolvedMovValueVector;
 struct ResolvedVectorSpecialRegisterRef;
@@ -719,13 +720,13 @@ struct PtxVersion {
 inline constexpr size_t kMaxAvailabilityClauses = 6;
 /** Maximum capabilities retained by one generated availability clause. */
 inline constexpr size_t kMaxAvailabilityCapabilities = 4;
-/** Exact architecture and flavor required independently of catalog capabilities. */
+/** Required feature architecture and flavor, modulo explicit catalog rename correspondence. */
 struct AvailabilityTarget {
-  /** Numeric source architecture; membership never implies neighboring targets. */
+  /** Stored architecture key projected by the explicit feature helper during matching. */
   base::TargetArchitecture architecture{};
-  /** Exact source flavor, without family or architecture-specific inference. */
+  /** Exact flavor; feature correspondence never promotes Generic, A or F. */
   base::TargetFlavor flavor = base::TargetFlavor::Generic;
-  /** Compare exactly the architecture/flavor membership key. */
+  /** Compare stored keys; availability separately applies explicit feature correspondence. */
   bool operator==(const AvailabilityTarget&) const = default;
 };
 /** Process-lifetime storage for generated exact-target membership spans. */
@@ -736,6 +737,7 @@ inline constexpr std::array<AvailabilityTarget, sizeof...(Targets)>
 struct AvailabilityClause {
   PtxVersion minimum_ptx_version{};
   uint32_t minimum_sm_version = 0;
+  /** Exact validation-feature architecture modulo explicit catalog rename correspondence. */
   base::TargetArchitecture exact_target_architecture{};
   base::TargetFlavor exact_target_flavor = base::TargetFlavor::Generic;
   bool has_exact_target = false;
@@ -745,12 +747,14 @@ struct AvailabilityClause {
   std::string_view required_family{};
   /** Borrowed capability names; only the first ``capability_count`` are live. */
   std::array<std::string_view, kMaxAvailabilityCapabilities> capabilities{};
-  /** Borrowed exact alternatives; empty adds no identity requirement.
+  /** Borrowed exact feature alternatives; empty adds no identity requirement.
    * Generated storage has process lifetime; manual consumers retain ownership.
    * When singular identity fields are also supplied, both requirements apply. */
   std::span<const AvailabilityTarget> exact_targets{};
   /** Exclusive PTX version limit; disengaged means unbounded. */
   std::optional<PtxVersion> ptx_before;
+  /** Exclusive numeric SM architecture limit; disengaged means unbounded. */
+  std::optional<uint32_t> sm_before;
 };
 /** Target requirements attached to a variant, layout, modifier, or value. */
 struct AvailabilityDescriptor {
@@ -761,6 +765,8 @@ struct AvailabilityDescriptor {
   uint8_t any_of_count = 0;
   /** Exclusive PTX version limit; disengaged means unbounded. */
   std::optional<PtxVersion> ptx_before;
+  /** Exclusive numeric SM architecture limit; disengaged means unbounded. */
+  std::optional<uint32_t> sm_before;
 };
 struct TypeExpressionDescriptor {
   OperandTypeExpressionKind kind = OperandTypeExpressionKind::None;
@@ -853,8 +859,9 @@ struct OperandDescriptor {
   std::optional<SignedVectorImmediateRange> vector_signed_immediate_range;
   bool allow_destination_sink = false;
   bool allow_predicate_sink = false;
-  MbarrierStateTokenForm mbarrier_state_token_form =
-      MbarrierStateTokenForm::Register;
+  /** Absent for non-token operands; engaged policy constrains the existing token
+   * payload's register/sink form and does not own or authenticate that payload. */
+  std::optional<MbarrierStateTokenForm> mbarrier_state_token_form;
   AvailabilityDescriptor sink_availability;
   bool allow_function_symbol = false;
   /** Admit storage-backed tables only in the final indirect-call metadata slot. */
@@ -896,6 +903,10 @@ struct OperandDescriptor {
       ImmediateConversionPolicy::Narrow;
   /** Present only for compound typed video operands. */
   std::optional<VideoOperandDescriptor> video;
+  /** Optional raw integer alternative; absent retains ordinary logical conversion.
+   * Engaged B16 applies only to read scalar F16/BF16 Register|Immediate sources.
+   */
+  std::optional<ScalarType> integer_immediate_type{};
 };
 struct FieldView {
   std::string_view field_id;
@@ -1003,6 +1014,9 @@ struct OperandView {
       vector_element_registers{};
   /** Borrowed complete register-vector source; valid only during checking. */
   const ResolvedRegisterVector* register_vector = nullptr;
+  /** Borrowed actual value-vector payload, valid only for the synchronous check;
+   * never point at a temporary or retain it after the owning instruction dies. */
+  const ResolvedValueVector* value_vector = nullptr;
   /** Borrowed ordinary MOV source; null for whole hardware vectors. */
   const ResolvedMovValueVector* mov_value_vector = nullptr;
   /** Borrowed distinct whole-hardware MOV source; never projected scalar lanes. */
@@ -1030,8 +1044,10 @@ struct OperandView {
 /** Borrowed target properties used by checker availability validation. */
 struct TargetInfo {
   PtxVersion ptx_version{};
+  /** Concrete validation-feature SM, projected by source factories; manual callers own this fact. */
   uint32_t sm_version = 0;
   std::span<const std::string_view> enabled_family_features{};
+  /** Exact written source identity; feature matching never rewrites this value. */
   std::optional<base::TargetIdentity> identity;
   std::span<const std::string_view> capabilities{};
   /** Effective source option, independent of hardware capabilities and widths. */
@@ -1110,6 +1126,9 @@ struct ModifierValueAvailabilityDescriptor {
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   AvailabilityDescriptor availability;
+  /** Exact Parameter identity; other memory spaces require Default. */
+  ParameterAddressQualifier parameter_qualifier =
+      ParameterAddressQualifier::Default;
 };
 /** One target-independent semantic modifier value admitted by a variant. */
 struct ModifierValueDomainDescriptor {
@@ -1145,6 +1164,9 @@ struct ModifierValueDomainDescriptor {
   VideoType video_type = VideoType::S32;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
+  /** Exact Parameter identity; other memory spaces require Default. */
+  ParameterAddressQualifier parameter_qualifier =
+      ParameterAddressQualifier::Default;
 };
 struct ModifierValueView {
   std::string_view kind_id;
@@ -1184,6 +1206,9 @@ struct ModifierValueView {
    * so that existing positional aggregate initializers keep compiling.
    */
   ModifierSlotTag slot;
+  /** Current same-modifier identity; nullopt denotes an inconsistent projection. */
+  std::optional<ParameterAddressQualifier> parameter_qualifier =
+      ParameterAddressQualifier::Default;
 };
 struct VariantDescriptor {
   std::string_view variant_name;
@@ -1271,11 +1296,14 @@ using base::ProxyKindPair;
 using base::RoundingMode;
 using base::ScalarType;
 using base::TestProperty;
+/** Semantic storage roles; header ABI formals and legacy body inputs remain distinct. */
 enum class ParameterDeclarationRole : uint8_t {
   EntryInput,
   DeviceInput,
   DeviceReturn,
-  BodyLocal
+  BodyLocal,
+  /** PTX 1.0–1.3 kernel input declared in an entry body, including nested scopes. */
+  LegacyEntryInput
 };
 /** Owned, validated `.param` declaration data with no allocation offsets. */
 struct ResolvedParameterDeclaration {
@@ -1289,7 +1317,11 @@ struct ResolvedParameterDeclaration {
   uint32_t vector_width{1};
   /** Outer-to-inner element counts; null denotes a supported unsized axis. */
   std::vector<std::optional<uint64_t>> array_extents;
-  /** Total declared bytes, absent only for a supported unsized parameter. */
+  /**
+   * Bytes per named object, absent only for a supported unsized parameter.
+   * For compact groups this is each member's extent, without count multiplication
+   * or ABI allocation; the owning SymbolTable retains the group count.
+   */
   std::optional<uint64_t> byte_extent;
   std::optional<call_argument_compatibility::PointerProperties> pointer;
 };
@@ -1303,10 +1335,8 @@ struct ResolvedOpaqueEntryParameter {
   base::OpaqueResourceKind kind{};
   /** Explicit source alignment in bytes; absent never implies natural alignment. */
   std::optional<uint64_t> explicit_alignment;
-  /** Retained declaration array shape without assigning element bytes. */
-  bool is_array{};
-  /** Known array extent; absent for a source array with unspecified extent. */
-  std::optional<uint64_t> array_extent;
+  /** Owned outer-to-inner axes, without assigning opaque element bytes. */
+  std::vector<std::optional<uint64_t>> array_extents;
   /** Complete source range of the header parameter. */
   SourceRange range;
 };
@@ -1593,6 +1623,10 @@ struct ResolvedImmediate {
     return false;
   if (kind == base::ScalarKind::Float)
     return !range && !value.integer_source_bits && !value.is_negative;
+  // Equal-width floating sources carry bit data without integer provenance.
+  if ((value.type == ScalarType::B32 || value.type == ScalarType::B64) &&
+      !value.integer_source_bits)
+    return !range && !value.is_negative;
   if (kind != base::ScalarKind::Bit && kind != base::ScalarKind::Signed &&
       kind != base::ScalarKind::Unsigned)
     return false;
@@ -1845,6 +1879,7 @@ struct ResolvedCallTableRef {
 using ResolvedIndirectCallee =
     std::variant<ResolvedRegisterRef, ResolvedIndirectMetadataRef,
                  ResolvedCallTableRef>;
+/** An owning call actual whose optional selection retains its real vector owner. */
 struct ResolvedCallParameterRef {
   std::string spelling;
   std::optional<binding::SymbolId> symbol_id;
@@ -1852,6 +1887,8 @@ struct ResolvedCallParameterRef {
   /** Semantic declaration state space; the base alias needs no syntax AST. */
   std::optional<base::DeclarationStateSpace> state_space;
   std::optional<ScalarType> declared_type;
+  /** Explicit scalar lane; absence retains the whole-variable ABI contract. */
+  std::optional<ResolvedRegisterComponent> component{};
   bool operator==(const ResolvedCallParameterRef&) const = default;
 };
 /**
@@ -1900,9 +1937,100 @@ struct ResolvedSymbolRef {
   /** Parameter-space qualifier selected by an instruction for this direct address. */
   ParameterAddressQualifier parameter_qualifier =
       ParameterAddressQualifier::Default;
+  /** Resolution-derived role of the same SymbolId in parameter_declarations.
+   * No AST borrow or launch layout is retained. Known legacy input references
+   * require this cache; full-module validation rejoins it to the current record.
+   */
+  std::optional<ParameterDeclarationRole> parameter_role;
   /** Contextual availability has no value-equality contract. */
   bool operator==(const ResolvedSymbolRef&) const = delete;
 };
+/** Check only known standalone role-cache facts, without inventing binding proof.
+ * Unknown structural/frame facts defer; engaged contradictory or invalid facts
+ * reject. Full modules independently rejoin the cache to their current record.
+ */
+[[nodiscard]] inline bool valid_parameter_role_cache(
+    const ResolvedSymbolRef* symbol,
+    EnclosingFunctionKind address_owner = EnclosingFunctionKind::Unknown) {
+  if (!symbol || !symbol->parameter_role)
+    return true;
+  binding::SymbolKind kind;
+  EnclosingFunctionKind owner = EnclosingFunctionKind::Unknown;
+  bool materialized_device = false;
+  switch (*symbol->parameter_role) {
+    case ParameterDeclarationRole::EntryInput:
+      kind = binding::SymbolKind::InputParameter;
+      owner = EnclosingFunctionKind::Entry;
+      break;
+    case ParameterDeclarationRole::LegacyEntryInput:
+      kind = binding::SymbolKind::CallParameter;
+      owner = EnclosingFunctionKind::Entry;
+      break;
+    case ParameterDeclarationRole::DeviceInput:
+      kind = binding::SymbolKind::InputParameter;
+      owner = EnclosingFunctionKind::Device;
+      materialized_device = true;
+      break;
+    case ParameterDeclarationRole::DeviceReturn:
+      kind = binding::SymbolKind::ReturnParameter;
+      owner = EnclosingFunctionKind::Device;
+      materialized_device = true;
+      break;
+    case ParameterDeclarationRole::BodyLocal:
+      kind = binding::SymbolKind::CallParameter;
+      break;
+    default:
+      return false;
+  }
+  /** Unknown owners defer; every known owner must agree with this semantic role. */
+  const auto owner_agrees = [owner](EnclosingFunctionKind current) {
+    return current == EnclosingFunctionKind::Unknown ||
+           ((current == EnclosingFunctionKind::Entry ||
+             current == EnclosingFunctionKind::Device) &&
+            (owner == EnclosingFunctionKind::Unknown || current == owner));
+  };
+  return (!symbol->declaration_kind || symbol->declaration_kind == kind) &&
+         (!symbol->declaration_state_space ||
+          symbol->declaration_state_space ==
+              base::DeclarationStateSpace::Parameter) &&
+         (!symbol->address_state_space ||
+          symbol->address_state_space ==
+              base::DeclarationStateSpace::Parameter ||
+          (materialized_device && symbol->address_state_space ==
+                                      base::DeclarationStateSpace::Local)) &&
+         owner_agrees(symbol->enclosing_function_kind) &&
+         owner_agrees(address_owner);
+}
+
+/** Project the semantic role consistently for address, MOV, and tensor views.
+ * Absent caches preserve the structural fallback used by standalone operands;
+ * a full module must additionally prove the role against its owning records.
+ */
+[[nodiscard]] inline ParameterDirection parameter_direction_from_symbol(
+    const ResolvedSymbolRef* symbol) {
+  if (!symbol)
+    return ParameterDirection::None;
+  if (symbol->parameter_role) {
+    switch (*symbol->parameter_role) {
+      case ParameterDeclarationRole::EntryInput:
+      case ParameterDeclarationRole::DeviceInput:
+      case ParameterDeclarationRole::LegacyEntryInput:
+        return ParameterDirection::Input;
+      case ParameterDeclarationRole::DeviceReturn:
+        return ParameterDirection::Return;
+      case ParameterDeclarationRole::BodyLocal:
+        return ParameterDirection::CallArgument;
+    }
+    return ParameterDirection::None;
+  }
+  if (symbol->declaration_kind == binding::SymbolKind::InputParameter)
+    return ParameterDirection::Input;
+  if (symbol->declaration_kind == binding::SymbolKind::ReturnParameter)
+    return ParameterDirection::Return;
+  if (symbol->declaration_kind == binding::SymbolKind::CallParameter)
+    return ParameterDirection::CallArgument;
+  return ParameterDirection::None;
+}
 enum class ResolvedAddressOffsetOperator : uint8_t { Add, Subtract };
 struct ResolvedAddressOffset {
   ResolvedAddressOffsetOperator operation = ResolvedAddressOffsetOperator::Add;
@@ -1999,12 +2127,38 @@ struct ResolvedVideoOperand {
   std::optional<SourceRange> minus_range;
 };
 
-/** Read-only braced source lanes retaining register identities or typed values. */
+/** Read-only scalar source lanes with owned brace or named-vector provenance. */
 struct ResolvedValueVector {
   /** Ordered lane payload; WithLocs owns corresponding source ranges. */
   std::vector<RegOrImm> elements;
+  /** Single owned source authority; only complete named containers admit projections. */
+  ResolvedVectorSource source;
+  /** Compare all values and source provenance independently of syntax lifetime. */
   bool operator==(const ResolvedValueVector&) const = default;
 };
+/** Reuse register-vector provenance checks for mixed brace or all-register named sources.
+ * Empty brace ranges remain compatible with legacy standalone construction unless
+ * require_brace_range is set; owned module checks require a complete source range.
+ */
+inline bool valid_value_vector_source(const ResolvedValueVector& value,
+                                      std::span<const SourceRange> locations,
+                                      bool require_brace_range = false,
+                                      SourceRange owner = {}) {
+  if (locations.size() != value.elements.size())
+    return false;
+  ResolvedRegisterVector registers{.source = value.source};
+  for (const auto& lane : value.elements) {
+    if (const auto* reg = std::get_if<ResolvedRegisterRef>(&lane))
+      registers.elements.emplace_back(*reg);
+    else {
+      if (value.source.kind == ResolvedVectorSourceKind::NamedVector)
+        return false;
+      registers.elements.emplace_back(std::nullopt);
+    }
+  }
+  return valid_register_vector_source(registers, locations, require_brace_range,
+                                      owner);
+}
 /** One preserved surface coordinate, with its interpretation and source range. */
 struct ResolvedSurfaceLane {
   /** Scalar register identity or evaluated typed immediate. */

@@ -533,6 +533,9 @@ struct SymbolTableBuilder {
           else if (const auto* call_set =
                        std::get_if<syntax_ast::AstCallTargetSet>(&operand))
             indexSourceRange(call_set->name.syntax.range);
+          else if (const auto* call_target =
+                       std::get_if<syntax_ast::AstCallTarget>(&operand))
+            indexSourceRange(call_target->range);
         }
       } else if (const auto* block =
                      std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
@@ -870,12 +873,11 @@ struct SymbolTableBuilder {
       return;
     addMetadataSymbol(SymbolKind::DebugStringLabel, directive.name.text,
                       directive.name.range, true);
-    for (size_t index = 0; index + 1 < directive.payload.size(); ++index) {
-      if (directive.payload[index + 1].text == ":") {
-        addMetadataSymbol(SymbolKind::DebugStringLabel,
-                          directive.payload[index].text,
-                          directive.payload[index].range, false);
-      }
+    for (const auto& entry : directive.payload) {
+      if (const auto* label =
+              std::get_if<syntax_ast::AstSectionLabelDefinition>(&entry))
+        addMetadataSymbol(SymbolKind::DebugStringLabel, label->name.text,
+                          label->name.range, false);
     }
   }
 
@@ -897,7 +899,7 @@ struct SymbolTableBuilder {
                 declarationAlignment(parameter.alignment, parameter.vector_type,
                                      parameter.type.text),
                 std::nullopt, false, false, vectorWidth(parameter.vector_type),
-                parameter.is_array);
+                !parameter.array_dimensions.empty());
     }
     for (const auto& parameter : function.parameters) {
       addSymbol(function_scope, SymbolKind::InputParameter,
@@ -906,7 +908,7 @@ struct SymbolTableBuilder {
                 declarationAlignment(parameter.alignment, parameter.vector_type,
                                      parameter.type.text),
                 std::nullopt, false, false, vectorWidth(parameter.vector_type),
-                parameter.is_array);
+                !parameter.array_dimensions.empty());
     }
     collectBody(function.body, function_scope, function_scope);
   }
@@ -1031,7 +1033,33 @@ struct SymbolTableBuilder {
     return result.table.references_.back();
   }
 
+  /** Copy the already parsed location once at its lexical reference visit. */
   void bindLoc(ScopeId scope, const syntax_ast::AstLocDirective& directive) {
+    DebugLocationDeclaration location{
+        .scope = scope,
+        .base = {{directive.file_index.text, directive.file_index.range},
+                 {directive.line_number.text, directive.line_number.range},
+                 {directive.column_position.text,
+                  directive.column_position.range}},
+        .range = directive.range,
+    };
+    if (directive.inline_context) {
+      const auto& context = *directive.inline_context;
+      location.inline_context = DebugLocationInlineContext{
+          .function_name_label = {context.function_name_label.syntax.text,
+                                  context.function_name_label.syntax.range},
+          .target = {{context.file_index.text, context.file_index.range},
+                     {context.line_number.text, context.line_number.range},
+                     {context.column_position.text,
+                      context.column_position.range}},
+          .range = context.range,
+      };
+      if (context.function_name_offset)
+        location.inline_context->function_name_offset =
+            DebugFileSourceLeaf{context.function_name_offset->text,
+                                context.function_name_offset->range};
+    }
+    result.table.debug_locations_.push_back(std::move(location));
     addMetadataReference(scope, ReferenceKind::DebugFile, directive.file_index);
     if (!directive.inline_context)
       return;
@@ -1175,11 +1203,21 @@ struct SymbolTableBuilder {
                     std::get_if<syntax_ast::AstIdentifierRef>(&value.base)) {
               addReference(scope, ReferenceKind::InstructionOperand,
                            *identifier);
+            } else if (const auto* member =
+                           std::get_if<syntax_ast::AstVectorMember>(
+                               &value.base)) {
+              addReference(scope, ReferenceKind::InstructionOperand,
+                           member->base);
             }
             if (value.named_index) {
               if (const auto* index = std::get_if<syntax_ast::AstIdentifierRef>(
                       &value.named_index->index))
                 addReference(scope, ReferenceKind::InstructionOperand, *index);
+              else if (const auto* member =
+                           std::get_if<syntax_ast::AstVectorMember>(
+                               &value.named_index->index))
+                addReference(scope, ReferenceKind::InstructionOperand,
+                             member->base);
             }
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstTensorOperand>) {
@@ -1188,6 +1226,11 @@ struct SymbolTableBuilder {
                         &value.tensor_map.base)) {
               addReference(scope, ReferenceKind::InstructionOperand,
                            *identifier);
+            } else if (const auto* member =
+                           std::get_if<syntax_ast::AstVectorMember>(
+                               &value.tensor_map.base)) {
+              addReference(scope, ReferenceKind::InstructionOperand,
+                           member->base);
             }
             for (const auto& element : value.coordinates.elements) {
               if (const auto* identifier =
@@ -1208,6 +1251,10 @@ struct SymbolTableBuilder {
                       std::get_if<syntax_ast::AstIdentifierRef>(&element))
                 addReference(scope, ReferenceKind::InstructionOperand,
                              *identifier);
+              else if (const auto* member =
+                           std::get_if<syntax_ast::AstVectorMember>(&element))
+                addReference(scope, ReferenceKind::InstructionOperand,
+                             member->base);
             }
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstCompoundBracket>) {
@@ -1216,6 +1263,10 @@ struct SymbolTableBuilder {
                       std::get_if<syntax_ast::AstIdentifierRef>(&head))
                 addReference(scope, ReferenceKind::InstructionOperand,
                              *identifier);
+              else if (const auto* member =
+                           std::get_if<syntax_ast::AstVectorMember>(&head))
+                addReference(scope, ReferenceKind::InstructionOperand,
+                             member->base);
             for (const auto& element : value.coordinates.elements)
               if (const auto* identifier =
                       std::get_if<syntax_ast::AstIdentifierRef>(&element))
@@ -1281,6 +1332,9 @@ struct SymbolTableBuilder {
             for (const auto& parameter : value.parameters) {
               const auto* identifier =
                   std::get_if<syntax_ast::AstIdentifierRef>(&parameter);
+              if (const auto* member =
+                      std::get_if<syntax_ast::AstVectorMember>(&parameter))
+                identifier = &member->base;
               if (identifier == nullptr)
                 continue;
               const SymbolReference& reference =
@@ -1296,20 +1350,32 @@ struct SymbolTableBuilder {
               }
             }
           } else if constexpr (std::same_as<Value, syntax_ast::AstCallTarget>) {
+            const bool selected =
+                std::holds_alternative<syntax_ast::AstVectorMember>(value.name);
+            const auto& name = std::visit(
+                [](const auto& leaf) -> const syntax_ast::AstIdentifierRef& {
+                  using Leaf = std::remove_cvref_t<decltype(leaf)>;
+                  if constexpr (std::same_as<Leaf,
+                                             syntax_ast::AstIdentifierRef>)
+                    return leaf;
+                  else
+                    return leaf.base;
+                },
+                value.name);
             const SymbolReference& reference =
-                addReference(scope, ReferenceKind::CallTarget, value.name);
+                addReference(scope, ReferenceKind::CallTarget, name);
             if (reference.target) {
               const Symbol& symbol =
                   result.table.symbol(reference.target->symbol);
               diagnoseInvalidTarget(
                   reference,
-                  symbol.kind == SymbolKind::Function ||
+                  (!selected && symbol.kind == SymbolKind::Function) ||
                       (isRegisterOrParameter(symbol) &&
                        symbol.state_space ==
                            syntax_ast::AstStateSpace::Register),
                   fmt::format("Call target '{}' must name a function or a "
                               ".reg function pointer.",
-                              value.name.syntax.text));
+                              name.syntax.text));
             }
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstCallTargetSet>) {
@@ -1375,16 +1441,16 @@ struct SymbolTableBuilder {
   void bindFunction(const FunctionContext& context) {
     const auto& function = *context.function;
     for (const auto& parameter : function.return_parameters) {
-      if (parameter.array_size) {
-        bindConstantExpression(context.scope, ReferenceKind::ArrayDimension,
-                               *parameter.array_size);
-      }
+      for (const auto& dimension : parameter.array_dimensions)
+        if (dimension.size)
+          bindConstantExpression(context.scope, ReferenceKind::ArrayDimension,
+                                 *dimension.size);
     }
     for (const auto& parameter : function.parameters) {
-      if (parameter.array_size) {
-        bindConstantExpression(context.scope, ReferenceKind::ArrayDimension,
-                               *parameter.array_size);
-      }
+      for (const auto& dimension : parameter.array_dimensions)
+        if (dimension.size)
+          bindConstantExpression(context.scope, ReferenceKind::ArrayDimension,
+                                 *dimension.size);
     }
     bindBody(function.body, context.scope, context.scope);
   }

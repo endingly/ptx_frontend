@@ -13,7 +13,7 @@ from ptx_frontend.spec.resources import packaged_spec_dir
 SPEC_PATH = packaged_spec_dir() / "tensor_memory_data_movement.yaml"
 EXPECTED_AVAILABILITY = {
     "any_of": [
-        {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+        {"ptx": "8.6", "sm": 100, "targets": ["sm_100a", "sm_101a", "sm_101f"]},
         {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
         {"ptx": "9.0", "sm": 110, "target": "sm_110a"},
         {"ptx": "9.0", "sm": 110, "family": "sm_110f"},

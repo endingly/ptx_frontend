@@ -25,7 +25,9 @@ struct ModifierCandidatePlan {
 std::expected<size_t, ResolveDiagnostic> select_indexed_variant(
     const syntax_ast::AstInstruction& ast,
     const check_end::SyntaxInstructionDescriptor& instruction,
-    const ModifierCandidatePlan& plan, std::span<uint64_t> candidates);
+    const ModifierCandidatePlan& plan, std::span<uint64_t> candidates,
+    const check_end::ResolvedInstructionDescriptor* resolved = nullptr,
+    const ResolveContext* context = nullptr);
 
 /** Resolve using already selected static descriptors; bind the winner again. */
 std::expected<ResolvedInstructionFields, ResolveDiagnostic>

@@ -236,7 +236,9 @@ TEST(PtxSyntaxParser, LowersDedicatedCallAndBranchOperands) {
   ASSERT_EQ(returns.parameters.size(), 1u);
   EXPECT_EQ(std::get<AstIdentifierRef>(returns.parameters[0]).syntax.text,
             "%result");
-  EXPECT_EQ(std::get<AstCallTarget>(call->operands[1]).name.syntax.text,
+  EXPECT_EQ(std::get<syntax_ast::AstIdentifierRef>(
+                std::get<AstCallTarget>(call->operands[1]).name)
+                .syntax.text,
             "%callee");
 
   const auto& inputs = std::get<AstCallParameterList>(call->operands[2]);
@@ -290,7 +292,7 @@ TEST(PtxSyntaxParser, LowersFunctionLocalCallPrototypePayload) {
   ASSERT_EQ(prototype.parameters.size(), 2u);
   EXPECT_EQ(prototype.parameters[0].name.syntax.text, "arg");
   EXPECT_EQ(prototype.parameters[1].name.syntax.text, "bytes");
-  EXPECT_TRUE(prototype.parameters[1].is_array);
+  EXPECT_FALSE(prototype.parameters[1].array_dimensions.empty());
   ASSERT_TRUE(prototype.noreturn_directive.has_value());
   EXPECT_EQ(prototype.noreturn_directive->text, ".noreturn");
   ASSERT_TRUE(prototype.abi_preserve.has_value());
@@ -645,7 +647,7 @@ TEST(PtxSyntaxParser, LowersTypedFileDirectives) {
   EXPECT_EQ(full_form.range.start.line, 2u);
 }
 
-TEST(PtxSyntaxParser, LowersRawSectionPayloadSyntax) {
+TEST(PtxSyntaxParser, LowersTypedSectionPayloadSyntax) {
   constexpr std::string_view source = R"ptx(.section .debug_info {
 Lbegin:
   .b8 -128, 0, 255
@@ -669,16 +671,31 @@ Lend:
   const auto& section =
       std::get<syntax_ast::AstSectionDirective>(result->items.front());
   EXPECT_EQ(section.name.text, ".debug_info");
-  ASSERT_EQ(section.payload.size(), 46u);
-  EXPECT_EQ(section.payload.front().text, "Lbegin");
-  EXPECT_EQ(section.payload.at(29).text, ".debug_str");
-  EXPECT_EQ(section.payload.at(30).text, "+");
-  EXPECT_EQ(section.payload.at(31).text, "0x4");
-  EXPECT_EQ(section.payload.at(36).text, ".b32");
-  EXPECT_EQ(section.payload.at(37).text, "Lend");
-  EXPECT_EQ(section.payload.at(38).text, "-");
+  ASSERT_EQ(section.payload.size(), 12u);
+  EXPECT_EQ(
+      std::get<syntax_ast::AstSectionLabelDefinition>(section.payload.front())
+          .name.text,
+      "Lbegin");
+  const auto& integer_data =
+      std::get<syntax_ast::AstSectionData>(section.payload[4]);
+  EXPECT_EQ(integer_data.width, syntax_ast::AstSectionWidth::B64);
+  const auto& integers =
+      std::get<std::vector<syntax_ast::AstSectionInteger>>(integer_data.value);
+  ASSERT_EQ(integers.size(), 2u);
+  EXPECT_EQ(integers[0].sign->text, "-");
+  EXPECT_EQ(integers[0].magnitude.text, "9223372036854775808");
+  EXPECT_EQ(integers[1].magnitude.text, "18446744073709551615U");
+  const auto& addend = std::get<syntax_ast::AstSectionAddend>(
+      std::get<syntax_ast::AstSectionData>(section.payload[7]).value);
+  EXPECT_EQ(addend.name.text, ".debug_str");
+  EXPECT_EQ(addend.operation.text, "+");
+  EXPECT_EQ(addend.value.magnitude.text, "0x4");
+  EXPECT_EQ(addend.name.range.start.line, 9u);
+  const auto& difference = std::get<syntax_ast::AstSectionDifference>(
+      std::get<syntax_ast::AstSectionData>(section.payload[9]).value);
+  EXPECT_EQ(difference.left.text, "Lend");
+  EXPECT_EQ(difference.right.text, "Lbegin");
   EXPECT_EQ(section.range.start.line, 1u);
-  EXPECT_EQ(section.payload.at(29).range.start.line, 9u);
 }
 
 TEST(PtxSyntaxParser, LowersPragmasAtAllSupportedScopes) {
@@ -864,10 +881,10 @@ TEST(PtxSyntaxParser, LowersParameterAttributesArraysAndPrototype) {
   EXPECT_EQ(blob.state_space, syntax_ast::AstStateSpace::Parameter);
   ASSERT_TRUE(blob.alignment.has_value());
   EXPECT_EQ(blob.alignment->text, "8");
-  EXPECT_TRUE(blob.is_array);
-  ASSERT_TRUE(blob.array_size.has_value());
-  const auto& size =
-      std::get<syntax_ast::AstConstantBinary>(blob.array_size->node);
+  ASSERT_EQ(blob.array_dimensions.size(), 1u);
+  ASSERT_TRUE(blob.array_dimensions[0].size.has_value());
+  const auto& size = std::get<syntax_ast::AstConstantBinary>(
+      blob.array_dimensions[0].size->node);
   EXPECT_EQ(size.operation, syntax_ast::AstConstantBinaryOperator::Multiply);
   const auto& warp_size =
       std::get<syntax_ast::AstConstantLiteral>(size.right->node).value;
@@ -881,6 +898,39 @@ TEST(PtxSyntaxParser, LowersParameterAttributesArraysAndPrototype) {
   ASSERT_TRUE(pointer.pointer_alignment.has_value());
   EXPECT_EQ(pointer.pointer_alignment->text, "16");
   EXPECT_TRUE(function.body.empty());
+}
+
+/** Formal axes move with their trees; existing operand copies still deep-clone them. */
+TEST(PtxSyntaxParser, OwnsMultidimensionalHeaderExpressions) {
+  PtxSyntaxParser parser(
+      ".func (.param .b8 r[2][3]) f(.param .u32 a[2+1][4][5]);");
+  auto parsed = parser.parseModule();
+  ASSERT_TRUE(parsed);
+  ASSERT_TRUE(parsed.diagnostics.empty());
+  auto& function = std::get<syntax_ast::AstFunction>(parsed->items[0]);
+  ASSERT_EQ(function.parameters[0].array_dimensions.size(), 3u);
+  ASSERT_EQ(function.return_parameters[0].array_dimensions.size(), 2u);
+  auto owned = std::move(function.parameters[0]);
+  EXPECT_LE(owned.array_dimensions[0].range.end.column,
+            owned.array_dimensions[1].range.start.column);
+  syntax_ast::AstConstantOperand original(
+      std::make_unique<syntax_ast::AstConstantExpression>(
+          std::move(*owned.array_dimensions[0].size)),
+      owned.array_dimensions[0].range);
+  auto copied = original;
+  auto& expression =
+      std::get<syntax_ast::AstConstantBinary>(copied.expression->node);
+  const auto& original_expression =
+      std::get<syntax_ast::AstConstantBinary>(original.expression->node);
+  EXPECT_NE(expression.left.get(), original_expression.left.get());
+  EXPECT_NE(expression.right.get(), original_expression.right.get());
+  EXPECT_EQ(copied.range, original.range);
+  std::get<syntax_ast::AstConstantLiteral>(expression.left->node)
+      .value.syntax.text = "9";
+  EXPECT_EQ(
+      std::get<syntax_ast::AstConstantLiteral>(original_expression.left->node)
+          .value.syntax.text,
+      "2");
 }
 
 TEST(PtxSyntaxParser, LowersRegisterDeclarationsAndLabels) {

@@ -11,20 +11,22 @@ execution evidence for eleven commonly used operation names.
 
 | Area | Status | Implemented subset |
 | --- | --- | --- |
-| Named array addresses | Supported subset | Dedicated MOV address sources and ordinary LD/ST accept one `A[index]`, with declaration scalar-element stride and preserved direct-minus/plus-negative source operations. Family/qualifier exclusions and the ptxas spelling discrepancy are documented in [named address semantics](../resolved_ir_design.md#named-array-addresses); see [syntax and ranges](../syntax_ast_design.md#named-array-address-syntax). |
+| Named array addresses | Supported subset | Dedicated MOV address sources and generic address roles accept one `A[index]`, with declaration scalar-element stride and preserved direct-minus/plus-negative source operations. Register-only role/qualifier exclusions and the ptxas spelling discrepancy are documented in [named address semantics](../resolved_ir_design.md#named-array-addresses); see [syntax and ranges](../syntax_ast_design.md#named-array-address-syntax). |
 | PTX 9.3 video | Supported source family | All 23 scalar/SIMD2/SIMD4 opcodes with separate video types, selectors/masks, register negation, immediate provenance and target checks; see [video coverage](video_coverage.md). Arithmetic execution is outside the frontend. |
 | Tokens and trivia | Partial | Identifiers, dot identifiers, literals, punctuation, comments, whitespace, and selected stable directives; unmodified `CstFile::sourceText()` round-trips its token buffer byte-for-byte |
-| Instruction fragment | Partial | Predicate guard, opcode/modifiers, ordinary operands, addresses, ordinary `.xyzw/.rgba` scalar components and brace lanes, vector members/packs, and dedicated call/branch operand shapes; components in call arguments, address bases and named-array indices remain unsupported |
+| Instruction keyword name contexts | Contextual | Opcode roots remain recognized in instruction position; explicit declaration names use the character grammar, including official `bar` object/function examples. Independent role/type/ABI/visibility rules remain; see [lexical interpretation](../lexer_design.md). |
+| Instruction fragment | Partial | Predicate guard, opcode/modifiers, ordinary operands, addresses, ordinary `.xyzw/.rgba` scalar components and brace lanes, vector members/packs, and dedicated call/branch operand shapes; ordinary address bases and named-array register indices also accept selected scalar components under their existing type/role rules; explicit ordinary components are supported for call inputs, the single return and indirect register target |
 | Module header | Supported subset | `.version`, `.target`, and `.address_size` lower to ordered, AST-independent source-configuration regions. Each region owns its effective version, target-option spellings, address width, and explicit/defaulted provenance; an omitted address size owns PTX's 32-bit default rather than a host property. A recognized region supplies target-aware module validation, but is not a hardware-configuration or execution contract. |
 | Debug file directive | Supported subset | Outermost `.file file_index "filename"` with optional paired `, timestamp, file_size`; decimal/octal/hex uint64 IDs bind in a debug-only namespace, all repeated normalized IDs diagnose (including identical metadata), payloads are owned in the symbol table, and overflow diagnoses; explicit numeric metadata (including `0, 0`) requires PTX ISA >= 3.2, independently of SM/debug options |
-| Debug location directive | Supported subset | Function/nested-block `.loc file line column`, with decimal/octal/hex file IDs and paired PTX 7.2 `function_name`/`inlined_at` payload, validates bound file IDs and `.debug_str` section/label identity; it does not attach to instructions or enter Resolved IR |
-| Debug section directive | Supported subset | Outermost `.section name { ... }` retains matched braces and ordered raw DWARF payload tokens; `.debug_str` and raw `name:` labels bind as debug identity, while payload widths, relocations, and offset semantics remain unsupported |
-| Backend pragma directive | Supported subset | Module, `.entry` header, and function/nested-block statement `.pragma` preserve a nonempty comma-separated string list in CST/AST; pragmas neither bind nor enter Resolved IR |
-| Kernel resource directives | Supported subset | Entry headers retain `.maxnreg n`, `.maxntid nx[,ny[,nz]]`, `.reqntid nx[,ny[,nz]]`, `.minnctapersm ncta`, `.reqnctapercluster nx[,ny[,nz]]`, zero-argument `.explicitcluster`, and `.maxclusterrank n` with dedicated CST/AST and owned normalized function-contract values. Declaration semantics rejects same-entry `.maxntid` plus `.reqntid` and `.reqnctapercluster` plus `.maxclusterrank`; module validation checks modeled PTX/target minima. Launch feasibility, occupancy, and physical resource allocation remain unchecked. |
+| Debug location directive | Supported subset | Function/nested-block `.loc file line column`, with decimal/octal/hex file IDs and paired PTX 7.2 `function_name`/`inlined_at` payload, validates bound file IDs and `.debug_str` section/label identity; it retains owning SymbolTable records and checks modulewide preceding base triples, without executable instructions |
+| Debug section directive | Supported subset | CST retains raw tokens/trivia and typed entries; owning AST/module integer lists, signed byte addends, single symbols and same-section label differences are checked for original range/locality/version; `.debug_str` typed labels bind in the metadata namespace; linked DWARF values remain unknown |
+| Legacy debug serialization | Supported closed grammar | `@@DWARF`, PTX [1.2,2.0), unsigned hex widths/single wide label/finite section header; owning source-wide scoped stream, independent format checks; no decoder |
+| Backend pragma directive | Supported subset | Module, `.entry` header, and function/nested-block statement `.pragma` preserve a nonempty comma-separated string list in CST/AST; strings create no bound names; module owns opaque advisory records with actual placement scopes |
+| Kernel resource directives | Supported subset | Entry headers retain `.maxnreg n`, `.maxntid nx[,ny[,nz]]`, `.reqntid nx[,ny[,nz]]`, `.minnctapersm ncta`, `.maxnctapersm ncta`, `.reqnctapercluster nx[,ny[,nz]]`, zero-argument `.explicitcluster`, and `.maxclusterrank n` with dedicated CST/AST and owned normalized function-contract values. Declaration semantics rejects same-entry `.maxntid` plus `.reqntid` and `.reqnctapercluster` plus `.maxclusterrank`; module validation checks modeled PTX/target minima. Launch feasibility, occupancy, and physical resource allocation remain unchecked. |
 | Functions | Supported subset | `.entry`/`.func` definitions, `.func` prototypes, visibility/linkage qualifiers, return/input parameter lists, `.noreturn`, `.func` ABI suffixes, `.language`, and entry `.blocksareclusters`. Resolved functions own their normalized signature, linkage/canonical identity, supported attributes, ABI suffixes, resources, and language/cluster markers independently of the AST. |
-| Formal parameters | Supported subset | `.reg`/`.param`, alignment, scalar type, pointer space/alignment, and arrays sized by structured constant expressions |
+| Formal parameters | Supported subset | `.reg`/`.param`, alignment, fundamental scalar/v2/v4 types including packed scalar F16x2, pointer space/alignment, and arrays sized by structured constant expressions |
 | Variable declarations | Supported subset | Module/function scope, linkage qualifiers, `.reg`/`.param`/`.local`/`.shared`/`.global`/`.const`, narrow `.attribute(.managed/.unified)` support, alignment, vector/base type, parameterized names, multidimensional arrays, and `.global`/`.const` initializers |
-| Function body | Supported subset | Variable declarations, labels, supported instruction syntax, and recursively bound nested blocks; resolution recursively flattens nested instructions in source order, with call staging confined to each lexical block |
+| Function body | Supported subset | Variable declarations, labels, supported instruction syntax, and recursively bound nested blocks; resolution recursively flattens nested instructions in source order, with call staging following the flattened instruction sequence and bound lexical visibility |
 | Constant expressions | Supported subset | Shared declaration/instruction numeric trees: parentheses, integer operators/casts and homogeneous f64 arithmetic/comparison/conditional forms; numeric call/tuple/predicate/address leaves; depth 128 and shift counts 0–63. Exact `0f` remains a literal-only form. `generic(symbol)` and masks remain initializer operators. See [shared numeric evaluation](../declaration_semantics_design.md#shared-numeric-evaluation). |
 | Initializers | Supported subset | Scalar expressions, recursive brace lists, and an unsized first dimension; `.extern`, parameterized-name, and non-`.global`/`.const` initializers are rejected |
 | Symbol binding | Supported subset | Module/function/nested-block scopes, variables/parameters/functions/labels, lexical shadowing, parameterized members, instruction/initializer/dimension/control-flow references, and isolated debug file/string metadata identity; labels and control-flow metadata remain function-local |
@@ -80,7 +82,7 @@ This is the per-spelling registry for the 35 directives in PTX ISA Table 1,
 plus five directives omitted by that table: `.attribute` from 5.4.8,
 `.abi_preserve` and `.abi_preserve_control` from 11.4, and
 `.blocksareclusters` and `.language` from 11.8. It answers the coverage
-matrix's six pipeline questions. Legacy non-dot `@@dwarf` and attributes such
+matrix's six pipeline questions. Legacy non-dot `@@DWARF` and attributes such
 as `.ptr` are intentionally outside this dot-directive registry.
 
 Legend: `D` = dedicated lexer token; `G` = generic `DotIdent` (still tokenized,
@@ -89,9 +91,8 @@ existing declaration/function node; `R` = explicitly rejected by the parser.
 `Y` = retained as an owned binding/Resolved-IR contract; `I` = a consuming
 instruction retains/checks its bound identity; `C` = direct binding/declaration
 semantic check; `V` = the current AST-free `validateModule` traversal performs
-target-aware validation. Retention alone does not imply `V`: prototype ABI/
-`.noreturn` availability and storage-declaration attribute availability remain
-AST/declaration-validation paths. `V` validates only modeled source-profile
+target-aware validation. Retention alone does not imply `V`: storage-declaration attribute availability
+remains an AST/declaration-validation path. `V` validates only modeled source-profile
 requirements; it does not establish launch feasibility, simulator execution, or
 hardware behavior. `—` = no support at that stage.
 
@@ -99,45 +100,45 @@ hardware behavior. `—` = no support at that stage.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `.address_size` | D | T | T | — | Y | C | Owned effective 32/64-bit source-header width with explicit/defaulted provenance; it is revalidated as header integrity, not used to construct `checker::TargetInfo` or host-address meaning |
 | `.alias` | G | T | T | Y | Y / I | C / V | Owned same-module device-function alias; no linker/backend aliasing |
-| `.abi_preserve` | G | T | T | — | Y | C / V (`.func` only) | Both forms own ABI metadata. PTX 9.0 availability is AST-free for `.func`; `.callprototype` availability remains AST-backed. No physical register assignment. |
-| `.abi_preserve_control` | G | T | T | — | Y | C / V (`.func` only) | Both forms own ABI metadata. PTX 9.0 availability is AST-free for `.func`; `.callprototype` availability remains AST-backed. No physical register assignment. |
+| `.abi_preserve` | G | T | T | — | Y | C / V | Both forms own ABI metadata. PTX 9.0 / SM 80 minima are rechecked for current owned prototypes and independently supplied prototypes, including partial known context. No physical register assignment. |
+| `.abi_preserve_control` | G | T | T | — | Y | C / V | Both forms own ABI metadata. PTX 9.0 / SM 80 minima are rechecked for current owned prototypes and independently supplied prototypes, including partial known context. No physical register assignment. |
 | `.align` | D | E | E | Y | Y | C | Declaration/parameter alignment |
 | `.attribute` | G | T | T | — | Y | C / V (function only) | Only typed `.managed` and `.unified(id,id)` placement/version subset. AST-free target availability covers function attributes; retained storage attributes are currently checked through AST/declaration validation. No runtime allocation or host-address interpretation. |
-| `.branchtargets` | D | T | T | Y | Y / I | C / I | Owns bound, expanded logical targets; `brx.idx` consumer is PTX 6.0 / SM 30, with no CFG/protocol proof |
-| `.callprototype` | D | T | T | Y | Y / I | C / I | Owns normalized signature and supported ABI metadata. AST-free validation rechecks its identity, scope, and signature, not prototype ABI/`.noreturn` availability; indirect-call availability remains consumer-driven. |
-| `.calltargets` | D | T | T | Y | Y / I | C / I | Owns ordered bound/canonical function targets and their shared signature; indirect-call availability remains consumer-driven |
+| `.branchtargets` | D | T | T | Y | Y / I | C / I | Owns bound, expanded logical targets; unused/nested presence requires PTX 2.1 / SM 20; `brx.idx` consumer is PTX 6.0 / SM 30, with no CFG/protocol proof |
+| `.callprototype` | D | T | T | Y | Y / I | C / V / I | Owns normalized signature and supported ABI metadata. Both module validation routes recheck base PTX 2.1 / SM 20 and present suffix minima against the selected region; identity/scope/signature and indirect-call consumer checks remain independent. |
+| `.calltargets` | D | T | T | Y | Y / I | C / I | Owns ordered bound/canonical function targets and their shared signature; unused/nested presence independently requires PTX 2.1 / SM 20; indirect-call instruction checks remain separate |
 | Call-table flist arrays | D | T | T | Y | Y / I | C / I | Initialized scalar u32/u64 one-dimensional global/const arrays; owned real-storage identity, sparse explicit function slots, common full signature, lexical order and AST-free storage/function rejoin. Duplicates/implicit zero tails allowed; no runtime pointer-membership proof. |
 | `.common` | D | E | E | Y | Y | C / V | Distinct Common linkage on ordinary module-scope global definitions; PTX 5.0 / SM 20, ordinary initializers/layout, AST-free eligibility and ordered target checks; no cross-object linker |
 | `.const` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.entry` | D | E | E | Y | Y | C | Existing function node |
 | `.explicitcluster` | D | T | T | — | Y | C / V | Entry-only, zero arguments, PTX 7.8 modeled availability; target launch feasibility deferred |
 | `.extern` | D | E | E | Y | Y | C | Existing linkage qualifier |
-| `.file` | D | T | T | Y | — | C | Decimal/octal/hex uint64 identity; every repeated normalized ID diagnoses; owned source-ordered payloads; overflow diagnoses; explicit numeric metadata requires PTX >= 3.2 (missing version defers under `AvailableContext`; replacement AST supplies version/metadata) |
-| `.func` | D | E | E | Y | Y | C | Existing function node |
+| `.file` | D | T | T | Y | — | C | Decimal/octal/hex uint64 identity; every repeated normalized ID diagnoses; owned source-ordered payloads; file_size is a checked single unsigned64 word (0 through UINT64_MAX) in current and independently supplied data; timestamp domain unchanged; explicit numeric metadata requires PTX >= 3.2 (missing version defers under `AvailableContext`; replacement AST supplies version/metadata) |
+| `.func` | D | E | E | Y | Y | C | Current local direct/consumed-finite may-call cycles require PTX 2.0 / SM 20; unused definitions included, open edges not certified acyclic; no runtime stack/CFG |
 | `.global` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.local` | D | E | E | Y | Y | C | Existing variable declaration |
-| `.loc` | D | T | T | Y | — | C | Decimal/octal/hex file ID plus `.debug_str` function-name identity; no attachment |
+| `.loc` | D | T | T | Y | — | C | Owning ordered full64 triples, prior-base inline references and independent current/replacement metadata joins; no attachment |
 | `.maxclusterrank` | D | T | T | — | Y | C / V | Entry-only normalized resource, PTX 7.8 modeled availability; conflicts with `.reqnctapercluster` |
-| `.maxnctapersm` | G | R | — | — | — | — | Unmodeled deprecated resource directive |
 | `.maxnreg` | D | T | T | — | Y | C / V | Entry-only normalized resource with modeled availability; occupancy implication deferred |
+| `.maxnctapersm` | D | T | T | — | Y | C / V | Distinct deprecated entry hint, PTX >= 1.3; modeled u32 capacity, no hard occupancy cap |
 | `.maxntid` | D | T | T | — | Y | C / V | Entry-only normalized resource; conflicts with `.reqntid`; launch feasibility deferred |
 | `.minnctapersm` | D | T | T | — | Y | C / V | Entry-only normalized resource; warning/device feasibility deferred |
-| `.noreturn` | D | E | E | — | Y | C / V (`.func` only) | Device `.func`/`.callprototype`; return-parameter conflict is checked, but AST-free PTX 6.4 availability is currently rechecked only for `.func`; prototype availability remains AST-backed. |
+| `.noreturn` | D | E | E | — | Y | C / V | Device `.func`/`.callprototype`; return-parameter conflict is checked. Prototype PTX 6.4 / SM 30 minima are rechecked in both module routes, independently of whether the other context fact is known. |
 | `.param` | D | E | E | Y | Y | C | Existing variable/formal/call-parameter declaration |
-| `.pragma` | D | T | T | — | — | — | Backend string interpretation intentionally absent |
+| `.pragma` | D | T | T | — | Y | V | Module/entry-header/statement records own raw strings, ranges and actual scopes; PTX >= 2.0 independently of target; no backend string interpretation or execution |
 | `.reg` | D | E | E | Y | Y | C | Existing variable/formal declaration |
 | `.reqnctapercluster` | D | T | T | — | Y | C / V | Entry-only normalized resource, PTX 7.8 modeled availability; conflicts with `.maxclusterrank` |
 | `.reqntid` | D | T | T | — | Y | C / V | Entry-only normalized resource; conflicts with `.maxntid`; launch feasibility deferred |
-| `.section` | D | T | T | Y | — | C | Only `.debug_str` plus raw `name:` labels bind; payload stays raw |
+| `.section` | D | T | T | Y | Y | C / V | Owning module metadata, typed integer/relocation grammar and static locality; no executable node or DWARF decoder |
 | `.shared` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.sreg` | G | R | — | — | — | — | Unmodeled special-register declaration |
-| `.target` | D | T | T | — | Y | V | Owned source-target options build `checker::TargetInfo` for recognized profiles; no physical target selection or translation guarantee |
+| `.target` | D | T | T | — | Y | V | Owned source-target options build `checker::TargetInfo` for recognized profiles; no physical target selection or translation guarantee; known debug + zero modern sections AND zero legacy records rejects, while actual DWARF recognition remains a qualified reference boundary |
 | `.tex` | G | R | — | — | — | — | Unmodeled declaration directive |
 | `.version` | D | T | T | — | Y | V | Owned source version participates in target-aware module validation |
 | `.visible` | D | E | E | Y | Y | C | Existing linkage qualifier |
-| `.weak` | D | E | E | Y | Y | C | Existing linkage qualifier |
+| `.weak` | D | E | E | Y | Y | C | PTX 3.1 / all targets; each supplied occurrence and current owned symbol/storage/function fact, including unused prototypes; no weak-linker simulation |
 | `.blocksareclusters` | G | T | T | — | Y | C / V | Owned zero-argument entry marker; PTX 9.0 modeled availability and required `.reqntid` + `.reqnctapercluster`; launch rules deferred |
-| `.language` | G | T | T | — | Y | C / V | Owned nonempty official string/integer list; PTX 9.3 modeled availability, no backend-language behavior |
+| `.language` | G | T | T | — | Y | C / V | Current raw nonempty official quoted-name/unsigned0..10 list is rechecked by one exported semantic decoder in both APIs, with duplicates/order retained; known PTX <9.3 rejects independently of missing target. No backend-language behavior |
 
 ## Implementation priority
 
@@ -145,8 +146,36 @@ The [project roadmap](../../../.agents/project_roadmap.v2.md) is the sole author
 for implementation status, dependencies, and priority. This matrix records
 capability boundaries only and intentionally does not repeat that ordering.
 
-The PTX ISA variable-declaration overview mentions an optional fixed address,
-but the current specification provides no separate grammar, constraints, or
-examples. The frontend will not invent syntax from that sentence; a node will
-be added only when normative grammar or verifiable `ptxas` behavior is
-available.
+### Fixed variable addresses: adopted reference gap
+
+**`FIXED-ADDRESS-PRODUCTION`: `ADOPTED_REFERENCE_GAP`, not `CODE_PASS`.**
+The pinned [PTX ISA 9.3 §5.4.1 overview](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variable-declarations)
+mentions an optional fixed variable address, but the referenced declaration,
+array, initializer and alignment clauses provide no determinate executable
+production, terminals, constraints or worked fixed-placement example. The
+frontend does not parse or allocate absolute fixed variable placement.
+
+Candidate tails `@ 0x100`, `.fixed(0x100)`, `.address(0x100)` and `:0x100`
+after a variable name produce diagnostics under the project's strict known
+declaration grammar. They are invented illustrations, not official PTX negative
+oracles. A recovered CST or AST with diagnostics is not clean acceptance.
+Ordinary initializer contents, array shape and alignment remain independent
+facts; see the [storage boundary and examples](../storage_declarations.md#absolute-variable-placement).
+
+Engineering completeness is qualified by the pinned executable source
+productions and published interpretations, including this named reference gap;
+it does not mean implementation of every capability mentioned in prose. A
+future concrete official production or erratum requires a new architecture
+decision and actual implementation review. Reproducible assembler observations
+may supplement that evidence, but cannot alone establish normative grammar.
+
+For `.target debug`, zero modern section records AND zero legacy records are a definite error. Nonzero records only satisfy the absence check: actual DWARF recognition remains **D-DEBUG-DWARF-PRESENCE-RECOGNITION**, not certified by names, emptiness, labels or typed bytes.
+
+
+Historical entry body inputs: PTX 1.0–1.3 uses owned `LegacyEntryInput` roles with input LD/MOV, read-only/frame/cache joins and a checked 32764-byte logical ceiling; PTX 1.4+ header ABI and PTX 2.0+ body call slots stay distinct. Exact historical physical launch packing remains reference-boundary qualified. See [parameter contract](../parameter_declarations.md).
+
+The whitespace terminal set is exactly ASCII SP, HT, LF, VT, FF, and CR. VT
+counts one physical byte column and no line break; original CR/LF/CRLF rules,
+comment/string boundaries, and lossless EOF trivia remain. This is the adopted
+frontend interpretation, not Unicode normalization or an added escape. See
+[physical whitespace positions](../syntax_ast_design.md#ascii-whitespace-and-physical-positions).

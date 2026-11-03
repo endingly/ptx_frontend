@@ -1319,3 +1319,155 @@ class PackagedDatabaseSnapshotTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeclarationSeparableDatabaseTests(unittest.TestCase):
+    """Keep the sufficient declaration proof operator-neutral and conservative."""
+
+    @staticmethod
+    def _pair(count: int = 4, *, modern: bool = True):
+        """Build independent typed operands with the existing single count authority."""
+        from ptx_frontend.spec.model import (
+            MatrixElementType, MatrixFamily, MatrixFragmentRole, MatrixFragmentShape,
+            MatrixLayout, MatrixShape, MatrixSpec, OperandKind, OperandLayoutSpec,
+            OperandSpec, OperandVectorTypePolicy, VariantSpec,
+        )
+        operand = OperandSpec(
+            name="a", kind=OperandKind.MATRIX_FRAGMENT if modern else OperandKind.REGISTER_VECTOR,
+            vector_allow_named=True, vector_type_policy=OperandVectorTypePolicy.ELEMENT,
+            minimum_elements=count if modern else None, maximum_elements=count if modern else None,
+            element_kinds=(OperandKind.REGISTER,) if modern else (),
+            vector_arities=() if modern else (count,),
+        )
+        matrix = MatrixSpec(
+            family=MatrixFamily.MMA, shape=MatrixShape(16, 8, 8),
+            a_layout=MatrixLayout.ROW, b_layout=MatrixLayout.COL,
+            c_layout=MatrixLayout.ROW, d_layout=MatrixLayout.ROW,
+            elements=((MatrixFragmentRole.A, MatrixElementType.F16),),
+            fragments=(MatrixFragmentShape("a", MatrixFragmentRole.A,
+                                           MatrixElementType.F16, "b32", count),),
+        )
+        named = VariantSpec("vector_path", {}, (), (OperandLayoutSpec("default", (operand,)),),
+                            matrix=matrix)
+        scalar = VariantSpec("scalar_path", {}, (), (OperandLayoutSpec("default", (
+            OperandSpec(name="a_desc", kind=OperandKind.SHARED_MATRIX_DESCRIPTOR),)),))
+        return named, scalar
+
+    def _validate(self, left, right) -> None:
+        """Use the actual exclusivity validator without an opcode-specific fixture."""
+        from ptx_frontend.spec.model import InstructionSpec
+        spec_database._validate_variant_modifier_exclusivity(
+            InstructionSpec(opcode="neutral_probe", variants=(left, right)))
+
+    def test_exact_element_scalar_certificate_both_orders(self) -> None:
+        """Two/four modern and legacy counts prove only the identifier slice."""
+        for count in (2, 4):
+            for modern in (True, False):
+                named, scalar = self._pair(count, modern=modern)
+                with self.subTest(count=count, modern=modern):
+                    self._validate(named, scalar)
+                    self._validate(scalar, named)
+
+    def test_all_layout_cross_pairs_must_separate(self) -> None:
+        """One valid certificate cannot excuse a second scalar/scalar overlap."""
+        from dataclasses import replace
+        named, scalar = self._pair()
+        named = replace(named, operand_layouts=(named.operand_layouts[0],
+                        replace(scalar.operand_layouts[0], name="ambiguous")))
+        with self.assertRaisesRegex(ValueError, "overlapping modifier combination"):
+            self._validate(named, scalar)
+
+    def test_unknown_and_same_domain_metadata_never_certifies(self) -> None:
+        """Reject arity/policy/join holes, generic carriers and same-domain pairs."""
+        from dataclasses import replace
+        from ptx_frontend.spec.model import OperandKind, OperandVectorTypePolicy
+        named, scalar = self._pair()
+        original = named.operand_layouts[0].operands[0]
+        variants = [replace(named, matrix=None)]
+        for changes in (
+            {"minimum_elements": 1, "maximum_elements": 1},
+            {"minimum_elements": 1, "maximum_elements": 4},
+            {"minimum_elements": 0, "maximum_elements": 0},
+            {"vector_type_policy": OperandVectorTypePolicy.AGGREGATE},
+            {"vector_arity_expression": object()},
+            {"element_kinds": (OperandKind.REGISTER, OperandKind.IMMEDIATE)},
+        ):
+            variants.append(replace(named, operand_layouts=(replace(named.operand_layouts[0],
+                operands=(replace(original, **changes),)),)))
+        variants.append(replace(named, matrix=replace(named.matrix,
+            fragments=(replace(named.matrix.fragments[0], register_count=2),))))
+        for variant in variants:
+            with self.subTest(variant=variant), self.assertRaisesRegex(ValueError, "overlapping"):
+                self._validate(variant, scalar)
+        for kind in (OperandKind.REGISTER, OperandKind.REGISTER_OR_IMMEDIATE,
+                     OperandKind.MOV_SCALAR_SOURCE, OperandKind.DESCRIPTOR,
+                     OperandKind.ADDRESS, OperandKind.TYPED_TOKEN):
+            candidate = replace(scalar, operand_layouts=(replace(scalar.operand_layouts[0],
+                operands=(replace(scalar.operand_layouts[0].operands[0], kind=kind),)),))
+            # ADDRESS has no shared syntax and retains the ordinary disjoint-shape proof.
+            if kind is OperandKind.ADDRESS:
+                self._validate(named, candidate)
+            else:
+                with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, "overlapping"):
+                    self._validate(named, candidate)
+        legacy, _ = self._pair(2, modern=False)
+        for arities in ((), (1,), (2, 4)):
+            invalid = replace(legacy, operand_layouts=(replace(legacy.operand_layouts[0],
+                operands=(replace(legacy.operand_layouts[0].operands[0], vector_arities=arities),)),))
+            with self.subTest(arities=arities), self.assertRaisesRegex(ValueError, "overlapping"):
+                self._validate(invalid, scalar)
+        for changes in ({"vector_arities": (2,)}, {"vector_allow_named": True},
+                        {"vector_type_policy": OperandVectorTypePolicy.ELEMENT}):
+            invalid = replace(scalar, operand_layouts=(replace(scalar.operand_layouts[0],
+                operands=(replace(scalar.operand_layouts[0].operands[0], **changes),)),))
+            with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, "overlapping"):
+                self._validate(named, invalid)
+        for other in (replace(named, name="another_vector"), scalar):
+            left = named if other.matrix else replace(scalar, name="another_scalar")
+            with self.assertRaisesRegex(ValueError, "overlapping"):
+                self._validate(left, other)
+
+    def test_remaining_common_syntax_and_target_do_not_excuse_overlap(self) -> None:
+        """The certificate cannot discard braces or use targets/defaults/layout restrictions."""
+        from dataclasses import replace
+        from ptx_frontend.spec.synatax_shapes import OperandSyntaxShape
+        named, scalar = self._pair()
+        original_shapes = spec_database.operand_syntax_shapes
+        with patch.object(spec_database, "operand_syntax_shapes",
+                          side_effect=lambda operand: original_shapes(operand) | OperandSyntaxShape.VECTOR_PACK):
+            with self.assertRaisesRegex(ValueError, "overlapping"):
+                self._validate(named, scalar)
+        first = replace(scalar, name="one", availability={"ptx": "8.0", "sm": 90})
+        second = replace(scalar, name="two", availability={"ptx": "9.3", "sm": 120},
+                         operand_layouts=(replace(scalar.operand_layouts[0], forbidden_modifiers=("x",)),))
+        with self.assertRaisesRegex(ValueError, "overlapping"):
+            self._validate(first, second)
+
+    def test_omitted_named_and_policy_preserve_existing_decisions(self) -> None:
+        """Inactive Aggregate defaults do not become an Element grant."""
+        from dataclasses import replace
+        from ptx_frontend.spec.model import OperandVectorTypePolicy
+        named, scalar = self._pair()
+        for flag in (False,):
+            operand = replace(named.operand_layouts[0].operands[0], vector_allow_named=flag,
+                              vector_type_policy=OperandVectorTypePolicy.AGGREGATE)
+            self._validate(replace(named, operand_layouts=(replace(named.operand_layouts[0],
+                           operands=(operand,)),)), scalar)
+        omitted = normalize_operand({"name": "a", "kind": "reg_vector", "vector": {"arity": 2}})
+        self.assertFalse(omitted.vector_allow_named)
+        self.assertIs(omitted.vector_type_policy, OperandVectorTypePolicy.AGGREGATE)
+        aggregate = normalize_operand({"name": "a", "kind": "reg_vector",
+                                       "vector": {"arity": 2, "allow_named": True}})
+        self.assertIs(aggregate.vector_type_policy, OperandVectorTypePolicy.AGGREGATE)
+        legacy, scalar = self._pair(2, modern=False)
+        with self.assertRaisesRegex(ValueError, "overlapping"):
+            self._validate(replace(legacy, operand_layouts=(replace(legacy.operand_layouts[0],
+                           operands=(aggregate,)),)), scalar)
+
+    def test_packaged_wgmma_pair_loads_after_exact_optin(self) -> None:
+        """The real canonical pipeline must admit both forms after the narrow proof."""
+        database = spec_database.load_codegen_database_from_files(spec_files=(
+            packaged_spec_dir() / "asynchronous_warpgroup_matrix_multiply_accumulate.yaml",))
+        names = {variant.name for instruction in database.instructions for variant in instruction.variants}
+        self.assertIn("wgmma_mma_async_dense_m64n8k8_f32_tf32_tf32_shared_plain", names)
+        self.assertIn("wgmma_mma_async_dense_m64n8k8_f32_tf32_tf32_register_plain", names)

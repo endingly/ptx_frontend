@@ -45,7 +45,7 @@ TEST(ResolveFma, SelectsCompleteFmaVariantFamily) {
   expect_variant("fma.rn.ftz.sat.f16 %h0, %h1, %h2, %h3;", "RnF16");
   expect_variant("fma.rn.ftz.sat.f16x2 %b0, %b1, %b2, %b3;", "RnF16x2");
   expect_variant("fma.rn.ftz.relu.f16 %h0, %h1, %h2, %h3;", "HalfRelu");
-  expect_variant("fma.rn.oob.sat.f16x2 %b0, %b1, %b2, %b3;", "HalfOob");
+  expect_variant("fma.rn.oob.f16x2 %b0, %b1, %b2, %b3;", "HalfOob");
   expect_variant("fma.rn.oob.relu.f16 %h0, %h1, %h2, %h3;", "HalfOobRelu");
   expect_variant("fma.rn.relu.bf16 %b0, %b1, %b2, %b3;", "Bf16");
   expect_variant("fma.rn.bf16x2 %b0, %b1, %b2, %b3;", "Bf16x2");
@@ -87,34 +87,34 @@ TEST(ResolveFma, ResolvesEveryCanonicalModifierCombination) {
     }
   }
 
-  for (const auto type : half_types) {
-    const std::string_view registers =
-        type == "f16" ? "%h0, %h1, %h2, %h3" : "%b0, %b1, %b2, %b3";
-    for (const auto ftz : optional_flags) {
-      for (const auto sat : saturation_flags) {
-        expect_resolved("fma.rn" + std::string(ftz) + std::string(sat) + "." +
+  for (const auto rn : {"", ".rn"}) {
+    for (const auto type : half_types) {
+      const std::string_view registers =
+          type == "f16" ? "%h0, %h1, %h2, %h3" : "%b0, %b1, %b2, %b3";
+      for (const auto ftz : optional_flags) {
+        for (const auto sat : saturation_flags) {
+          expect_resolved("fma" + std::string(rn) + std::string(ftz) +
+                          std::string(sat) + "." + std::string(type) + " " +
+                          std::string(registers) + ";");
+        }
+        expect_resolved("fma" + std::string(rn) + std::string(ftz) + ".relu." +
                         std::string(type) + " " + std::string(registers) + ";");
       }
-      expect_resolved("fma.rn" + std::string(ftz) + ".relu." +
+      expect_resolved("fma" + std::string(rn) + ".oob." + std::string(type) +
+                      " " + std::string(registers) + ";");
+      expect_resolved("fma" + std::string(rn) + ".oob.relu." +
                       std::string(type) + " " + std::string(registers) + ";");
     }
-    for (const auto sat : saturation_flags) {
-      expect_resolved("fma.rn.oob" + std::string(sat) + "." +
-                      std::string(type) + " " + std::string(registers) + ";");
-    }
-    expect_resolved("fma.rn.oob.relu." + std::string(type) + " " +
-                    std::string(registers) + ";");
-  }
 
-  for (const auto type : bfloat_types) {
-    for (const auto relu : relu_flags) {
-      expect_resolved("fma.rn" + std::string(relu) + "." + std::string(type) +
-                      " %b0, %b1, %b2, %b3;");
-      expect_resolved("fma.rn.oob" + std::string(relu) + "." +
-                      std::string(type) + " %b0, %b1, %b2, %b3;");
+    for (const auto type : bfloat_types) {
+      for (const auto relu : relu_flags) {
+        expect_resolved("fma" + std::string(rn) + std::string(relu) + "." +
+                        std::string(type) + " %b0, %b1, %b2, %b3;");
+        expect_resolved("fma" + std::string(rn) + ".oob" + std::string(relu) +
+                        "." + std::string(type) + " %b0, %b1, %b2, %b3;");
+      }
     }
   }
-
   for (const auto input_type : mixed_input_types) {
     const std::string_view inputs =
         input_type == "f16" ? "%h1, %h2" : "%b1, %b2";
@@ -127,7 +127,7 @@ TEST(ResolveFma, ResolvesEveryCanonicalModifierCombination) {
     }
   }
 
-  EXPECT_EQ(resolved_count, 70U);
+  EXPECT_EQ(resolved_count, 92U);
 }
 
 TEST(ResolveFma, PreservesExpandedVariantModifiersAndTypes) {
@@ -151,12 +151,11 @@ TEST(ResolveFma, PreservesExpandedVariantModifiersAndTypes) {
   EXPECT_EQ(relu->type.value, ScalarType::F16x2);
 
   const auto oob =
-      resolveFma(parse_instruction("fma.rn.oob.sat.f16 %h0, %h1, %h2, %h3;"));
+      resolveFma(parse_instruction("fma.rn.oob.f16 %h0, %h1, %h2, %h3;"));
   ASSERT_TRUE(oob.has_value()) << oob.error().message;
   const auto* half_oob = dynamic_cast<FmaHalfOob*>(oob->get());
   ASSERT_NE(half_oob, nullptr);
   EXPECT_TRUE(FmaHalfOob::oob);
-  EXPECT_TRUE(half_oob->saturate.value);
   EXPECT_EQ(half_oob->type.value, ScalarType::F16);
 
   const auto bf16 =
@@ -215,12 +214,24 @@ TEST(ResolveFma, AcceptsFloatingImmediatesOnlyWhereTheFormAllowsThem) {
   EXPECT_EQ(std::get<ResolvedImmediate>(widened_variant->src3.value).bits,
             0x7ff0000000000000ULL);
 
+  const auto bf16 =
+      resolveFma(parse_instruction("fma.rn.f32.bf16 %f0, 1.0, %b2, %f3;"));
+  ASSERT_TRUE(bf16);
+  const auto* mixed_bf16 = dynamic_cast<const FmaMixedF32Bf16*>(bf16->get());
+  ASSERT_NE(mixed_bf16, nullptr);
+  const auto* bf16_literal =
+      std::get_if<ResolvedImmediate>(&mixed_bf16->src1.value);
+  ASSERT_NE(bf16_literal, nullptr);
+  EXPECT_EQ(bf16_literal->type, ScalarType::BF16);
+  EXPECT_EQ(bf16_literal->bits, 0x3f80u);
+  EXPECT_FALSE(bf16_literal->integer_source_bits);
+  EXPECT_FALSE(bf16_literal->is_negative);
+
   for (const auto source : {
            "fma.rn.f16 %h0, 1.0, %h2, %h3;",
            "fma.rn.f16x2 %b0, 1.0, %b2, %b3;",
            "fma.rn.bf16 %b0, 1.0, %b2, %b3;",
            "fma.rn.f32x2 %b0, 1.0, %b2, %b3;",
-           "fma.rn.f32.bf16 %f0, 1.0, %b2, %f3;",
            "fma.rn.f32.bf16 %f0, %b1, %b2, 1;",
        }) {
     SCOPED_TRACE(source);
@@ -263,8 +274,6 @@ TEST(ResolveFma, RejectsMissingRoundingAndConflictingFlags) {
            "fma.f32 %f0, %f1, %f2, %f3;",
            "fma.f64 %d0, %d1, %d2, %d3;",
            "fma.f32x2 %b0, %b1, %b2, %b3;",
-           "fma.f16 %h0, %h1, %h2, %h3;",
-           "fma.bf16 %b0, %b1, %b2, %b3;",
            "fma.rz.f16 %h0, %h1, %h2, %h3;",
            "fma.rp.bf16x2 %b0, %b1, %b2, %b3;",
            "fma.f32.f16 %f0, %h1, %h2, %f3;",
@@ -302,7 +311,7 @@ TEST(ResolvedIrChecker, ChecksEveryGeneratedFmaVariantAvailability) {
       {"fma.rn.f16 %h0, %h1, %h2, %h3;", 4U, 2U, 4U, 1U, 53U},
       {"fma.rn.f16x2 %b0, %b1, %b2, %b3;", 4U, 2U, 4U, 1U, 53U},
       {"fma.rn.relu.f16 %h0, %h1, %h2, %h3;", 7U, 0U, 6U, 9U, 80U},
-      {"fma.rn.oob.sat.f16 %h0, %h1, %h2, %h3;", 8U, 1U, 8U, 0U, 90U},
+      {"fma.rn.oob.f16 %h0, %h1, %h2, %h3;", 8U, 1U, 8U, 0U, 90U},
       {"fma.rn.oob.relu.f16x2 %b0, %b1, %b2, %b3;", 8U, 1U, 8U, 0U, 90U},
       {"fma.rn.relu.bf16 %b0, %b1, %b2, %b3;", 7U, 0U, 6U, 9U, 80U},
       {"fma.rn.bf16x2 %b0, %b1, %b2, %b3;", 7U, 0U, 6U, 9U, 80U},

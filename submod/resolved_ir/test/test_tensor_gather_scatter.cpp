@@ -21,7 +21,7 @@ namespace {
 /** Wrap one transfer in aligned descriptor, shared storage and barrier symbols. */
 std::string gather_module(std::string_view instruction,
                           std::string_view version = "9.3",
-                          std::string_view target = "sm_110a") {
+                          std::string_view target = "sm_100a") {
   return ".version " + std::string(version) + "\n.target " +
          std::string(target) +
          "\n.address_size 64\n"
@@ -35,7 +35,7 @@ std::string gather_module(std::string_view instruction,
 
 /** Match direct checks to the exact catalog profile used by module checks. */
 checker::Context gather_context(checker::PtxVersion version = {9, 3},
-                                std::string_view target = "sm_110a") {
+                                std::string_view target = "sm_100a") {
   const auto profile = base::find_target_profile(target);
   if (!profile)
     return {};
@@ -50,7 +50,7 @@ checker::Context gather_context(checker::PtxVersion version = {9, 3},
 /** Destroy parsed syntax before returning a resolved transfer. */
 std::optional<ResolvedModule> owned_gather(
     std::string_view instruction, std::string_view version = "9.3",
-    std::string_view target = "sm_110a") {
+    std::string_view target = "sm_100a") {
   const auto parsed =
       test_helpers::parseModule(gather_module(instruction, version, target));
   if (!parsed)
@@ -259,6 +259,8 @@ TEST(TensorGatherScatter, TargetFloorsAndFamilyInheritance) {
     std::string_view target;
     bool qualified;
     bool cta;
+    /** Restricted cluster gather4 differs from adjacent scatter/prefetch grants. */
+    bool cluster = qualified;
   };
   constexpr std::array cases{
       Case{"8.6", {8, 6}, "sm_90", false, false},
@@ -267,11 +269,15 @@ TEST(TensorGatherScatter, TargetFloorsAndFamilyInheritance) {
       Case{"8.6", {8, 6}, "sm_103a", false, true},
       Case{"8.8", {8, 8}, "sm_103a", true, true},
       Case{"8.8", {8, 8}, "sm_103f", true, true},
-      Case{"8.8", {8, 8}, "sm_110a", false, true},
-      Case{"8.9", {8, 9}, "sm_110f", false, true},
-      Case{"9.0", {9, 0}, "sm_110a", true, true},
-      Case{"9.0", {9, 0}, "sm_110f", true, true},
+      Case{"8.8", {8, 8}, "sm_110a", true, true, false},
+      Case{"8.9", {8, 9}, "sm_110f", true, true, false},
+      Case{"9.0", {9, 0}, "sm_110a", true, true, false},
+      Case{"9.0", {9, 0}, "sm_110f", true, true, false},
       Case{"9.0", {9, 0}, "sm_110", false, true},
+      Case{"8.6", {8, 6}, "sm_101a", true, true, false},
+      Case{"8.8", {8, 8}, "sm_101f", true, true, false},
+      Case{"9.3", {9, 3}, "sm_101a", true, true, false},
+      Case{"9.3", {9, 3}, "sm_101f", true, true, false},
       Case{"9.3", {9, 3}, "sm_120a", false, true},
       Case{"9.3", {9, 3}, "sm_120f", false, true},
   };
@@ -280,7 +286,9 @@ TEST(TensorGatherScatter, TargetFloorsAndFamilyInheritance) {
       auto owned = owned_gather(instruction, item.version, item.target);
       ASSERT_TRUE(owned.has_value()) << instruction << " / " << item.target;
       const auto& copy = owned->functions.front().body.front();
-      const bool expected = instruction == cta ? item.cta : item.qualified;
+      const bool expected = instruction == cta      ? item.cta
+                            : instruction == gather ? item.cluster
+                                                    : item.qualified;
       EXPECT_EQ(copy->check(gather_context(item.parsed_version, item.target))
                     .has_value(),
                 expected)

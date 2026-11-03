@@ -40,6 +40,7 @@ enum class SymbolKind : uint8_t {
   Variable,
   InputParameter,
   ReturnParameter,
+  /** Structural body .param identity; semantic records distinguish legacy inputs from call slots. */
   CallParameter,
   Function,
   Label,
@@ -48,7 +49,7 @@ enum class SymbolKind : uint8_t {
   BranchTargetSet,
   /** Debug-only module metadata; excluded from ordinary lexical lookup. */
   DebugFile,
-  /** `.debug_str` and its raw payload labels; metadata-only. */
+  /** `.debug_str` and its typed label definitions; metadata-only. */
   DebugStringLabel,
 };
 
@@ -144,7 +145,7 @@ struct SymbolDeclarationOccurrence {
 struct DebugFileSourceLeaf {
   /** Exact token spelling; no filename decoding or path normalization. */
   std::string text;
-  /** Original token range within the containing file directive. */
+  /** Original token range within the containing debug directive. */
   SourceRange range;
 };
 
@@ -161,6 +162,37 @@ struct DebugFileDeclaration {
   std::optional<DebugFileSourceLeaf> timestamp;
   std::optional<DebugFileSourceLeaf> file_size;
   /** Complete source directive extent. */
+  SourceRange range;
+};
+
+/** Three owned logical debug coordinates, independent of physical PTX positions. */
+struct DebugLocationSourceTriple {
+  /** Exact nonnegative integer tokens; values are decoded only during validation. */
+  DebugFileSourceLeaf file_index;
+  DebugFileSourceLeaf line_number;
+  DebugFileSourceLeaf column_position;
+};
+
+/** Owning inline-call metadata referencing an earlier base source location. */
+struct DebugLocationInlineContext {
+  /** Metadata-only label spelling and optional unevaluated integer byte offset. */
+  DebugFileSourceLeaf function_name_label;
+  std::optional<DebugFileSourceLeaf> function_name_offset;
+  /** Referenced logical source coordinates, not a new location definition. */
+  DebugLocationSourceTriple target;
+  /** Physical span containing the inline attributes. */
+  SourceRange range;
+};
+
+/** One lexical location event; vector order is authoritative across the module. */
+struct DebugLocationDeclaration {
+  /** Lexical body scope; an actual function-definition occurrence must own it. */
+  ScopeId scope;
+  /** Base location contributed after checking any inline target. */
+  DebugLocationSourceTriple base;
+  /** Omitted for an ordinary basic location directive. */
+  std::optional<DebugLocationInlineContext> inline_context;
+  /** Whole physical directive extent, never used to sort events. */
   SourceRange range;
 };
 
@@ -200,6 +232,15 @@ class SymbolTable {
   [[nodiscard]] std::span<const DebugFileDeclaration> debugFiles()
       const noexcept {
     return debug_files_;
+  }
+
+  /**
+   * Borrow module-ordered owning location events. Assignment, move or destruction
+   * of this table invalidates the span; copying a table produces independent data.
+   */
+  [[nodiscard]] std::span<const DebugLocationDeclaration> debugLocations()
+      const noexcept {
+    return debug_locations_;
   }
 
   [[nodiscard]] const Scope& scope(ScopeId id) const;
@@ -360,6 +401,8 @@ class SymbolTable {
   std::vector<SymbolReference> references_;
   /** Every parsed file declaration in source order, owning all payload tokens. */
   std::vector<DebugFileDeclaration> debug_files_;
+  /** Body location events in module source order, including nested scopes. */
+  std::vector<DebugLocationDeclaration> debug_locations_;
   /** Declaration occurrences grouped by stable SymbolId. */
   std::vector<std::vector<SymbolDeclarationOccurrence>>
       declaration_occurrences_;

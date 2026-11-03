@@ -697,7 +697,8 @@ TEST(ResolvedModule, ChecksCvtPackOperandTypes) {
 }
 
 TEST(ResolvedModule, ChecksCvtaNonSubspaceRegisterFormsAndWidths) {
-  const auto parsed_module_1 = parseModule(R"ptx(
+  const auto parsed_module_1 = parseModule(R"ptx(.version 9.3
+
 .entry kernel() {
   .reg .u32 %r<2>;
   .reg .u64 %rd<2>;

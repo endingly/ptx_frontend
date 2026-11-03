@@ -135,15 +135,22 @@ into the enclosing function's source-ordered flat body; it does not introduce a
 with its basic `file line column` triple or its paired PTX 7.2
 `function_name label {+ integer}` / `inlined_at file line column` payload;
 CST preserves its punctuation and AST retains fields and ranges. Resolving
-`.file` indices and `.debug_str` section/raw-label identities is performed in a
+`.file` indices and `.debug_str` section/typed-label identities is performed in a
 separate debug-metadata binding namespace, and `.loc` validates those
 references. Attaching source locations to instructions or labels remains
-deferred. At outermost scope, `.section name { ... }` preserves its matched
-braces and raw DWARF payload token spelling in CST and AST; section names are
-syntax, not ordinary bound identifiers. DWARF payload typing, private labels,
-and `.loc` offset validation remain deferred. `.pragma` preserves a nonempty
+deferred. At outermost scope, `.section name { ... }` retains matched braces,
+trivia and exact payload tokens in `CstSectionDirective.payload_tokens`. Its
+`payload` is the single token-indexed structural parse. The AST `payload`
+now contains owning `AstSectionEntry` values (label definitions or typed data),
+replacing the old flat `vector<AstSyntax>`. Integer leaves own an optional sign,
+original magnitude spelling and ranges; symbolic data distinguishes a single
+symbol, checked signed addend and same-section label difference. No expression
+AST or second raw semantic payload is retained. Section names are metadata,
+not ordinary declarations. `.loc` attachment and offset validation remain
+separate. `.pragma` preserves a nonempty
 comma-separated string list at module, entry-header, and function/nested-block
-statement scope; it does not enter binding or Resolved IR. Entry-header
+statement scope. Pragma strings do not create bound names; the resolved module
+owns their advisory records with the actual bound placement scope. Entry-header
 pragmas may be interleaved with the four supported kernel-resource directives;
 their concrete order remains lossless in the CST header token sequence.
 `CstRecoveryNode` is the tagged CST-only recovery model: `Inserted`
@@ -266,3 +273,82 @@ offsets. This does not require widening the Syntax AST responsibility.
 ## Arithmetic-negated register syntax
 
 `CstNegatedRegisterOperand` retains the minus token and a child limited to one identifier or vector member. `AstNegatedRegisterOperand` owns the minus range, child range and full range. The parser recognizes `-Ident[.selector]` before signed-numeric immediate parsing; it does not introduce recursive unary operands. The distinct `ArithmeticNegatedRegister` syntax shape is enabled only for approved `vmad` source slots. Binding, lowering, source identity and layout classification traverse this child explicitly. Predicate `!` negation remains separate, and `!-%r` is rejected.
+
+Function-header and local `.callprototype` arrays reuse `CstArrayDimension` and
+`AstArrayDimension` vectors in `array_dimensions`, preserving outer-to-inner
+brackets, optional expressions and ranges. These replace the singular CST
+bracket/size fields and AST `is_array/array_size`; an empty vector means scalar.
+Token round-trip is preserved. Dimension and AST expression trees remain move-only;
+the existing `AstConstantOperand` copy operation deep-clones its owned expression. See the exact
+[public member migration](parameter_declarations.md).
+
+`ptx_syntax_sections.hpp` exposes only the owning syntax leaf and section value records. Including the public module header keeps full instruction/module/expression AST types incomplete; `ptx_syntax_ast.hpp` remains the complete-AST entrypoint.
+
+
+### Legacy debug serialization
+
+The case-sensitive `@@DWARF` marker introduces one closed production at module,
+function-body or nested-block statement scope. It is supported for PTX ISA
+**[1.2, 2.0)** on every recognized source target. Function headers do not admit it.
+The forms are `.byte` unsigned hexadecimal lists (0..255), `.4byte` lists
+(0..UINT32_MAX) and `.quad` lists (0..UINT64_MAX). Lists are nonempty. The two wider
+forms also admit one ordinary or singly dotted symbolic label, retained unlinked;
+there is no ordinary PTX symbol-resolution requirement for that label.
+
+`0x`/`0X` with optional `U`/`u` follows existing PTX integer token inheritance;
+this suffix choice is derived rather than explicit wording of the legacy syntax.
+Signs, decimal/octal/binary values, mixed symbol/numeric lists, addends,
+differences, label definitions and arbitrary host assembly are outside this model.
+The published example's header is supported as `.section name, "", @progbits`.
+Generalizing its name to an ordinary or singly dotted identifier is derived from
+the example; flags remain exactly empty and the type remains exactly `progbits`.
+
+Whitespace, comments and newlines separate tokens without ending a record. One
+structurally complete payload and an optional semicolon end it. The next token is
+handled by ordinary PTX grammar; malformed records preserve following markers,
+blocks and functions through structural recovery. Lossless CST tokens retain
+comments and source text. Owning AST values retain exact marker/word/header
+spellings and within-record ranges, including separate `@` and `progbits` leaves.
+
+`ptx_syntax_legacy_dwarf.hpp` contains only small owning values. It does not expose
+module, instruction or expression AST definitions. One shared `AstLegacyDwarfRecord`
+is used in module/body variants, and `ResolvedModule::legacy_dwarf_records` is the
+sole ordered stream of `{value, scope_id}` wrappers. Actual declaration-occurrence
+and block scopes come from the module's symbol table; a canonical function's
+preferred owned scope does not replace its definition occurrence. Metadata creates
+no executable node, label slot or instruction-provenance index. Module and function
+source identities exclude it while ordinary program constructs remain relevant.
+
+Both current and supplied datasets validate their own typed words, ranges, scope
+ownership and format windows. Source-aware validation uses the supplied effective
+version for both datasets; AST-free validation uses current module context. Known
+out-of-window versions reject without a complete target. Missing version under
+`AvailableContext` defers only the format window; intrinsic checks continue and
+strict missing-context checks remain. Coherent current metadata edits and differing
+valid datasets do not require old source-byte equality. Cross-format replacement
+requires removal or reconstruction of current incompatible format data.
+
+For `.target debug`, definite absence means **zero modern sections AND zero legacy
+records**, independently in each dataset. An unknown linked label, a header or
+nonempty bytes only avoid this definite-absence result. They do not certify actual
+DWARF recognition, decoding, linked addresses or binary authenticity. A known full
+legacy context cannot combine the pre-2.0 format with the PTX-3.0 debug option;
+missing-version tests are partial-context controls only.
+
+References: [legacy debug marker](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-atatdwarf)
+and [legacy-format window](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives).
+
+### ASCII whitespace and physical positions
+
+Outside strings and comments, whitespace is exactly SP (`0x20`), HT (`0x09`),
+LF (`0x0a`), VT (`0x0b`), FF (`0x0c`), and CR (`0x0d`). This six-byte set is
+the frontend's adopted engineering interpretation of PTX's ASCII and equivalent
+whitespace rule, rather than a normative six-terminal enumeration or a Unicode
+whitespace policy.
+
+SP, HT, VT, and FF each advance one physical byte column. VT and FF do not
+start a source line; existing CR, LF, and CRLF handling is unchanged. Exact
+bytes and ranges remain in tokens, leading trivia, trailing EOF trivia, and
+`CstFile::sourceText()`. A physical VT inside a string or comment remains raw
+content under that token's existing rules; no backslash-v escape or source
+normalization is added. Logical/debug locations remain a separate contract.

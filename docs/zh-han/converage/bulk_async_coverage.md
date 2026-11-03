@@ -38,9 +38,26 @@ bulk copy、global 归约与 prefetch 形式带 `.L2::cache_hint` 时，均可�
 或附加末尾的 64-bit `cache_policy` 寄存器；policy 操作数要求该 hint。
 `st.async` 的目的地址必须以寄存器为基址，symbol 基址和纯立即数地址均不接受。
 
+根指令 `st.async` 继承 PTX 9.4.1 对 `st` 的 wider-source-register 规则。每个 scalar
+或显式 vector lane 可使用原本兼容的同宽／更宽寄存器，包括 B64/B128 Bit 载体；
+更窄寄存器拒绝。Integer/Bit 兼容性与浮点格式限制相互独立：F32/F64 data 要求匹配的
+原生浮点类型或足够宽的 Bit 载体，因此 F64 不能替代 F32 data。Bit-typed data 保留普通
+fundamental compatibility。Source 仍只接受寄存器。
+
+传输大小、static alignment 与 mbarrier completion byte 数由指令 type 乘以所写 arity
+决定，与实际载体宽度无关。Shared v2 的指令 element 可至 64 位，v4 仍仅允许 32 位
+element。v4.u32 brace list 中四个 B128 scalar 载体的逻辑传输因此仍为 16 bytes，
+无需声明超大的普通 vector。Scalar 指令 `.b128` 保留 PTX 9.2 / SM 90 gate，独立于
+其他逻辑 type 使用更宽载体的许可。上述地址／barrier 与 completion 契约不变。不同的
+[`multimem.st.async`／`multimem.red.async`](multimem_coverage.md) data 仍须同宽；
+共用 suffix 单词不使其成为根 `st` 指令。这些是静态源码／类型检查，不执行截位，
+也不证明运行时 complete-tx protocol。
+
 Checker 检查已知地址空间、静态对齐（bulk copy/reduce/prefetch 为 16
 字节，barrier 为 8 字节）、修饰符和操作数配对、类型组合、立即数倍数
 以及目标可用性。`st.bulk` 字节数必须为 8 的倍数且不大于
 16,777,216。owned module 验证会对照绑定声明核验寄存器字节数的缓存类型；
 单条指令检查在没有声明时延后这一步。对寄存器字节数和地址，其运行时值、远端 CTA 身份、
 group/phase 完成协议及缓存效果仍由 consumer 负责；frontend 不执行指令。
+
+根 shared `st.async` v2/v4 data source 除 scalar brace lane 外也接受普通 named register vector。即使每个 carrier 比 logical element 更宽，声明本身总宽仍不得超过 128 bit。Completion byte 数与 transfer alignment 仍由 logical type 乘 arity 得到。Named data 不放宽独立的 register-base address 要求。

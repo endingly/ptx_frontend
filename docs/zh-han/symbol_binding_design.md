@@ -51,7 +51,7 @@ debug identity 使用独立的 module metadata namespace。`.file` index 会规�
 原始 index/filename token、可选 timestamp/file-size token 及其 source range；被拒绝的
 重复声明也保留。filename escape 不解码，也不做路径去重；省略的数值 metadata 仍表示默认零。
 此约束依据 [PTX ISA 9.3 §11.5.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-file)
-及 CUDA 13.3 `ptxas` 的重复 index 诊断。`.debug_str` section 本身及其 raw `name:` payload label 都会成为
+及 CUDA 13.3 `ptxas` 的重复 index 诊断。`.debug_str` section 本身及其 typed `AstSectionLabelDefinition` 都会成为
 `DebugStringLabel` symbol。普通 `SymbolTable::lookup()` 会跳过这两种 debug kind，因此 PTX
 program declaration 可以使用相同 spelling。`.loc` 的 basic 与 `inlined_at` file field 会生成
 `DebugFile` reference，而 `function_name` 生成 `DebugFunctionName` reference；后者只能解析为
@@ -73,6 +73,14 @@ program declaration 可以使用相同 spelling。`.loc` 的 basic 与 `inlined_
 按 [PTX ISA 9.3 §11.3.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-directives-callprototype)，
 `.callprototype` 保留强制的函数名 `_`，并允许输入与返回形参使用虚拟名称 `_`；
 这些虚拟名称不成为绑定符号或 owned ABI 名称。`$` 没有对应例外。
+
+`SymbolTable::debugLocations()` 借用表拥有的、按 module 顺序排列的
+`DebugLocationDeclaration` 记录。每项保存 lexical `ScopeId`、base
+`DebugLocationSourceTriple`、可选 `DebugLocationInlineContext` 与物理 range。
+所有 leaf 复用拥有字符串的 `DebugFileSourceLeaf`，不借用 AST，也不另存可变的解码坐标。
+表的复制与赋值复制这些值；赋值、move 与销毁使借用 span 失效。
+新增 table layout 要求二进制 consumer 重新编译。binding 跨函数并按 nested block
+深度优先源码顺序收集事件；inline precedence 由共同 module validator 检查，非 binding 单独保证。
 
 ## Parameterized variable name
 
@@ -190,3 +198,8 @@ SM 35，device-function 地址沿用 `mov` 的 PTX 1.0 baseline。
 词法绑定记录声明身份和元数据；已建模 form 的指令相关 state-space 与
 special-register/type 兼容由 Resolved IR resolution/checker 检查。剩余工作是尚未建模的
 指令/operand form，而非整体兼容检查阶段尚未实现。
+
+显式 name role 中的 instruction-keyword 拼写采用[上下文词法解释](lexer_design.md)，
+保留官方 `bar` object/function 示例。Binding 保留精确大小写和拼写；source name check
+与 AST-free owned check 针对 actual declaration/symbol name，不增加全局 keyword
+排除或 diagnostic-spelling history join。独立的 role、type、ABI 与先行声明检查仍为权威。

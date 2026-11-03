@@ -106,7 +106,7 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
 
     type_tag = _normalize_type_tag(raw)
     pack = _normalize_brace_pack_options(raw)
-    vector = _normalize_vector_options(raw)
+    vector = _normalize_vector_options(raw, pack)
 
     type_expression = _normalize_operand_type_expression(raw.get("type"))
     register_width = _normalize_register_width(
@@ -182,7 +182,9 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
     elif "video" in raw:
         raise ValueError("video operand contract requires video_operand")
 
+    integer_immediate_type = _normalize_integer_immediate_type(raw, type_expression)
     return OperandSpec(
+        integer_immediate_type=integer_immediate_type,
         video=video,
         name=raw["name"],
         kind=kind,
@@ -219,6 +221,29 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         texture_unbracketed=texture_unbracketed,
         texture_resource_kind=texture_resource_kind,
     )
+
+
+def _normalize_integer_immediate_type(
+    raw: dict[str, Any], expression: OperandTypeExpression | None,
+) -> str | None:
+    """Validate explicit integer routing after all established operand diagnostics."""
+    if "integer_immediate_type" not in raw:
+        return None
+    value = raw["integer_immediate_type"]
+    if type(value) is not str or value not in ("b16", "b32"):
+        raise ValueError("integer_immediate_type requires the explicit Bit type b16 or b32")
+    if (raw["kind"] is not OperandKind.REGISTER_OR_IMMEDIATE
+            or raw["access"] is not OperandAccess.READ
+            or raw["role"] not in (OperandRole.SOURCE, OperandRole.SOURCE_1, OperandRole.SOURCE_2,
+                                   OperandRole.SOURCE_3, OperandRole.SOURCE_4, OperandRole.METADATA,
+                                   OperandRole.MASK, OperandRole.IMMEDIATE)
+            or expression is None
+            or expression.kind is not OperandTypeExpressionKind.FIXED_SCALAR
+            or (expression.scalar_type, value) not in (
+                ("f16", "b16"), ("bf16", "b16"),
+                ("f16x2", "b32"), ("bf16x2", "b32"))):
+        raise ValueError("integer_immediate_type requires a read scalar half or packed half reg_or_imm source")
+    return value
 
 
 def _normalize_shfl_sink_options(raw: dict[str, Any]) -> _ShflSinkOptions:
@@ -385,13 +410,23 @@ def _normalize_brace_pack_options(raw: dict[str, Any]) -> _BracePackOptions:
     )
 
 
-def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
+def _normalize_vector_options(raw: dict[str, Any], pack: _BracePackOptions) -> _VectorOptions:
     """Normalize vector arity, type policy, and sink options in that order."""
+
+    if raw["kind"] is OperandKind.MATRIX_FRAGMENT and "vector" in raw:
+        vector = raw["vector"]
+        if (not isinstance(vector, dict) or set(vector) != {"allow_named", "type_policy"}
+                or vector["allow_named"] is not True or vector["type_policy"] != "element"
+                or pack.minimum_elements != pack.maximum_elements
+                or pack.minimum_elements not in (2, 4)):
+            raise ValueError("named matrix fragments require Element policy and exact cardinality2or4, without vector.arity")
+        return _VectorOptions((), None, OperandVectorTypePolicy.ELEMENT, False, True,
+                              0, (), False, None)
 
     if (isinstance(raw.get("vector"), dict)
             and "allow_named" in raw["vector"]
-            and raw["kind"] is not OperandKind.REGISTER_VECTOR):
-        raise ValueError("vector.allow_named requires element-policy reg_vector")
+            and raw["kind"] not in {OperandKind.REGISTER_VECTOR, OperandKind.VALUE_VECTOR}):
+        raise ValueError("vector.allow_named requires a supported register/value-vector policy")
 
     vector_arities: tuple[int, ...] = ()
     vector_arity_expression: OperandVectorArityExpression | None = None
@@ -444,11 +479,15 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
         vector_allow_named = vector.get("allow_named", False)
         if not isinstance(vector_allow_named, bool):
             raise TypeError("vector.allow_named must be a boolean")
-        if "allow_named" in vector and (
-            raw["kind"] is not OperandKind.REGISTER_VECTOR
-            or vector_type_policy is not OperandVectorTypePolicy.ELEMENT
+        if "allow_named" in vector and not (
+            (raw["kind"] is OperandKind.REGISTER_VECTOR and vector_type_policy in {
+                OperandVectorTypePolicy.ELEMENT, OperandVectorTypePolicy.AGGREGATE
+            }) or (raw["kind"] is OperandKind.VALUE_VECTOR
+                   and vector_type_policy is OperandVectorTypePolicy.ELEMENT
+                   and raw["access"] is OperandAccess.READ
+                   and not vector_allow_sink)
         ):
-            raise ValueError("vector.allow_named requires element-policy reg_vector")
+            raise ValueError("vector.allow_named requires aggregate/element reg_vector or read-only nonsink element value_vector")
         if not isinstance(vector_allow_sink, bool):
             raise TypeError(
                 f"{raw['kind']} vector.allow_sink must be a boolean when supplied."
@@ -568,10 +607,10 @@ def _normalize_register_width(
                 "requires a type expression"
             )
     if register_width_policy is OperandRegisterWidthPolicy.WORD_OR_DOUBLEWORD:
-        if raw["kind"] is not OperandKind.REGISTER_OR_IMMEDIATE:
+        if raw["kind"] not in {OperandKind.REGISTER, OperandKind.REGISTER_OR_IMMEDIATE}:
             raise ValueError(
                 f"operand {raw['name']!r}: word_or_doubleword register_width "
-                "requires kind 'reg_or_imm'"
+                "requires kind 'reg' or 'reg_or_imm'"
             )
         if (
             type_expression is None

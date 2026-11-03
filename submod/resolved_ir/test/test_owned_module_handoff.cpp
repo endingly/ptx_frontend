@@ -654,8 +654,8 @@ TEST(OwnedModuleHandoff, RetainsUniformReturnAndGuardsWithoutAst) {
 /** Valid predicate declarations retain their existing binding forms. */
 TEST(OwnedModuleHandoff, PreservesPredicateFormalAndParameterizedGuards) {
   const auto parsed = parse_owned_module_fixture(R"ptx(
-.version 9.3
-.target sm_90
+.version 1.4
+.target sm_13
 .func predicate_formal(.reg .pred %formal) { @%formal ret; }
 .entry kernel() {
   .reg .pred %p<2>;
@@ -1574,9 +1574,11 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedCallContractsWithoutAst) {
 
   ResolvedFunction& trailing = module.functions[4];
   ASSERT_EQ(trailing.contract.signature.parameters.size(), 2u);
-  EXPECT_TRUE(trailing.contract.signature.parameters.back().is_array);
-  EXPECT_FALSE(
-      trailing.contract.signature.parameters.back().array_extent.has_value());
+  ASSERT_EQ(trailing.contract.signature.parameters.back().array_extents.size(),
+            1u);
+  EXPECT_FALSE(trailing.contract.signature.parameters.back()
+                   .array_extents[0]
+                   .has_value());
   const auto& trailing_call = dynamic_cast<const CallDirect&>(*caller.body[4]);
   ASSERT_TRUE(trailing_call.arguments.has_value());
   EXPECT_EQ(trailing_call.arguments->value.values.size(), 1u);

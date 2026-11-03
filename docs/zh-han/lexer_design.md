@@ -361,3 +361,29 @@ ctest --test-dir out/build/ci-linux-gcc-debug --output-on-failure
 - 公开对象不提供 reset 操作，并且不可移动。
 
 修改这些限制时，应当同时增加有针对性的 lexer 测试，以明确新的词法契约。
+
+## 上下文中的 instruction keyword
+
+针对归档 PTX ISA 9.3，frontend 采用上下文解释：§4.3.2 将 instruction keyword 称为
+reserved token，§4.4 给出普通 identifier 的字符 grammar，但未明确排除 keyword。
+官方[initializer 示例](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#initializers)
+声明 `.global .u32 bar[] = { 2, 3, 5 };` 并通过 `generic(bar)` 引用它；
+[function 示例](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#function-declarations-and-definitions)
+还定义并直接调用名为 `bar` 的 device function。
+
+采用的协调解释是在 opcode 位置识别 instruction root，在显式 user-defined name
+位置应用普通字符 grammar；不设置无上下文的 instruction-keyword name ban，也不只为
+`bar` 添加例外。Reserved-token 措辞仍存在解释张力；这并不声称规范提供了完整 lexer
+文法，也不表示任意拼写在任意 role 都合法。既有 type、state space、ABI、visibility、
+predefined name 与 contextual sink 规则仍适用。
+
+PTX 区分大小写：`add.u32` 中的 `add` 是 opcode，而 `add`、`Add`、`ADD`、`_add`、
+`$add`、`%add`、`add0`、`add_`、`add$` 可作为普通显式名称。不剥离 prefix，也不折叠
+大小写；`ADD.u32` 不会变为 `add.u32`，带 dot 的 mnemonic 不是普通 identifier。
+单独 `_`、`$`、`%`、空名称及非法标点仍受既有 role 或字符 grammar 限制。
+
+Table 2 有136个 instruction root；另有规范明确的
+[`fabric` 指令](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#fabric-instructions-submit)，
+但该表未列入。展开后的 packaged opcode 集合与这137个 root 一致；raw YAML 是展开前
+数据，不能据此断言缺少40个 root。两种计数都不定义额外 identifier-ban catalogue。
+名为 `fabric` 的 variable/function 不会绕过独立的 fabric instruction syntax/version/target 检查。

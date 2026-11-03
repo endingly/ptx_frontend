@@ -12,6 +12,26 @@
 将操作数和结果列为无符号。前端选择遵循详细正文，下述离线汇编观察支持此选择。
 这是对不一致文档作出的明确解释，不表示 NVIDIA 已发布规范勘误。
 
+## 求值与使用位置转换
+
+求值器保留 64 位结果及其符号性，直到使用位置应用现有的 destination 转换。
+混合输入在两种操作数顺序下遵循同一规则。例如，`(-4 & -1) >> 1` 的结果
+有符号，数据为 `fffffffffffffffe`；`(-4U & -1) >> 1` 的结果无符号，数据为
+`7ffffffffffffffe`。一元 `~0` 为无符号，而 `(-1 | 0)` 为有符号；两者的数据
+均为全一。
+
+`constantIntegerValue` 与 `numericConstantValue` 在使用位置转换前暴露表达式
+类型。等宽的 `.u64` storage 与 `mov.u64` 可以从有符号和无符号表达式保留相同
+数据；仅凭 storage words 无法恢复表达式类型。规范化 immediate 的 `is_negative`
+与 `integer_source_bits` 描述求值后的源符号和数据，并不是完整的表达式类型
+缓存。destination 类型不会反向改变先前二元表达式的求值。opcode `and`、`or`、
+`xor` 的操作数规则独立于本常量表达式策略。
+
+semantic 回归断言所有符号性组合的精确数据和类型，以及比较、算术、右移、cast
+和一元补码的结果。resolved 回归比较 evaluator、instruction 与 storage 的值，
+随后在 module 源文本和 AST 销毁后验证复制、赋值及 clone 后的 instruction。
+现有源符号拒绝测试仍是独立控制。这些 frontend 测试不需要重新运行 assembler。
+
 ## 复现
 
 在仓库根目录执行，输出放在源码目录之外：

@@ -35,11 +35,12 @@ constexpr std::string_view kWgmmaSource = R"ptx(
 .visible .entry wgmma_consumer() {
   .reg .f32 %f<12>;
   .reg .b32 %a<4>, %d<6>;
+  .reg .v4 .b32 A;
   .reg .b64 %adesc, %bdesc;
   wgmma.fence.sync.aligned;
   wgmma.mma_async.sync.aligned.m64n24k32.f32.e4m3.e5m2
     {%f0,%f1,%f2,%f3,%f4,%f5,%f6,%f7,%f8,%f9,%f10,%f11},
-    {%a0,%a1,%a2,%a3}, %bdesc, 1, -1, 1;
+    A, %bdesc, 1, -1, 1;
   wgmma.mma_async.sync.aligned.m64n24k32.f16.e5m2.e4m3
     {%d0,%d1,%d2,%d3,%d4,%d5}, %adesc, %bdesc, 1, 1, -1;
   wgmma.commit_group.sync.aligned;
@@ -160,6 +161,30 @@ int main() {
                   ir::WgmmaSourcePlacement::SHARED,
           "installed WGMMA descriptors survive both checker shards"))
     return 1;
+  const auto& named_a = first->a;
+  if (!require(named_a.value.source.kind ==
+                       ir::ResolvedVectorSourceKind::NamedVector &&
+                   named_a.value.source.whole_base.has_value() &&
+                   named_a.value.elements.size() == 4 &&
+                   named_a.locs.size() == 4,
+               "installed named fragment owns whole declaration and lanes"))
+    return 1;
+  const auto& named_base = named_a.value.source.whole_base->value.register_ref;
+  for (std::size_t lane = 0; lane < 4; ++lane) {
+    const auto& reference = named_a.value.elements[lane];
+    if (!require(reference.has_value() &&
+                     reference->symbol_id == named_base.symbol_id &&
+                     reference->component.has_value() &&
+                     reference->component->origin ==
+                         ir::RegisterComponentOrigin::NamedProjection &&
+                     reference->component->lane == lane &&
+                     reference->component->base_range ==
+                         named_a.value.source.range &&
+                     named_a.locs[lane] == named_a.value.source.range,
+                 "installed named fragment retains exact ordered projection "
+                 "provenance"))
+      return 1;
+  }
   if (!require(dynamic_cast<ir::WgmmaFenceSyncAligned*>(wgmma_body[0].get()) !=
                        nullptr &&
                    dynamic_cast<ir::WgmmaCommitGroupSyncAligned*>(

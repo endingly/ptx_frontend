@@ -88,26 +88,32 @@ TEST(TcgenMmaI8, CanonicalSourceTopologies) {
             ".kind::i8 [%d], " + (shared_a ? "%ad" : "[%a]") + ", %bd, %i" +
             (mask ? ", " + lanes : "") + ", %p;";
         SCOPED_TRACE(instruction);
-        EXPECT_TRUE(accepts_i8(i8_source(instruction)));
+        EXPECT_EQ(accepts_i8(i8_source(instruction)), mask);
       }
     }
   }
   EXPECT_FALSE(accepts_i8(i8_source(
       "tcgen05.mma.cta_group::1.kind::i8 [%d], %ad, %bd, %i, {}, %p;")));
-  EXPECT_FALSE(accepts_i8(i8_source(
-      "tcgen05.mma.cta_group::1.kind::i8 [%d], %ad, %bd, %i, %p, 0;")));
+  EXPECT_FALSE(
+      accepts_i8(i8_source("tcgen05.mma.cta_group::1.kind::i8 [%d], %ad, %bd, "
+                           "%i, {%i, %i, %i, %i}, %p, 0;")));
 }
 
 /** Reject source saturation, malformed roles and excluded target profiles. */
 TEST(TcgenMmaI8, RejectedSourceAndExactAvailability) {
   for (std::string_view instruction : {
-           "tcgen05.mma.cta_group::1.kind::i8.satfinite "
-           "[%d], %ad, %bd, %i, %p;",
-           "tcgen05.mma.cta_group::1.kind::i8 [%d], %fa, %bd, %i, %p;",
-           "tcgen05.mma.cta_group::1.kind::i8 [%d], 0, %bd, %i, %p;",
-           "tcgen05.mma.cta_group::1.kind::i8 [%d], %ad, %bd, %fi, %p;",
-           "tcgen05.mma.cta_group::1.kind::i8 [%d], %ad, %bd, 0, %p;",
-           "tcgen05.mma.cta_group::1.kind::i8 [%d], %ad, %bd, %i, %ui;",
+           "tcgen05.mma.cta_group::1.kind::i8.satfinite [%d], %ad, %bd, %i, "
+           "{%i, %i, %i, %i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::i8 [%d], %fa, %bd, %i, {%i, %i, %i, "
+           "%i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::i8 [%d], 0, %bd, %i, {%i, %i, %i, "
+           "%i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::i8 [%d], %ad, %bd, %fi, {%i, %i, "
+           "%i, %i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::i8 [%d], %ad, %bd, 0, {%i, %i, %i, "
+           "%i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::i8 [%d], %ad, %bd, %i, {%i, %i, %i, "
+           "%i}, %ui;",
            "tcgen05.mma.cta_group::1.kind::i8 [%d], %ad, %bd, %i, "
            "{%m0, %m1, %m2}, %p;",
            "tcgen05.mma.cta_group::2.kind::i8 [%d], %ad, %bd, %i, "
@@ -117,7 +123,8 @@ TEST(TcgenMmaI8, RejectedSourceAndExactAvailability) {
     EXPECT_FALSE(accepts_i8(i8_source(instruction)));
   }
   const std::string plain =
-      "tcgen05.mma.cta_group::1.kind::i8 [%d], %ad, %bd, %i, %p;";
+      "tcgen05.mma.cta_group::1.kind::i8 [%d], %ad, %bd, %i, {%i, %i, %i, %i}, "
+      "%p;";
   for (const auto& [target, version, accepted] : {
            std::tuple{"sm_100a", "8.5", false},
            std::tuple{"sm_100a", "8.6", true},
@@ -137,7 +144,11 @@ TEST(TcgenMmaI8, RejectedSourceAndExactAvailability) {
 /** Both approved written orders retain one typed form, layout and group range. */
 TEST(TcgenMmaI8, ExactOrderAliasPreservesIdentityAndLocations) {
   for (unsigned group : {1u, 2u}) {
-    const std::string operands = " [%d], %ad, %bd, %i, %p;";
+    const std::string operands =
+        " [%d], %ad, %bd, %i, " +
+        std::string(group == 1 ? "{%i,%i,%i,%i}"
+                               : "{%i,%i,%i,%i,%i,%i,%i,%i}") +
+        ", %p;";
     const std::string canonical =
         "tcgen05.mma.cta_group::" + std::to_string(group) + ".kind::i8" +
         operands;
@@ -173,11 +184,12 @@ TEST(TcgenMmaI8, ExactOrderAliasPreservesIdentityAndLocations) {
     EXPECT_EQ(alias_view->group,
               group == 1 ? TcgenCtaGroup::One : TcgenCtaGroup::Two);
   }
-  EXPECT_FALSE(accepts_i8(
-      i8_source("tcgen05.kind::i8.mma.cta_group::1 [%d], %ad, %bd, %i, %p;")));
   EXPECT_FALSE(
-      accepts_i8(i8_source("tcgen05.mma.kind::i8.cta_group::1.kind::i8 "
-                           "[%d], %ad, %bd, %i, %p;")));
+      accepts_i8(i8_source("tcgen05.kind::i8.mma.cta_group::1 [%d], %ad, %bd, "
+                           "%i, {%i,%i,%i,%i}, %p;")));
+  EXPECT_FALSE(
+      accepts_i8(i8_source("tcgen05.mma.kind::i8.cta_group::1.kind::i8 [%d], "
+                           "%ad, %bd, %i, {%i, %i, %i, %i}, %p;")));
 }
 
 /** Borrow selected roles and recheck actual owned payload after AST death. */
@@ -193,7 +205,7 @@ TEST(TcgenMmaI8, OwnedTruthMaskAndCorruptionRestoration) {
     {
       auto ast = parse_i8(
           i8_source(std::string("tcgen05.mma.cta_group::1.kind::i8 [%d], %ad, "
-                                "%bd, %i, ") +
+                                "%bd, %i, {%i, %i, %i, %i}, ") +
                     source + ";"));
       ASSERT_TRUE(ast);
       auto result = resolveAndValidateModule(*ast);
@@ -226,7 +238,6 @@ TEST(TcgenMmaI8, OwnedTruthMaskAndCorruptionRestoration) {
   auto& instruction = *owned->functions.front().body[0].get();
   auto& form = dynamic_cast<Tcgen05MmaI8&>(instruction);
   ASSERT_TRUE(form.a_register);
-  ASSERT_TRUE(form.disable_output_lane);
   const auto view = tcgen_mma_i8_view(instruction);
   ASSERT_TRUE(view);
   EXPECT_TRUE(std::get<ResolvedPredicate>(*view->enable_d).negated);
@@ -260,9 +271,9 @@ TEST(TcgenMmaI8, OwnedTruthMaskAndCorruptionRestoration) {
   form.idesc.value.vector_width = 2;
   reject();
   form.idesc.value.vector_width.reset();
-  form.disable_output_lane->value.elements[0]->declared_type = ScalarType::B64;
+  form.disable_output_lane.value.elements[0]->declared_type = ScalarType::B64;
   reject();
-  form.disable_output_lane->value.elements[0]->declared_type = ScalarType::F32;
+  form.disable_output_lane.value.elements[0]->declared_type = ScalarType::F32;
   auto& predicate = std::get<ResolvedPredicate>(form.enable_input_d.value);
   predicate.register_ref.register_class = ResolvedRegisterClass::General;
   reject();
@@ -271,10 +282,10 @@ TEST(TcgenMmaI8, OwnedTruthMaskAndCorruptionRestoration) {
   form.enable_input_d.locs.clear();
   reject();
   form.enable_input_d.locs = predicate_ranges;
-  const auto mask_ranges = form.disable_output_lane->locs;
-  form.disable_output_lane->locs.pop_back();
+  const auto mask_ranges = form.disable_output_lane.locs;
+  form.disable_output_lane.locs.pop_back();
   reject();
-  form.disable_output_lane->locs = mask_ranges;
+  form.disable_output_lane.locs = mask_ranges;
   const auto group_ranges = form.cta_group.locs;
   form.cta_group.locs.clear();
   reject();

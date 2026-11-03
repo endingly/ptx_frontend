@@ -76,7 +76,7 @@ static void ptx_advance_position(
 
 %x BLOCK_COMMENT
 
-WS              [ \t\r\n\f]+
+WS              [ \t\r\n\v\f]+
 LINE_CMT        "//"[^\n\r]*
 
 ID_START        [A-Za-z_$%]
@@ -206,6 +206,8 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 ".maxntid"              { TOK(DotMaxntid); }
 ".reqntid"              { TOK(DotReqntid); }
 ".minnctapersm"         { TOK(DotMinnctapersm); }
+".maxnctapersm"         { TOK(DotMaxnctapersm); }
+"@@DWARF"              { TOK(AtAtDwarf); }
 ".reqnctapercluster"    { TOK(DotReqnctapercluster); }
 ".explicitcluster"      { TOK(DotExplicitcluster); }
 ".maxclusterrank"       { TOK(DotMaxclusterrank); }

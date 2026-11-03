@@ -105,10 +105,10 @@ std::string_view ordinaryCvtModifier(const ScalarConversionType& destination,
   if (!destination.is_float && source.is_float) {
     return "rzi";
   }
-  if ((destination.ptx_type == "f16" && source.ptx_type == "bf16") ||
-      (destination.ptx_type == "bf16" && source.ptx_type == "f16")) {
+  if (destination.ptx_type == "bf16" && source.ptx_type == "f16")
+    return "rn";
+  if (destination.ptx_type == "f16" && source.ptx_type == "bf16")
     return {};
-  }
   return destination.width_bits < source.width_bits ? "rn" : "";
 }
 
@@ -481,7 +481,7 @@ TEST(ConversionCompleteness,
 )ptx");
 }
 
-/** Keep f16/bf16 directed-rounding forms distinct from integer-rounding forms. */
+/** Preserve cross-half floating rounding and reverse omission controls. */
 TEST(ConversionCompleteness, ResolvesF16Bf16DirectedRoundingForms) {
   expectModuleAccepted(R"ptx(
 .version 7.8
@@ -489,7 +489,6 @@ TEST(ConversionCompleteness, ResolvesF16Bf16DirectedRoundingForms) {
 .entry kernel() {
   .reg .f16 %h<8>;
   .reg .b16 %b<8>;
-  cvt.bf16.f16 %b0, %h0;
   cvt.rn.bf16.f16 %b1, %h1;
   cvt.rz.bf16.f16 %b2, %h2;
   cvt.rm.bf16.f16 %b3, %h3;
@@ -601,7 +600,6 @@ TEST(ConversionCompleteness, RejectsIllegalOrdinaryModifiers) {
           R"ptx(.version 9.3 .target sm_90 .entry kernel() { .reg .u32 %r0; .reg .f32 %f0; cvt.rni.f32.u32 %f0, %r0; })ptx",
           R"ptx(.version 9.3 .target sm_90 .entry kernel() { .reg .u32 %r0, %r1; cvt.rn.s32.u32 %r0, %r1; })ptx",
           R"ptx(.version 9.3 .target sm_90 .entry kernel() { .reg .f16 %h0, %h1; cvt.rn.ftz.f16.f16 %h0, %h1; })ptx",
-          R"ptx(.version 9.3 .target sm_90 .entry kernel() { .reg .f16 %h0; .reg .b16 %b0; cvt.rni.bf16.f16 %b0, %h0; })ptx",
           R"ptx(.version 9.3 .target sm_90 .entry kernel() { .reg .f32 %f; .reg .f64 %d; cvt.f32.f64 %f, %d; })ptx",
           R"ptx(.version 9.3 .target sm_90 .entry kernel() { .reg .f32 %f; .reg .f64 %d; cvt.rn.f64.f32 %d, %f; })ptx",
           R"ptx(.version 9.3 .target sm_90 .entry kernel() { .reg .f32 %f; .reg .u32 %r; cvt.rn.u32.f32 %r, %f; })ptx",
@@ -628,7 +626,7 @@ TEST(ConversionCompleteness, RejectsModernModifierAndOperandFailures) {
 .entry kernel() {
   .reg .f32 %f<4>;
   .reg .b32 %d0;
-  .reg .b64 %rbits;
+  .reg .b16 %rbits;
   cvt.rs.satfinite.e4m3x4.f32 %d0, {%f0, %f1, %f2, %f3}, %rbits;
 }
 )ptx");

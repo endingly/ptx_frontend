@@ -3,7 +3,7 @@
 This page describes the first source slice of the four
 [`tcgen05.mma` spellings in fixed PTX 9.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma).
 The initial slice is dense, non-weight-stationary kind f16 without block scaling, with both
-CTA groups and both A placements. The optional lane mask and optional D scale
+CTA groups and both A placements. The required lane mask and optional D scale
 are source topology choices settled by the fixed manual, a matched complete-module
 assembler corpus and an independent Authority checkpoint. The distinct
 [dense tf32 form](tcgen_mma_tf32_coverage.md) and distinct
@@ -28,7 +28,7 @@ retains the truth value, location and written negation when applicable; it does
 not retain the original integer magnitude. Special predicate registers are not
 part of this first source contract.
 
-The output-lane mask may be absent. A present mask has exactly four General
+The output-lane mask is required and has exactly four General
 scalar 32-bit register entries for group 1 or eight for group 2; an explicit
 empty vector is invalid. B32/U32/S32/F32 declarations are compatible as
 32-bit **mask bits**. F32 here is not floating arithmetic or conversion.
@@ -70,10 +70,22 @@ omitted/1/2 group mixtures have a different signal-routing contract and do
 not join this check.
 
 The generated exact `Tcgen05MmaF16` class owns its direct typed operands, with
-eight structural layouts for the sixteen group, A-placement, mask-presence and
+four structural layouts for the eight group, A-placement and
 scale-presence cases. `tcgen_mma_f16_view` borrows selected roles from a
 `const Instruction&` and returns absence for other forms or a mismatched layout
 tag. The checker rechecks owned
 register, predicate, mask, immediate and address metadata after AST release.
 A separate complete-module assembler checkpoint informed source spelling; it
 does not prove runtime descriptor contents or GPU execution.
+
+The eight ordinary dense/sparse generated classes now own
+`WithLocs<ResolvedRegisterVector> disable_output_lane` directly, replacing the
+optional member. Consumers must rebuild. F16/TF32 layout ordinals are shared
+without/with D-scale 0/1 and Tensor Memory A without/with D-scale 2/3;
+i8/f8f6f4 use shared 0 and Tensor Memory A 1. Successful borrowed views expose a
+non-null mask pointer; its contents still need validation. WS and block-scaled
+MX forms retain their independent no-mask contracts, including an omitted MX
+selector whose field remains present with the `Absent` value. Assembler
+acceptance of ordinary omitted masks is supplemental tool divergence, not
+source permission. Ordinary named group-1 masks and native F16x2 bit carriers
+remain separate producer work; their current limitations are not normative bans.

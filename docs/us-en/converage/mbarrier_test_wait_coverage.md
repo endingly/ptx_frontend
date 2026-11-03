@@ -24,3 +24,7 @@ while their effective semantics are acquire at CTA scope. The frontend checks
 instruction-local syntax, operands, and target availability; it does not prove
 mbarrier phase progress, participating threads, or runtime memory visibility.
 `mbarrier.try_wait` qualifier forms are outside this coverage.
+
+Non-parity state inputs retain explicit Register token policy in generated descriptors and reject sink payloads during both source resolution and AST-free checking. The same common rule distinguishes CTA arrival RegisterOrSink from remote cluster Sink outputs; ordinary report-value registers are excluded. Optional descriptor absence denotes non-token policy. The public optional-member migration requires rebuilding consumers; it does not change the independent carrier-typing rules, source qualifiers, availability, or runtime token/phase obligations.
+
+The written `.b64` suffix does not make every state role a Bit operand. Non-parity wait input typing is U64 with same-width B64/S64/U64 carriers; F64 is rejected. In contrast, opaque arrival outputs and `pending_count` inputs accept same-width B64/S64/U64/F64. Actual declarations and source provenance remain visible, and form, target, address, count, parity, and time-hint checks are unchanged. Report values retain qualified logical B8 with B8/S8/U8 carriers; the fixed PTX 9.3 report-role width mapping remains a reference gap. These checks do not authenticate runtime state or establish phase progress.

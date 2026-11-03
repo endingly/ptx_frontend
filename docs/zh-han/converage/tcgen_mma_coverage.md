@@ -3,7 +3,7 @@
 本页描述固定 [PTX 9.3 `tcgen05.mma`](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma)
 四种拼写中的首个源码切片。
 首个切片是非权重驻留、非块缩放的稠密 f16，覆盖两个 CTA group 和 A 的两种来源。
-可选输出通道掩码及可选 D 缩放是源码拓扑选择；其来源契约已由固定手册、完整模块
+必需输出通道掩码及可选 D 缩放是源码拓扑选择；其来源契约已由固定手册、完整模块
 汇编证据和独立 Authority 检查点确定。独立的
 [稠密 tf32 形式](tcgen_mma_tf32_coverage.md)及独立的
 [稠密 i8 形式](tcgen_mma_i8_coverage.md)和规范顺序的
@@ -22,7 +22,7 @@ General B32/U32/S32 寄存器。汇编器也接受了这些位置的字面量零
 真值的整数谓词常量，包括 2。已接受的持有表示保存真值、源码位置及适用时的书写取反，
 但不保存原始整数大小。首个切片不接受特殊谓词寄存器。
 
-输出通道掩码可以省略；出现时 group 1 恰有四个、group 2 恰有八个 General 标量
+输出通道掩码必需； group 1 恰有四个、group 2 恰有八个 General 标量
 32 位寄存器项，显式空向量无效。B32/U32/S32/F32 声明均按 32 位**掩码比特**兼容；
 这里的 F32 不表示浮点运算或转换。字面量向量项及错误宽度、向量或谓词寄存器项无效。
 可选 D 缩放须为原始求值整数 0..15 的立即数，不接受低位别名。汇编器接受了 2^32
@@ -51,9 +51,18 @@ Tensor Memory 时比较有效的已知值；完整 D/B/A 路径只允许零。�
 完成事件或实际通道一致性。已接受的 TCGEN group 一致性仅针对单个函数中的 TCGEN 指令；
 TMA 的省略/1/2 混用属于另一种信号路由契约，不参加这一检查。
 
-生成的精确 `Tcgen05MmaF16` 类直接持有类型化操作数，用八种结构化布局表示十六种
-group、A 来源、掩码有无及缩放有无的组合。`tcgen_mma_f16_view` 从
+生成的精确 `Tcgen05MmaF16` 类直接持有类型化操作数，用四种结构化布局表示八种
+group、A 来源及缩放有无的组合。`tcgen_mma_f16_view` 从
 `const Instruction&` 借用选中的角色；对其他形式或布局标签不符返回空值。
 检查器在 AST 销毁后重新检查持有的寄存器、谓词、掩码、
 立即数和地址元数据。独立的完整模块汇编检查点为源码拼写提供证据，但不证明运行时
 描述符内容或 GPU 执行结果。
+
+八个普通 dense/sparse 生成类现在直接拥有
+`WithLocs<ResolvedRegisterVector> disable_output_lane`，替代可选成员，消费者须重新编译。
+F16/TF32 的布局序号为 shared 无/有 D-scale 0/1、Tensor Memory A 无/有 D-scale 2/3；
+i8/f8f6f4 为 shared 0、Tensor Memory A 1。成功的借用视图返回非空 mask 指针，
+其内容仍须验证。WS 和 block-scaled MX 保留独立的无 mask 契约；MX selector 即使
+省略，其字段仍存在且值为 `Absent`。汇编器接受普通形式省略 mask 仅是补充工具差异，
+不构成源码许可。普通 group-1 命名 mask 和原生 F16x2 位载体仍属独立 producer 工作，
+当前限制不是规范禁令。

@@ -8,8 +8,8 @@
 规范源码顺序为
 `tcgen05.mma.cta_group::{1,2}.kind::f8f6f4 [d-tmem], a, b-desc,
 idesc, {disable-output-lane}, enable-input-d`。A 可以是共享描述符寄存器或带方括号的
-Tensor Memory 地址。可选掩码按组 1/2 分别含四/八个 32 位位寄存器。
-四种 A 位置／掩码布局乘以两个带源码位置的组值，形成八种类型化源码拓扑。
+Tensor Memory 地址。必需掩码按组 1/2 分别含四/八个 32 位位寄存器。
+两种 A 位置布局乘以两个带源码位置的组值，形成四种类型化源码拓扑。
 普通形式没有源码 `scale-input-d`、`.satfinite` 或块缩放操作数。
 前端接受印出的规范 modifier 顺序；相邻的 `.mma.kind::f8f6f4.cta_group` 拼写被排除。
 
@@ -49,14 +49,15 @@ major/swizzle 规则。E4M3/E5M2 为 8 位，E2M3/E3M2 为 6 位，E2M1 为 4 �
 但已知查询不能检查真实矩阵字节、分配、完成或 GPU 数值行为。已提供事实没有违例时，
 仍可能存在未决义务。
 
-当前目标目录使用四个普通无缩放分支：PTX 8.6 起的精确 `sm_100a`、8.8 起启用的
-`sm_100f` 家族、9.0 起的精确 `sm_110a` 和启用的 `sm_110f` 家族。
-目标判断基于显式身份与 feature 交集，不按 SM 数值大小推断。手册中的历史
-`sm_101a`／`sm_101f` 不在当前目录中，不能暗中映射到 `sm_110`。
-i8 的精确目标排除规则以及 f16/tf32 的 D 缩放门槛不适用于本切片。
+现代100/110无缩放 target 分支保留原有版本门槛。显式历史 row 加入 PTX8.6
+起的101A和 PTX8.8 起的101F，source identity 保持原值，验证 feature level
+按 catalog 对应为110。family 使用 canonical `sm_110f` label，Generic101
+没有 A/F grant；i8 的 A-only 与 f16/tf32 的 D-scale 限制仍独立。
 
 这是有限的源码与已知事实表示。缩放 MX kind、稀疏和 WS 形式、
 卷积、物理低位 packing 证明、活描述符位、Tensor Memory 生命周期及 GPU 执行均在
 范围之外。TMA 与 MMA 可以共存于同一个模块，但本切片不证明执行或跨指令完成。
 
 当前普通非 WS 稠密与稀疏形式还支持[强类型 A collector 与 ashift 控制](tcgen_mma_a_collector_coverage.md)；调用方已知历史检查仍是条件性的。
+
+[Descriptor carrier 解释](matrix_reference_interpretations.md#逻辑-descriptor-carrier-与基本位数据) 区分精确位宽的 B/U/S descriptor 角色与普通 `SameWidth` 位数据：这些角色拒绝 F64/F32，`mov.b64`/`mov.b32` 位复制仍合法。TCGEN `idesc` 是 32 位 instruction descriptor，不是 TMA im2col。Lane-mask F32 与实际 `.b64` mbarrier arrival-state 数据保留独立策略；运行时 descriptor 内容仍未获证明。

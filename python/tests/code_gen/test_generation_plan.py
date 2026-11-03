@@ -352,28 +352,38 @@ class GenerationPlanTests(unittest.TestCase):
                 return
         self.fail("canonical corpus must exercise optional direct operand slots")
 
-    def test_named_array_address_policy_is_final_variant_local(self) -> None:
-        """Only ordinary LD/ST opt in; overlapping rules cannot widen other families."""
-        from ptx_frontend.code_gen.emit.resolved_checks import named_array_policy
+    def test_named_array_address_policy_is_binding_local(self) -> None:
+        """Generic address bindings and generated owned checks share role policy."""
+        from ptx_frontend.code_gen.render_models.resolved_checks import (
+            _named_array_field_policy, build_check, named_array_policy,
+        )
+        from ptx_frontend.spec.model import OperandAddressBasePolicy
 
-        observed = {}
+        counts = {"Memory": 0, "Reject": 0}
+        mixed = False
         for entry in self.context.entries:
-            if entry.specification.opcode not in {"ld", "ldu", "st", "cp", "atom"}:
-                continue
-            for variant in entry.resolved.variants:
-                policy = named_array_policy(entry, variant)
-                observed[(entry.specification.opcode, variant.variant_id)] = policy
-                if entry.specification.opcode in {"ldu", "cp", "atom"}:
-                    self.assertEqual(policy, "NamedArrayAddressPolicy::Reject")
-                if any(field.name in {"nc", "async", "bulk"} and field.constant_value is True
-                       for field in variant.modifier_fields):
-                    self.assertEqual(policy, "NamedArrayAddressPolicy::Reject")
-        self.assertTrue(any(opcode == "ld" and policy.endswith("::Memory")
-                            for (opcode, _), policy in observed.items()))
-        self.assertTrue(any(opcode == "st" and policy.endswith("::Memory")
-                            for (opcode, _), policy in observed.items()))
-        self.assertTrue(any(opcode == "ld" and policy.endswith("::Reject")
-                            for (opcode, _), policy in observed.items()))
+            for index, variant in enumerate(entry.resolved.variants):
+                checks = build_check(entry, variant, index, self.backend)
+                form_memory = False
+                for layout, generated in zip(variant.operand_layouts, checks.layout_cases):
+                    policies = []
+                    for field in layout.fields:
+                        if field.value_kind is not ResolvedValueKind.ADDRESS:
+                            continue
+                        binding = next(b for b in layout.bindings if b.target_field_id == field.name)
+                        expected = "Reject" if binding.address_base_policy is OperandAddressBasePolicy.REGISTER else "Memory"
+                        policy = _named_array_field_policy(field, binding)
+                        self.assertEqual(policy, "NamedArrayAddressPolicy::" + expected)
+                        self.assertTrue(any(check.pointer == f"&selected.{field.name}.value" and check.policy == policy
+                                            for check in generated.named_check))
+                        counts[expected] += 1
+                        policies.append(expected)
+                        form_memory |= expected == "Memory"
+                    mixed |= "Memory" in policies and "Reject" in policies
+                self.assertEqual(named_array_policy(entry, variant).endswith("::Memory"), form_memory)
+        self.assertGreater(counts["Memory"], 100)
+        self.assertGreater(counts["Reject"], 10)
+        self.assertTrue(mixed)
 
     def test_ret_header_preserves_uniformity_on_the_canonical_class(self) -> None:
         """The generated public return payload owns its optional assertion."""
@@ -388,40 +398,130 @@ class GenerationPlanTests(unittest.TestCase):
         self.assertIn("WithLocs<bool> uni", generated)
 
     def test_named_vector_data_admission_is_operand_local(self) -> None:
-        """Opted memory and explicit MOV slots do not widen unrelated families."""
-        from ptx_frontend.ir.resolved_ir import ResolvedVectorTypePolicy
+        """Named-vector admission is confined to exact eligible data bindings."""
+        from ptx_frontend.ir.resolved_ir import ResolvedVectorTypePolicy, ResolvedOperandRole
 
+        from tests.spec.test_matrix_named_fragments import EXPECTED as MATRIX_NAMED_EXPECTED
+
+        matrix_keys = {(opcode, variant, layout, field)
+                       for opcode, variant, layout, field, _, _ in MATRIX_NAMED_EXPECTED}
+        observed_matrix_keys = set()
         observed = set()
+        quad_keys = {(name, "default", "src") for name in (
+            "cvt_rs_satfinite_f4x4_f32", "cvt_rs_satfinite_f6x4_f32",
+            "cvt_rs_satfinite_f8x4_f32")}
+        seen_quad = set()
+        aggregate_mov = set()
+        matrix_named = {"mma": 0, "wmma": 0, "wgmma": 0}
+        mask_named = set()
+        inherited = {"multimem": 0, "suld": 0, "st": 0, "sust": 0}
         for entry in self.context.entries:
             opcode = entry.specification.opcode
             for variant in entry.resolved.variants:
                 for layout in variant.operand_layouts:
                     for binding in layout.bindings:
-                        if binding.allow_named_vector:
-                            observed.add(opcode)
-                            self.assertIn(opcode, {"ld", "ldu", "st", "mov"})
-                            if opcode == "mov":
-                                self.assertEqual(variant.cpp_name, "V4U32")
-                            self.assertIs(binding.vector_type_policy,
-                                          ResolvedVectorTypePolicy.ELEMENT)
-                            self.assertEqual(binding.target_field_id,
-                                             "src" if opcode == "st" else "dst")
-                            self.assertFalse(any(
-                                field.name in {"async", "bulk"} and
-                                field.constant_value is True
-                                for field in variant.modifier_fields))
-                        if (opcode not in {"ld", "ldu", "st", "mov"}
-                            or (opcode == "mov" and variant.cpp_name != "V4U32")) or any(
-                            field.name in {"async", "bulk"} and
-                            field.constant_value is True
-                            for field in variant.modifier_fields
-                        ):
+                        key = (variant.variant_id, layout.layout_id, binding.target_field_id)
+                        quad_source = opcode == "cvt" and key in quad_keys
+                        matrix_key = (opcode, *key)
+                        matrix_source = matrix_key in matrix_keys
+                        if opcode in matrix_named and not matrix_source:
                             self.assertFalse(binding.allow_named_vector)
-        self.assertEqual(observed, {"ld", "ldu", "st", "mov"})
+                        named_mask = (opcode == "tcgen05" and
+                                      binding.target_field_id == "disable_output_lane")
+                        if binding.allow_named_vector:
+                            if opcode in matrix_named:
+                                observed_matrix_keys.add(matrix_key)
+                            observed.add(opcode)
+                            self.assertTrue(quad_source or matrix_source or named_mask or
+                                            opcode in {"ld", "ldu", "st", "mov", "multimem", "suld", "sust"})
+                            inherited_data = (opcode in {"multimem", "suld", "sust"} or
+                                              (opcode == "st" and binding.target_field_id == "value"))
+                            if quad_source:
+                                seen_quad.add(key)
+                                self.assertIs(binding.vector_type_policy, ResolvedVectorTypePolicy.ELEMENT)
+                                self.assertEqual(binding.allowed_vector_arities, (4,))
+                                self.assertEqual(binding.target_field_id, "src")
+                                self.assertIs(binding.role, ResolvedOperandRole.SOURCE)
+                                self.assertTrue(binding.source_value_vector)
+                            elif matrix_source:
+                                matrix_named[opcode] += 1
+                                self.assertIs(binding.vector_type_policy,
+                                              ResolvedVectorTypePolicy.ELEMENT)
+                                self.assertIn(binding.target_field_id,
+                                              {"a", "b", "c", "d", "dst"})
+                                self.assertFalse(binding.source_value_vector)
+                                if binding.allowed_vector_arities:
+                                    self.assertTrue(set(binding.allowed_vector_arities) <= {2, 4})
+                                else:
+                                    self.assertEqual(binding.minimum_elements,
+                                                     binding.maximum_elements)
+                                    self.assertIn(binding.minimum_elements, {2, 4})
+                            elif named_mask:
+                                mask_named.add(key)
+                                self.assertIs(binding.vector_type_policy,
+                                              ResolvedVectorTypePolicy.ELEMENT)
+                                self.assertEqual(binding.allowed_vector_arities,
+                                                 tuple(range(1, 9)))
+                                self.assertFalse(binding.allow_vector_sink)
+                                self.assertFalse(binding.source_value_vector)
+                                self.assertEqual(binding.type_expression.scalar_type, "b32")
+                            elif (opcode == "mov" and binding.vector_type_policy
+                                    is ResolvedVectorTypePolicy.AGGREGATE):
+                                aggregate_mov.add((variant.variant_id, binding.target_field_id))
+                                self.assertEqual(binding.allowed_vector_arities, (2, 4))
+                                self.assertIn(binding.target_field_id, {"src", "dst"})
+                            elif inherited_data:
+                                inherited[opcode] += 1
+                                self.assertIs(binding.vector_type_policy, ResolvedVectorTypePolicy.ELEMENT)
+                                self.assertIn(binding.target_field_id, {"dst", "src", "data", "value"})
+                                self.assertTrue(set(binding.allowed_vector_arities) <= {2, 4})
+                            else:
+                                self.assertIs(binding.vector_type_policy,
+                                              ResolvedVectorTypePolicy.ELEMENT)
+                                self.assertEqual(binding.target_field_id,
+                                                 "src" if opcode == "st" else "dst")
+                                if opcode == "mov":
+                                    self.assertEqual(variant.variant_id, "mov_v4_u32")
+                            if not inherited_data:
+                                self.assertFalse(any(
+                                    field.name in {"async", "bulk"} and
+                                    field.constant_value is True
+                                    for field in variant.modifier_fields))
+                        if opcode not in {"ld", "ldu", "st", "mov", "multimem", "suld", "sust"} and not (quad_source or matrix_source or named_mask):
+                            self.assertFalse(binding.allow_named_vector)
+                        if opcode == "multimem" and 8 in binding.allowed_vector_arities:
+                            self.assertFalse(binding.allow_named_vector)
+        self.assertEqual(seen_quad, quad_keys)
+        self.assertEqual(observed, {"ld", "ldu", "st", "mov", "multimem", "suld", "sust", "cvt",
+                                    "mma", "wmma", "wgmma", "tcgen05"})
+        self.assertEqual(matrix_named, {"mma": 1374, "wmma": 112, "wgmma": 1176})
+        self.assertEqual(observed_matrix_keys, matrix_keys)
+        expected_masks = {
+            (variant, layout)
+            for variant in ("tcgen05_mma_f16", "tcgen05_mma_tf32",
+                            "tcgen05_mma_sp_f16", "tcgen05_mma_sp_tf32")
+            for layout in ("shared_mask_no_scale", "shared_mask_scale",
+                           "tensor_mask_no_scale", "tensor_mask_scale")
+        } | {
+            (variant, layout)
+            for variant in ("tcgen05_mma_i8", "tcgen05_mma_f8f6f4",
+                            "tcgen05_mma_sp_f8f6f4", "tcgen05_mma_sp_i8")
+            for layout in ("shared_mask", "tensor_mask")
+        }
+        self.assertEqual({(variant, layout) for variant, layout, _ in mask_named},
+                         expected_masks)
+        self.assertEqual(inherited, {"multimem": 42, "suld": 60, "st": 4, "sust": 78})
+        self.assertEqual(aggregate_mov, {
+            ("mov_scalar", "src"), ("mov_scalar", "dst"),
+            ("mov_b128_pack_unpack", "src"), ("mov_b128_pack_unpack", "dst"),
+        })
         _, output = self.full_generation()
         load_source = "\n".join(path.read_text() for path in output.rglob("resolved_ir_data_movement_ld*.gen.cpp"))
         self.assertIn(".allow_named_vector = true", load_source)
         self.assertIn(".register_vector = &", load_source)
+        sust_source = "\n".join(path.read_text() for path in output.rglob("resolved_ir_surface_sust*.gen.cpp"))
+        self.assertTrue(re.search(r"\.value_vector = &(?:selected\.)?data\.value", sust_source))
+        self.assertTrue("observer.value_vector(data.value, data.locs" in sust_source)
         for opcode in ("atom", "red", "cp", "tex"):
             emitted = "\n".join(
                 path.read_text() for path in output.rglob("*.gen.cpp")
@@ -437,8 +537,11 @@ class GenerationPlanTests(unittest.TestCase):
         forms = tuple(
             variant for entry in context.entries for variant in entry.resolved.variants
         )
-        self.assertEqual((len(context.entries), len(forms)), (137, 5452))
-        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 7480)
+        self.assertEqual((len(context.entries), len(forms)), (137, 5453))
+        self.assertEqual(
+            sum(form.variant_id == "rcp_implicit_f64" for form in forms), 1
+        )
+        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 7457)
         self.assertEqual(sum(len(form.operand_layouts) > 1 for form in forms), 1232)
         for form in forms:
             slots = operand_slots(form, self.backend)

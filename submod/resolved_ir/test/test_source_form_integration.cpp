@@ -73,7 +73,7 @@ TEST(SourceFormIntegration, PreservesIndependentModernSourceStates) {
   prefetch.tensormap [constant_map];
   prefetchu.L1 [memory];
 }
-)ptx";
+)ptx" + (debug ? ".section .debug_str { .b8 0 }\n" : "");
             const auto ast = test_helpers::parseModule(source);
             ASSERT_MODULE_PARSE_SUCCEEDS(ast);
             auto resolved = resolveAndValidateModule(*ast);
@@ -86,6 +86,7 @@ TEST(SourceFormIntegration, PreservesIndependentModernSourceStates) {
                 *owned, ModuleValidationPolicy::RequireCompleteContext);
           };
           ASSERT_TRUE(strict());
+          EXPECT_EQ(owned->sections.size(), debug ? 1u : 0u);
           auto& region = owned->header.regions.back();
           EXPECT_EQ(region.target_options.size(), debug ? 2u : 1u);
           EXPECT_FALSE(region.map_f64_to_f32);

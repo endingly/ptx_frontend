@@ -60,6 +60,15 @@ def validate_ptx_interval(raw: dict[str, Any]) -> None:
         raise ValueError("availability ptx_before must exceed the minimum PTX version")
 
 
+def validate_sm_interval(raw: dict[str, Any]) -> None:
+    """Validate a strict uint32 exclusive SM bound and its nonempty interval."""
+    if "sm_before" in raw:
+        upper = validate_availability_sm_version(raw["sm_before"], field="availability sm_before")
+        minimum = validate_availability_sm_version(raw.get("sm", 0))
+        if upper <= minimum:
+            raise ValueError("availability sm_before must exceed the minimum SM version")
+
+
 def normalize_availability(raw: object) -> dict[str, Any]:
     """Validate the legacy availability form or its bounded DNF replacement."""
 
@@ -68,10 +77,11 @@ def normalize_availability(raw: object) -> dict[str, Any]:
     if not raw:
         return {}
     if "any_of" not in raw:
-        allowed = {"ptx_before", "ptx", "sm", "family", "deprecated", "removed", "notes"}
-        if set(raw) - allowed or not set(raw) & {"ptx_before", "ptx", "sm", "family"}:
+        allowed = {"sm_before", "ptx_before", "ptx", "sm", "family", "deprecated", "removed", "notes"}
+        if set(raw) - allowed or not set(raw) & {"sm_before", "ptx_before", "ptx", "sm", "family"}:
             raise ValueError("availability must contain a legacy requirement or any_of")
         validate_ptx_interval(raw)
+        validate_sm_interval(raw)
         if "sm" in raw:
             validate_availability_sm_version(raw["sm"])
         if "family" in raw:
@@ -88,12 +98,13 @@ def normalize_availability(raw: object) -> dict[str, Any]:
             raise TypeError("availability any_of clauses must be objects")
         if (
             set(clause) - {
-                "ptx_before", "ptx", "sm", "target", "targets", "family", "capabilities", "map_f64_to_f32"
+                "sm_before", "ptx_before", "ptx", "sm", "target", "targets", "family", "capabilities", "map_f64_to_f32"
             }
             or not clause
         ):
             raise ValueError("availability any_of clause has invalid fields")
         validate_ptx_interval(clause)
+        validate_sm_interval(clause)
         if "map_f64_to_f32" in clause and clause["map_f64_to_f32"] is not True:
             raise ValueError("availability map_f64_to_f32 must be Boolean true")
         if "sm" in clause:

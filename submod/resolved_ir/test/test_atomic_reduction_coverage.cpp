@@ -1091,6 +1091,10 @@ TEST(AtomicReductionCoverage, ResolvesHalfBfloatAndWideScalarForms) {
   EXPECT_FALSE(dynamic_cast<AtomGlobalAddNoftzF16&>(*body[3])
                    .dst.value.register_ref.has_value());
   EXPECT_EQ(body[4]->instruction_kind(), InstructionKind::RedGlobalAddNoftzF16);
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
+      dynamic_cast<AtomGlobalAddNoftzF16&>(*body[3]).src.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
+      dynamic_cast<RedGlobalAddNoftzF16&>(*body[4]).src.value));
   EXPECT_EQ(body[5]->instruction_kind(),
             InstructionKind::AtomGlobalAddNoftzF16x2);
   EXPECT_EQ(body[6]->instruction_kind(),
@@ -1421,7 +1425,7 @@ TEST(AtomicReductionCoverage, KeepsStandaloneVectorLaneTypesUnknown) {
   for (const auto& lane : atom.dst.value.elements)
     ASSERT_FALSE(lane->declared_type.has_value());
   for (const auto& lane : atom.src.value.elements)
-    ASSERT_FALSE(lane->declared_type.has_value());
+    ASSERT_FALSE(std::get<ResolvedRegisterRef>(lane).declared_type.has_value());
   EXPECT_TRUE(atom.check(target).has_value());
 
   const auto red_ast = test_helpers::parseInstruction(
@@ -1431,7 +1435,7 @@ TEST(AtomicReductionCoverage, KeepsStandaloneVectorLaneTypesUnknown) {
   ASSERT_TRUE(red_resolved.has_value()) << red_resolved.error().message;
   const auto& red = dynamic_cast<const RedVectorAddF32&>(**red_resolved);
   for (const auto& lane : red.src.value.elements)
-    ASSERT_FALSE(lane->declared_type.has_value());
+    ASSERT_FALSE(std::get<ResolvedRegisterRef>(lane).declared_type.has_value());
   EXPECT_TRUE(red.check(target).has_value());
 }
 
@@ -1573,7 +1577,8 @@ TEST(AtomicReductionCoverage, ChecksVectorAtomicOwnedContracts) {
   hinted.cache_policy->value.declared_type = ScalarType::B32;
   EXPECT_FALSE(body[1]->check(supported).has_value());
   auto& integer_lanes = dynamic_cast<AtomVectorAddNoftzF16&>(*body[4]);
-  integer_lanes.src.value.elements[0]->declared_type = ScalarType::F16;
+  std::get<ResolvedRegisterRef>(integer_lanes.src.value.elements[0])
+      .declared_type = ScalarType::F16;
   EXPECT_FALSE(body[4]->check(supported).has_value());
 }
 
@@ -1897,7 +1902,7 @@ TEST(AtomicReductionCoverage, ResolvesAsyncReductionModes) {
       .spelling = "barrier",
       .address_state_space = base::DeclarationStateSpace::Shared,
   };
-  EXPECT_FALSE(body[2]->check(shared_target).has_value());
+  EXPECT_TRUE(body[2]->check(shared_target).has_value());
 }
 
 /** Reject mode mixing, nonregister destinations, and invalid barrier addresses. */
@@ -1905,7 +1910,6 @@ TEST(AtomicReductionCoverage, RejectsInvalidAsyncReductionForms) {
   for (std::string_view instruction : {
            "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.s64 "
            "[%a], %sd, [barrier];",
-           "red.async.relaxed.cluster.add.u32 [%a], %u, [barrier];",
            "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
            "[%a], %u;",
            "red.async.relaxed.gpu.mbarrier::complete_tx::bytes.add.u32 [%a], "
@@ -1930,8 +1934,6 @@ TEST(AtomicReductionCoverage, RejectsInvalidAsyncReductionForms) {
            "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
            "[%a], %u, [global_value];",
            "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
-           "[%a], %u, [barrier];",
-           "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
            "[%a], %u, [barrier+4];",
            "red.async.release.sys.add.u32 [%a], %u, [barrier];",
        }) {
@@ -1946,6 +1948,16 @@ TEST(AtomicReductionCoverage, RejectsInvalidAsyncReductionForms) {
     const auto parsed = test_helpers::parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
     EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value()) << instruction;
+  }
+  // The same aligned third barrier operand remains valid with either spelling.
+  for (const auto completion : {"", ".mbarrier::complete_tx::bytes"}) {
+    const auto parsed = test_helpers::parseModule(
+        ".version 9.3\n.target sm_100\n.shared .align 8 .b64 barrier;\n"
+        ".entry kernel(){.reg .u64 %a;.reg .u32 %u;mov.u64 %a,0;mov.u32 %u,1;"
+        "red.async.relaxed.cluster" +
+        std::string(completion) + ".add.u32 [%a],%u,[barrier];}");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    ASSERT_TRUE(resolveAndValidateModule(*parsed));
   }
 }
 

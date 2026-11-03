@@ -208,6 +208,72 @@ class WmmaCoverageTests(unittest.TestCase):
                                  if not form.name.endswith("_implicit_aligned") else {})
         self.assertEqual(len(forms), 708)
 
+    def test_f64_exact_role_layout_space_inventory(self) -> None:
+        """Join every FP64 raw identity to its present normalized fragment roles."""
+        expected = {
+            f"wmma_load_{role}_m8n8k4_{layout}_{space}_f64"
+            for role in ("a", "b", "c") for layout in ("row", "col")
+            for space in ("generic", "global", "shared", "shared_cta")
+        } | {
+            f"wmma_store_d_m8n8k4_{layout}_{space}_f64"
+            for layout in ("row", "col")
+            for space in ("generic", "global", "shared", "shared_cta")
+        } | {
+            f"wmma_mma_m8n8k4_{a}_{b}_f64_f64_f64_f64"
+            for a in ("row", "col") for b in ("row", "col")
+        }
+        raw = next(i for i in load_yaml(WMMA_FILE)["instructions"]
+                   if i["opcode"] == "wmma")
+        actual = {v["name"] for v in raw["variants"] if "_f64" in v["name"]}
+        self.assertEqual(actual, expected)
+        self.assertEqual(len(expected), 36)
+        for name in sorted(expected):
+            with self.subTest(name=name):
+                form = self.variants[name]
+                matrix = form.matrix
+                self.assertEqual((matrix.shape.m, matrix.shape.n, matrix.shape.k),
+                                 (8, 8, 4))
+                self.assertEqual(form.availability,
+                                 {"ptx": "7.8" if "_shared_cta_" in name else "7.0",
+                                  "sm": 80})
+                if "_mma_" in name:
+                    self.assertIs(matrix.family, MatrixFamily.WMMA_MMA)
+                    self.assertEqual(matrix.a_layout.value, name.split("_")[3])
+                    self.assertEqual(matrix.b_layout.value, name.split("_")[4])
+                else:
+                    self.assertIs(matrix.family, MatrixFamily.WMMA_LOAD
+                                  if "_load_" in name else MatrixFamily.WMMA_STORE)
+                    role = name.split("_")[2]
+                    self.assertEqual(tuple(f.role.value for f in matrix.fragments), (role,))
+                    self.assertEqual(getattr(matrix, f"{role}_layout").value,
+                                     name.split("_")[4])
+                counts = {"a": 1, "b": 1, "c": 2, "d": 2}
+                for fragment in matrix.fragments:
+                    self.assertEqual(fragment.element_type.value, "f64")
+                    self.assertEqual(fragment.register_type, "f64")
+                    self.assertEqual(fragment.register_count,
+                                     counts[fragment.role.value])
+                if matrix.family is MatrixFamily.WMMA_MMA:
+                    self.assertEqual(tuple(f.role.value for f in matrix.fragments),
+                                     ("d", "a", "b", "c"))
+                    rounding = next(m for m in form.modifiers if m.name == "rounding")
+                    self.assertEqual(rounding.default, "rn")
+                    self.assertEqual(tuple(v.value for v in rounding.values),
+                                     ("rn", "rz", "rm", "rp"))
+                else:
+                    fragment = matrix.fragments[0]
+                    self.assertEqual(form.address_alignments[0].alignment,
+                                     fragment.register_count * 8)
+                    self.assertEqual(tuple(l.name for l in form.operand_layouts),
+                                     ("implicit_stride", "explicit_stride"))
+                    role = fragment.role.value
+                    layout = getattr(matrix, f"{role}_layout").value
+                    minimum = (4 if (role == "a" and layout == "row") or
+                               (role == "b" and layout == "col") else 8)
+                    self.assertEqual(form.immediate_ranges[0].minimum, minimum)
+                    self.assertEqual(form.immediate_multiple_of.divisor,
+                                     fragment.register_count)
+
     def test_normalizer_rejects_wmma_metadata_drift(self) -> None:
         """A canonical variant cannot lie about its C type or register count."""
 

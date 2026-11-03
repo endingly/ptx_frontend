@@ -7,8 +7,16 @@
 #include <ptx_frontend/resolved_ir/model/tensor_memory/tcgen05.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
+#include "ptx_address_register_type.hpp"
+#include "ptx_call_graph.hpp"
+#include "ptx_call_parameter_transfers.hpp"
 #include "ptx_call_tables.hpp"
+#include "ptx_call_target_visibility.hpp"
+#include "ptx_debug_locations.hpp"
+#include "ptx_debug_sections.hpp"
+#include "ptx_legacy_dwarf.hpp"
 #include "ptx_module_source_context.hpp"
+#include "ptx_pragma_metadata.hpp"
 #include "ptx_resolved_ir_private.hpp"
 #include "ptx_source_identity.hpp"
 
@@ -20,6 +28,7 @@
 #include <limits>
 #include <optional>
 #include <ranges>
+#include <set>
 #include <span>
 #include <string_view>
 #include <tuple>
@@ -61,16 +70,36 @@ checker::AvailabilityDescriptor availability(checker::PtxVersion minimum_ptx,
 
 enum class DirectiveAvailability {
   Alias,
+  CallPrototype,
+  BranchTargets,
+  CallTargets,
+  Weak,
+  Recursion,
+  PossibleRecursion,
+  BodyParameter,
   Noreturn,
   AbiPreserve,
   AbiPreserveControl,
+  MaxNctaPerSm,
 };
 
 checker::AvailabilityDescriptor directive_availability(
     DirectiveAvailability directive) {
   switch (directive) {
+    case DirectiveAvailability::MaxNctaPerSm:
+      return availability({1, 3});
+    case DirectiveAvailability::BodyParameter:
+    case DirectiveAvailability::Recursion:
+    case DirectiveAvailability::PossibleRecursion:
+      return availability({2, 0}, 20);
+    case DirectiveAvailability::Weak:
+      return availability({3, 1});
     case DirectiveAvailability::Alias:
       return availability({6, 3}, 30);
+    case DirectiveAvailability::CallPrototype:
+    case DirectiveAvailability::BranchTargets:
+    case DirectiveAvailability::CallTargets:
+      return availability({2, 1}, 20);
     case DirectiveAvailability::Noreturn:
       return availability({6, 4}, 30);
     case DirectiveAvailability::AbiPreserve:
@@ -94,11 +123,96 @@ void append_requirement(checker::CheckDiagnostics& diagnostics,
   });
 }
 
+/** Exact identity for conjunctive directive diagnostics, whose messages are fixed per rule. */
+using DirectiveAvailabilityKey =
+    std::tuple<DirectiveAvailability, int32_t, int32_t, int32_t, int32_t>;
+/** Validation-local duplicate suppression shared by current/source directive checks. */
+using DirectiveAvailabilityKeys = std::set<DirectiveAvailabilityKey>;
+
+/** Check independently known prerequisites of a minimum-only directive requirement. */
+void append_minimum_requirement(
+    checker::CheckDiagnostics& diagnostics, DirectiveAvailabilityKeys& emitted,
+    DirectiveAvailability feature, std::optional<checker::PtxVersion> version,
+    const std::optional<base::TargetProfile>& profile, SourceRange range,
+    std::string_view subject) {
+  // These descriptors have only conjunctive minima, no DNF/family clauses.
+  const auto requirement = directive_availability(feature);
+  if ((!version || *version >= requirement.minimum_ptx_version) &&
+      (!profile ||
+       base::target_feature_architecture(profile->identity).number >=
+           requirement.minimum_sm_version))
+    return;
+  if (!emitted
+           .emplace(feature, range.start.line, range.start.column,
+                    range.end.line, range.end.column)
+           .second)
+    return;
+  diagnostics.push_back({
+      .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+      .range = range,
+      .message =
+          requirement.minimum_sm_version == 0
+              ? fmt::format("{} requires PTX ISA >= {}.{}.", subject,
+                            requirement.minimum_ptx_version.major,
+                            requirement.minimum_ptx_version.minor)
+              : fmt::format("{} requires PTX ISA >= {}.{} and SM >= {}.",
+                            subject, requirement.minimum_ptx_version.major,
+                            requirement.minimum_ptx_version.minor,
+                            requirement.minimum_sm_version),
+  });
+}
+
+/** Check every retained target list independently of any instruction consumer. */
+void check_target_list_availability(
+    const ResolvedFunction& function,
+    std::optional<checker::PtxVersion> version,
+    const std::optional<base::TargetProfile>& profile,
+    DirectiveAvailabilityKeys& emitted,
+    checker::CheckDiagnostics& diagnostics) {
+  for (const auto& branches : function.branch_target_sets)
+    append_minimum_requirement(diagnostics, emitted,
+                               DirectiveAvailability::BranchTargets, version,
+                               profile, branches.range, ".branchtargets");
+  for (const auto& targets : function.call_target_sets)
+    append_minimum_requirement(diagnostics, emitted,
+                               DirectiveAvailability::CallTargets, version,
+                               profile, targets.range, ".calltargets");
+}
+
+/** Enumerate current retained prototypes, including those collected from nested blocks. */
+void check_prototype_availability(
+    const ResolvedFunction& function,
+    std::optional<checker::PtxVersion> version,
+    const std::optional<base::TargetProfile>& profile,
+    DirectiveAvailabilityKeys& emitted,
+    checker::CheckDiagnostics& diagnostics) {
+  for (const auto& prototype : function.call_prototypes) {
+    append_minimum_requirement(diagnostics, emitted,
+                               DirectiveAvailability::CallPrototype, version,
+                               profile, prototype.range, ".callprototype");
+    if (prototype.is_noreturn)
+      append_minimum_requirement(
+          diagnostics, emitted, DirectiveAvailability::Noreturn, version,
+          profile, prototype.range, ".noreturn on .callprototype");
+    if (prototype.abi_preserve)
+      append_minimum_requirement(diagnostics, emitted,
+                                 DirectiveAvailability::AbiPreserve, version,
+                                 profile, prototype.abi_preserve->range,
+                                 ".abi_preserve on .callprototype");
+    if (prototype.abi_preserve_control)
+      append_minimum_requirement(
+          diagnostics, emitted, DirectiveAvailability::AbiPreserveControl,
+          version, profile, prototype.abi_preserve_control->range,
+          ".abi_preserve_control on .callprototype");
+  }
+}
+
 checker::AvailabilityDescriptor resource_availability(
     syntax_ast::AstKernelResourceKind kind) {
   using Kind = syntax_ast::AstKernelResourceKind;
   switch (kind) {
     case Kind::MaxNreg:
+    case Kind::MaxNctaPerSm:
     case Kind::MaxNtid:
       return availability({1, 3});
     case Kind::ReqNtid:
@@ -124,6 +238,8 @@ std::string_view resource_name(syntax_ast::AstKernelResourceKind kind) {
       return ".reqntid";
     case Kind::MinNctaPerSm:
       return ".minnctapersm";
+    case Kind::MaxNctaPerSm:
+      return ".maxnctapersm";
     case Kind::ReqNctaPerCluster:
       return ".reqnctapercluster";
     case Kind::ExplicitCluster:
@@ -140,6 +256,7 @@ checker::AvailabilityDescriptor resource_availability(
   using Kind = ResolvedKernelResourceKind;
   switch (kind) {
     case Kind::MaxNreg:
+    case Kind::MaxNctaPerSm:
     case Kind::MaxNtid:
       return availability({1, 3});
     case Kind::ReqNtid:
@@ -166,6 +283,8 @@ std::string_view resource_name(ResolvedKernelResourceKind kind) {
       return ".reqntid";
     case Kind::MinNctaPerSm:
       return ".minnctapersm";
+    case Kind::MaxNctaPerSm:
+      return ".maxnctapersm";
     case Kind::ReqNctaPerCluster:
       return ".reqnctapercluster";
     case Kind::ExplicitCluster:
@@ -213,22 +332,54 @@ void check_function_directives(
         target, abi_preserve_control->range, ".abi_preserve_control");
 }
 
+/** Recheck supplied control declarations with partial facts; attributes need full context. */
 void check_body_directives(
     const std::vector<syntax_ast::AstFunctionBodyItem>& body,
-    const checker::TargetInfo& target, checker::CheckDiagnostics& diagnostics) {
+    std::optional<checker::PtxVersion> version,
+    const std::optional<base::TargetProfile>& profile,
+    const std::optional<checker::TargetInfo>& target,
+    DirectiveAvailabilityKeys& emitted,
+    checker::CheckDiagnostics& diagnostics) {
   for (const auto& item : body) {
     if (const auto* declaration =
             std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
-      check_attributes(declaration->attributes, target, diagnostics);
+      if (target)
+        check_attributes(declaration->attributes, *target, diagnostics);
+    } else if (const auto* branches =
+                   std::get_if<syntax_ast::AstBranchTargets>(&item)) {
+      append_minimum_requirement(diagnostics, emitted,
+                                 DirectiveAvailability::BranchTargets, version,
+                                 profile, branches->range, ".branchtargets");
+    } else if (const auto* targets =
+                   std::get_if<syntax_ast::AstCallTargets>(&item)) {
+      append_minimum_requirement(diagnostics, emitted,
+                                 DirectiveAvailability::CallTargets, version,
+                                 profile, targets->range, ".calltargets");
     } else if (const auto* prototype =
                    std::get_if<syntax_ast::AstCallPrototype>(&item)) {
-      check_function_directives(
-          prototype->noreturn_directive, prototype->abi_preserve,
-          prototype->abi_preserve_control, target, diagnostics);
+      append_minimum_requirement(diagnostics, emitted,
+                                 DirectiveAvailability::CallPrototype, version,
+                                 profile, prototype->range, ".callprototype");
+      if (prototype->noreturn_directive)
+        append_minimum_requirement(
+            diagnostics, emitted, DirectiveAvailability::Noreturn, version,
+            profile, prototype->noreturn_directive->range,
+            ".noreturn on .callprototype");
+      if (prototype->abi_preserve)
+        append_minimum_requirement(diagnostics, emitted,
+                                   DirectiveAvailability::AbiPreserve, version,
+                                   profile, prototype->abi_preserve->range,
+                                   ".abi_preserve on .callprototype");
+      if (prototype->abi_preserve_control)
+        append_minimum_requirement(
+            diagnostics, emitted, DirectiveAvailability::AbiPreserveControl,
+            version, profile, prototype->abi_preserve_control->range,
+            ".abi_preserve_control on .callprototype");
     } else if (const auto* block =
                    std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
                block != nullptr && *block) {
-      check_body_directives((*block)->body, target, diagnostics);
+      check_body_directives((*block)->body, version, profile, target, emitted,
+                            diagnostics);
     }
   }
 }
@@ -363,11 +514,26 @@ bool valid_instruction_range(SourceRange range) noexcept {
            range.start.column < range.end.column));
 }
 
+/** Merge only an identical address-intrinsic cause in the local validation sink. */
+void append_parameter_address_intrinsic(
+    checker::CheckDiagnostics& diagnostics,
+    checker::CheckDiagnostics& intrinsic_causes,
+    checker::CheckDiagnostic diagnostic) {
+  if (!std::ranges::any_of(intrinsic_causes, [&](const auto& previous) {
+        return previous.kind == diagnostic.kind &&
+               previous.range == diagnostic.range &&
+               previous.message == diagnostic.message;
+      })) {
+    intrinsic_causes.push_back(diagnostic);
+    diagnostics.push_back(std::move(diagnostic));
+  }
+}
+
 /** Check every IR instruction using its owned source location. */
-void check_instruction_body(const ResolvedFunction& function,
-                            const checker::TargetInfo& target,
-                            TextureMode texture_mode,
-                            checker::CheckDiagnostics& diagnostics) {
+void check_instruction_body(
+    const ResolvedFunction& function, const checker::TargetInfo& target,
+    TextureMode texture_mode, checker::CheckDiagnostics& diagnostics,
+    std::span<const checker::CheckDiagnostics> intrinsic_causes) {
   for (size_t i = 0; i < function.body.size(); ++i) {
     if (!function.body[i])
       continue;
@@ -384,9 +550,22 @@ void check_instruction_body(const ResolvedFunction& function,
         .instruction_range = function.instruction_ranges[i],
     };
     const auto result = function.body[i]->check(context);
-    if (!result)
-      diagnostics.insert(diagnostics.end(), result.error().begin(),
-                         result.error().end());
+    if (!result) {
+      const auto causes =
+          i < intrinsic_causes.size()
+              ? std::span<const checker::CheckDiagnostic>{intrinsic_causes[i]}
+              : std::span<const checker::CheckDiagnostic>{};
+      for (const auto& diagnostic : result.error()) {
+        // Only this instruction's intrinsic causes can merge a full-check result.
+        // Ordinary result keys are never added to this immutable provenance set.
+        if (!std::ranges::any_of(causes, [&](const auto& intrinsic) {
+              return intrinsic.kind == diagnostic.kind &&
+                     intrinsic.range == diagnostic.range &&
+                     intrinsic.message == diagnostic.message;
+            }))
+          diagnostics.push_back(diagnostic);
+      }
+    }
     check_texture_instruction_payload(*function.body[i], texture_mode, target,
                                       function.instruction_ranges[i],
                                       diagnostics);
@@ -520,6 +699,35 @@ void check_texture_instruction_payload(const Instruction& instruction,
   }
 }
 
+/** Owned operand requirements copied from one synchronous metadata bracket. */
+struct ParameterAddressOperandFacts {
+  /** Copied closed domain; empty remains unconstrained. */
+  std::vector<MemoryStateSpace> allowed_spaces;
+  /** Current associated modifier, absent when no association exists. */
+  std::optional<MemoryStateSpace> selected_space;
+  /** Value access is not a memory-effect classification. */
+  checker::OperandAccess access;
+  /** Existing parameter access contract, independent of value access. */
+  ParameterDirection direction;
+  /** Owned diagnostic field identity; no descriptor/string_view borrow escapes. */
+  std::string field;
+  /** Whole instruction fallback shared by readonly diagnostics. */
+  SourceRange instruction_range;
+  /** Zero-based current body position, not source history or an owning payload field. */
+  size_t instruction_index;
+};
+
+/** Copy an explicit call selection into the ordinary register validation domain. */
+ResolvedRegisterRef call_parameter_register(
+    const ResolvedCallParameterRef& value) {
+  return {.spelling = value.spelling,
+          .register_class = ResolvedRegisterClass::General,
+          .symbol_id = value.symbol_id,
+          .parameterized_index = value.parameterized_index,
+          .declared_type = value.declared_type,
+          .component = value.component};
+}
+
 /** One binding identity projected from a generated resolved operand payload. */
 struct ModuleReferenceUse {
   std::optional<binding::SymbolId> symbol_id;
@@ -527,6 +735,8 @@ struct ModuleReferenceUse {
   std::optional<binding::SymbolKind> expected_kind;
   /** Owned snapshot of a register carrier's cached declaration metadata. */
   std::optional<ResolvedRegisterRef> register_ref;
+  /** Copied call actual metadata; no adapter or callback reference escapes. */
+  std::optional<ResolvedCallParameterRef> call_parameter;
   /** Copied address-symbol metadata; no visitor borrow escapes its callback. */
   std::optional<ResolvedSymbolRef> address_symbol;
   /** Owned named-index metadata rejoined to declaration shape without an AST. */
@@ -543,12 +753,16 @@ struct ModuleReferenceUse {
   bool requires_register_state{};
   /** True when the binding must name a scalar .reg .pred declaration. */
   bool requires_predicate_register{};
-  /** Address-base grammar excludes ordinary selected register components. */
+  /** Actual register alternative of an indirect function-address operand. */
+  bool requires_function_address{};
+  /** Role-specific consumers may exclude ordinary selected register components. */
   bool excludes_register_component{};
   /** True only for a lane in a structurally validated complete named vector. */
   bool named_vector_projection{};
   bool function_local{};
   SourceRange range;
+  /** Present only for an actual address symbol, never a register/index child. */
+  std::optional<ParameterAddressOperandFacts> address_operand;
 };
 
 /** Return whether a symbol may back a register-typed instruction operand. */
@@ -697,8 +911,15 @@ void collect_operand_references(
     append_reference(uses, value.symbol_id, std::nullopt,
                      binding::SymbolKind::Function, false, locations, fallback);
   } else if constexpr (std::same_as<Value, ResolvedCallParameterRef>) {
-    append_reference(uses, value.symbol_id, value.parameterized_index,
-                     std::nullopt, true, locations, fallback);
+    if (value.component) {
+      const std::array<SourceRange, 1> leaf{value.component->range};
+      collect_operand_references(call_parameter_register(value), leaf, fallback,
+                                 uses, address_resolution_policy);
+    } else {
+      append_reference(uses, value.symbol_id, value.parameterized_index,
+                       std::nullopt, true, locations, fallback);
+    }
+    uses.back().call_parameter = value;
   } else if constexpr (std::same_as<Value, ResolvedSymbolRef>) {
     append_reference(uses, value.symbol_id, value.parameterized_index,
                      value.declaration_kind, false, locations, fallback, false,
@@ -748,8 +969,10 @@ void collect_operand_references(
       append_reference(uses, table->symbol_id, std::nullopt,
                        binding::SymbolKind::Variable, false, locations,
                        fallback);
-    else
+    else {
       collect_register(std::get<ResolvedRegisterRef>(value));
+      uses.back().requires_function_address = true;
+    }
   } else if constexpr (std::same_as<Value, ResolvedRegisterVector>) {
     const bool named =
         value.source.kind == ResolvedVectorSourceKind::NamedVector &&
@@ -786,6 +1009,13 @@ void collect_operand_references(
         }
     }
   } else if constexpr (std::same_as<Value, ResolvedValueVector>) {
+    const bool named =
+        value.source.kind == ResolvedVectorSourceKind::NamedVector &&
+        valid_value_vector_source(value, locations, true, fallback);
+    if (value.source.whole_base)
+      collect_operand_references(value.source.whole_base->value,
+                                 value.source.whole_base->locs, fallback, uses,
+                                 address_resolution_policy);
     for (size_t index = 0; index < value.elements.size(); ++index) {
       const auto* register_ref =
           std::get_if<ResolvedRegisterRef>(&value.elements[index]);
@@ -795,6 +1025,7 @@ void collect_operand_references(
           index < locations.size() ? locations[index] : fallback};
       collect_operand_references(*register_ref, lane_range, fallback, uses,
                                  address_resolution_policy);
+      uses.back().named_vector_projection = named;
     }
   } else if constexpr (std::same_as<Value, ResolvedTensorCoordinate> ||
                        std::same_as<Value, ResolvedTensorIm2colInfo>) {
@@ -824,6 +1055,9 @@ void collect_operand_references(
     const std::array<SourceRange, 1> map_range{value.tensor_map.range};
     collect_operand_references(value.tensor_map.address, map_range, fallback,
                                uses, address_resolution_policy);
+    if (std::holds_alternative<ResolvedRegisterRef>(
+            value.tensor_map.address.base))
+      uses.back().excludes_register_component = true;
     for (size_t index = 0; index < value.coordinates.elements.size(); ++index) {
       const auto* register_ref =
           std::get_if<ResolvedRegisterRef>(&value.coordinates.elements[index]);
@@ -895,8 +1129,12 @@ void collect_operand_references(
                                    address_resolution_policy);
     if (const auto* register_ref =
             std::get_if<ResolvedRegisterRef>(&value.base)) {
-      collect_register(*register_ref);
-      uses.back().excludes_register_component = true;
+      const auto leaf = register_ref->component
+                            ? register_ref->component->range
+                            : reference_range(locations, fallback);
+      collect_operand_references(*register_ref,
+                                 std::array<SourceRange, 1>{leaf}, fallback,
+                                 uses, address_resolution_policy);
     } else if (const auto* symbol = std::get_if<ResolvedSymbolRef>(&value.base))
       collect_operand_references(*symbol, locations, fallback, uses,
                                  address_resolution_policy, &value);
@@ -943,8 +1181,29 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   /** Borrow destination and instruction fallback only for one synchronous visit. */
   ReferenceCollector(std::vector<ModuleReferenceUse>& uses,
                      SourceRange fallback,
-                     checker::CheckDiagnostics& diagnostics)
-      : uses_(uses), fallback_(fallback), diagnostics_(diagnostics) {}
+                     checker::CheckDiagnostics& diagnostics,
+                     size_t instruction_index)
+      : instruction_index_(instruction_index),
+        uses_(uses),
+        fallback_(fallback),
+        diagnostics_(diagnostics) {}
+  /** Copy required facts during the bracket; nullptr drops all prior context. */
+  void operand_context(const checker::OperandDescriptor* operand,
+                       std::optional<MemoryStateSpace> selected) override {
+    address_operand_.reset();
+    if (!operand)
+      return;
+    ParameterAddressOperandFacts facts{
+        .selected_space = selected,
+        .access = operand->access,
+        .direction = operand->parameter_constraint.direction,
+        .field = std::string(operand->target_field_id),
+        .instruction_range = fallback_,
+        .instruction_index = instruction_index_};
+    for (const auto& entry : operand->allowed_address_state_spaces)
+      facts.allowed_spaces.push_back(entry.state_space);
+    address_operand_ = std::move(facts);
+  }
   /** Collect a video carrier independently of its retained selector or minus. */
   void video_operand(const ResolvedVideoOperand& value,
                      std::span<const SourceRange> locations,
@@ -960,7 +1219,43 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void address(const ResolvedAddress& value,
                std::span<const SourceRange> locations,
                checker::AddressSymbolResolutionPolicy policy) override {
+    const auto outer = reference_range(locations, fallback_);
+    const auto inside = [](SourceRange leaf, SourceRange owner) {
+      const auto key = [](SourcePos position) {
+        return std::pair{position.line, position.column};
+      };
+      return valid_instruction_range(leaf) && valid_instruction_range(owner) &&
+             key(owner.start) <= key(leaf.start) &&
+             key(leaf.end) <= key(owner.end);
+    };
+    const auto selected = [&](const ResolvedRegisterRef& ref,
+                              SourceRange leaf) {
+      if (ref.component && ref.declared_type &&
+          base::scalar_size_of(*ref.declared_type) *
+                  ref.component->declaration_width >
+              16)
+        append_model_mismatch(diagnostics_, leaf,
+                              "Selected address register owner exceeds the "
+                              "physical vector width.");
+      if (ref.component &&
+          (ref.component->range != leaf || locations.size() != 1 ||
+           !inside(leaf, outer) || !inside(outer, fallback_)))
+        append_model_mismatch(diagnostics_, leaf,
+                              "Selected address register range disagrees with "
+                              "its owned operand.");
+    };
+    if (const auto* ref = std::get_if<ResolvedRegisterRef>(&value.base))
+      if (ref->component)
+        selected(*ref, ref->component->range);
+    if (value.named_index)
+      if (const auto* index = std::get_if<WithLocs<ResolvedRegisterRef>>(
+              &value.named_index->index))
+        selected(index->value, value.named_index->index_range);
+    const auto begin = uses_.size();
     collect_operand_references(value, locations, fallback_, uses_, policy);
+    for (auto index = begin; index < uses_.size(); ++index)
+      if (uses_[index].address_symbol)
+        uses_[index].address_operand = address_operand_;
   }
   /** Collect declaration identities from a borrowed ResolvedBranchTarget. */
   void branch_target(const ResolvedBranchTarget& value,
@@ -975,10 +1270,40 @@ class ReferenceCollector final : public detail::IReferenceObserver {
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
+  /** Check selection provenance inside its owned operand and instruction ranges. */
+  void check_call_selection(const ResolvedCallParameterRef& value,
+                            std::span<const SourceRange> locations) {
+    if (!value.component)
+      return;
+    const auto inside = [](SourceRange leaf, SourceRange outer) {
+      const auto key = [](SourcePos p) {
+        return std::pair{p.line, p.column};
+      };
+      return valid_instruction_range(leaf) && valid_instruction_range(outer) &&
+             key(outer.start) <= key(leaf.start) &&
+             key(leaf.end) <= key(outer.end);
+    };
+    const auto& part = *value.component;
+    if (locations.size() != 1 || !inside(part.range, locations.front()) ||
+        !inside(locations.front(), fallback_))
+      append_model_mismatch(
+          diagnostics_, part.range,
+          "Selected call register range disagrees with its owned operand.");
+    if (!value.declared_type ||
+        base::scalar_size_of(*value.declared_type) * part.declaration_width >
+            16)
+      append_model_mismatch(
+          diagnostics_, part.range,
+          "Selected call register owner exceeds the physical vector width.");
+  }
   /** Collect declaration identities from a borrowed ResolvedCallArguments. */
   void call_arguments(const ResolvedCallArguments& value,
                       std::span<const SourceRange> locations,
                       checker::AddressSymbolResolutionPolicy policy) override {
+    for (const auto& argument : value.values)
+      if (const auto* parameter =
+              std::get_if<ResolvedCallParameterRef>(&argument.value))
+        check_call_selection(*parameter, argument.locs);
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedCallParameterRef. */
@@ -986,6 +1311,7 @@ class ReferenceCollector final : public detail::IReferenceObserver {
       const ResolvedCallParameterRef& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
+    check_call_selection(value, locations);
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedCpAsyncSourceControl. */
@@ -1024,7 +1350,15 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void mov_source(const ResolvedMovSource& value,
                   std::span<const SourceRange> locations,
                   checker::AddressSymbolResolutionPolicy policy) override {
+    if (const auto* selected = std::get_if<ResolvedAddress>(&value)) {
+      address(*selected, locations, policy);
+      return;
+    }
+    const auto begin = uses_.size();
     collect_operand_references(value, locations, fallback_, uses_, policy);
+    for (auto index = begin; index < uses_.size(); ++index)
+      if (uses_[index].address_symbol)
+        uses_[index].address_operand = address_operand_;
   }
   /** Collect declaration identities from a borrowed ResolvedPredicate. */
   void predicate(const ResolvedPredicate& value,
@@ -1086,6 +1420,10 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void value_vector(const ResolvedValueVector& value,
                     std::span<const SourceRange> locations,
                     checker::AddressSymbolResolutionPolicy policy) override {
+    if (!valid_value_vector_source(value, locations, true, fallback_))
+      append_model_mismatch(
+          diagnostics_, fallback_,
+          "Owned value vector has invalid source provenance.");
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Rejoin owned vector MOV base and lanes, requiring complete source provenance. */
@@ -1110,7 +1448,11 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void symbol_ref(const ResolvedSymbolRef& value,
                   std::span<const SourceRange> locations,
                   checker::AddressSymbolResolutionPolicy policy) override {
+    const auto begin = uses_.size();
     collect_operand_references(value, locations, fallback_, uses_, policy);
+    for (auto index = begin; index < uses_.size(); ++index)
+      if (uses_[index].address_symbol)
+        uses_[index].address_operand = address_operand_;
   }
   /** Collect declaration identities from a borrowed ResolvedTensorCoordinate. */
   void tensor_coordinate(
@@ -1130,7 +1472,11 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void tensor_operand(const ResolvedTensorOperand& value,
                       std::span<const SourceRange> locations,
                       checker::AddressSymbolResolutionPolicy policy) override {
+    const auto begin = uses_.size();
     collect_operand_references(value, locations, fallback_, uses_, policy);
+    for (auto index = begin; index < uses_.size(); ++index)
+      if (uses_[index].address_symbol)
+        uses_[index].address_operand = address_operand_;
   }
   /** Collect each bound register in a borrowed transport handle. */
   void fabric_handle(const ResolvedFabricHandle& value,
@@ -1196,11 +1542,25 @@ class ReferenceCollector final : public detail::IReferenceObserver {
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
-  /** Collect the bound register carrying a shared matrix descriptor. */
+  /** Check the full physical component owner before collecting its binding.
+   * The later actual-symbol join remains authoritative for cached type/width.
+   */
   void shared_matrix_descriptor(
       const ResolvedSharedMatrixDescriptor& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
+    const auto& reg = value.register_ref;
+    if (reg.component && reg.declared_type) {
+      const auto* metadata =
+          base::find_scalar_type_metadata(*reg.declared_type);
+      // Division keeps the 16-byte owner ceiling safe for all stored widths.
+      if (metadata && metadata->size_bytes > 0 &&
+          reg.component->declaration_width > 16 / metadata->size_bytes)
+        append_model_mismatch(
+            diagnostics_, reference_range(locations, fallback_),
+            "Selected shared matrix descriptor register owner exceeds the "
+            "physical vector width.");
+    }
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedVectorRegisterRef. */
@@ -1212,6 +1572,11 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   }
 
  private:
+  /** Current owning body position copied into address-use facts. */
+  size_t instruction_index_;
+
+  /** Owned copied metadata, valid only until the next context/reset callback. */
+  std::optional<ParameterAddressOperandFacts> address_operand_;
   /** Borrowed ordered destination, valid for this visitor's stack lifetime. */
   std::vector<ModuleReferenceUse>& uses_;
   /** Owned instruction source range used when an operand has no explicit range. */
@@ -1341,6 +1706,99 @@ void check_address_symbol_binding(const binding::Symbol& bound_symbol,
   }
 }
 
+/** Format typed spaces for the same address diagnostics as operand checking. */
+std::string_view parameter_address_space_name(MemoryStateSpace space) {
+  switch (space) {
+    case MemoryStateSpace::Generic:
+      return "generic";
+    case MemoryStateSpace::Global:
+      return "global";
+    case MemoryStateSpace::Shared:
+      return "shared";
+    case MemoryStateSpace::Local:
+      return "local";
+    case MemoryStateSpace::Parameter:
+      return "param";
+    case MemoryStateSpace::Constant:
+      return "const";
+    default:
+      return "invalid";
+  }
+}
+
+/** Check known current Parameter objects without requiring target/version context. */
+void check_parameter_address_operand(
+    const binding::Symbol& symbol, const ModuleReferenceUse& use,
+    const ResolvedFunction& function, checker::CheckDiagnostics& diagnostics,
+    checker::CheckDiagnostics& intrinsic_causes) {
+  if (!use.address_symbol || !use.address_operand ||
+      symbol.state_space != base::DeclarationStateSpace::Parameter)
+    return;
+  const auto declaration = std::ranges::find_if(
+      function.parameter_declarations,
+      [&](const auto& parameter) { return parameter.symbol_id == symbol.id; });
+  if (declaration == function.parameter_declarations.end() ||
+      declaration->scope_id != symbol.scope) {
+    append_model_mismatch(
+        diagnostics, use.range,
+        "Resolved Parameter address has no current declaration record.");
+    return;
+  }
+  const auto& operand = *use.address_operand;
+  const bool legacy =
+      declaration->role == ParameterDeclarationRole::LegacyEntryInput;
+  if ((declaration->role == ParameterDeclarationRole::EntryInput || legacy) &&
+      (operand.access == checker::OperandAccess::Write ||
+       operand.access == checker::OperandAccess::ReadWrite ||
+       operand.direction == ParameterDirection::Return)) {
+    append_parameter_address_intrinsic(
+        diagnostics, intrinsic_causes,
+        {
+            .kind = legacy ? checker::CheckDiagnosticKind::ModuleSourceMismatch
+                           : checker::CheckDiagnosticKind::RuleViolation,
+            .range = operand.instruction_range,
+            .message = legacy ? "Legacy entry input parameters are read-only."
+                              : "Entry input .param storage is read-only for "
+                                "this operand.",
+        });
+    return;
+  }
+  const bool materialized =
+      use.address_resolution_policy ==
+          checker::AddressSymbolResolutionPolicy::MaterializeDeviceParameter &&
+      !function.is_entry &&
+      (symbol.kind == binding::SymbolKind::InputParameter ||
+       symbol.kind == binding::SymbolKind::ReturnParameter);
+  const auto effective =
+      materialized ? MemoryStateSpace::Local : MemoryStateSpace::Parameter;
+  if (operand.selected_space && *operand.selected_space != effective) {
+    append_parameter_address_intrinsic(
+        diagnostics, intrinsic_causes,
+        {
+            .kind = checker::CheckDiagnosticKind::AddressStateSpaceMismatch,
+            .range = use.range,
+            .message = fmt::format(
+                "Address operand '{}' has effective .{} state space but the "
+                "instruction requires .{}.",
+                operand.field, parameter_address_space_name(effective),
+                parameter_address_space_name(*operand.selected_space)),
+        });
+  }
+  if (!operand.allowed_spaces.empty() &&
+      !std::ranges::contains(operand.allowed_spaces, effective)) {
+    append_parameter_address_intrinsic(
+        diagnostics, intrinsic_causes,
+        {
+            .kind = checker::CheckDiagnosticKind::AddressStateSpaceMismatch,
+            .range = use.range,
+            .message = fmt::format(
+                "Address operand '{}' has effective .{} state space, which "
+                "this instruction operand does not accept.",
+                operand.field, parameter_address_space_name(effective)),
+        });
+  }
+}
+
 /** Compare cached stack ownership to the actual containing module function. */
 struct StackContextObserver final : detail::IReferenceObserver {
   /** Borrowed containing function, valid throughout immediate traversal. */
@@ -1380,19 +1838,21 @@ struct StackContextObserver final : detail::IReferenceObserver {
   }
 };
 
-/** Revalidate identities embedded in generated instruction operand payloads. */
-void check_module_references(const ResolvedModule& module,
-                             const ResolvedFunction& function,
-                             checker::CheckDiagnostics& diagnostics) {
+/** Revalidate operand identities; calls_only limits recursion preflight to actual calls. */
+void check_module_references(
+    const ResolvedModule& module, const ResolvedFunction& function,
+    checker::CheckDiagnostics& diagnostics, bool calls_only = false,
+    std::span<checker::CheckDiagnostics> intrinsic_causes = {}) {
   std::vector<ModuleReferenceUse> uses;
   for (size_t index = 0; index < function.body.size(); ++index) {
-    if (!function.body[index])
+    if (!function.body[index] ||
+        (calls_only && !instruction_if<CallDirect>(function.body[index])))
       continue;
     StackContextObserver stack_context(function, diagnostics,
                                        function.instruction_ranges[index]);
     function.body[index]->visit_references(stack_context);
     ReferenceCollector collector(uses, function.instruction_ranges[index],
-                                 diagnostics);
+                                 diagnostics, index);
     function.body[index]->visit_references(collector);
   }
   for (const auto& use : uses) {
@@ -1425,11 +1885,43 @@ void check_module_references(const ResolvedModule& module,
           "Resolved module operand has an incompatible declaration identity.");
       continue;
     }
+    if (use.call_parameter) {
+      const auto& cached = *use.call_parameter;
+      const auto declared =
+          symbol->type ? detail::scalar_type_from_ptx_name(*symbol->type)
+                       : std::nullopt;
+      const auto lookup = module.symbols.lookup(
+          symbol->scope,
+          cached.component ? cached.component->base_spelling : cached.spelling);
+      const bool parameter_or_variable =
+          symbol->kind == binding::SymbolKind::Variable ||
+          symbol->kind == binding::SymbolKind::InputParameter ||
+          symbol->kind == binding::SymbolKind::ReturnParameter ||
+          symbol->kind == binding::SymbolKind::CallParameter;
+      if (!parameter_or_variable || !declared ||
+          cached.declared_type != declared ||
+          cached.state_space != symbol->state_space ||
+          (symbol->state_space != base::DeclarationStateSpace::Register &&
+           symbol->state_space != base::DeclarationStateSpace::Parameter) ||
+          !lookup || lookup->symbol != symbol->id ||
+          lookup->parameterized_index != cached.parameterized_index)
+        append_model_mismatch(diagnostics, use.range,
+                              "Resolved call parameter metadata disagrees with "
+                              "its owned declaration.");
+    }
     if (use.register_ref) {
       const auto declared =
           symbol->type ? detail::scalar_type_from_ptx_name(*symbol->type)
                        : std::nullopt;
       const auto& cached = *use.register_ref;
+      const auto lookup = module.symbols.lookup(
+          symbol->scope,
+          cached.component ? cached.component->base_spelling : cached.spelling);
+      const bool register_binding_valid =
+          lookup && lookup->symbol == symbol->id &&
+          lookup->parameterized_index == cached.parameterized_index &&
+          (!symbol->parameterized_count ||
+           cached.parameterized_index.has_value());
       const auto declaration_width =
           cached.component ? std::optional{cached.component->declaration_width}
                            : cached.vector_width;
@@ -1437,8 +1929,6 @@ void check_module_references(const ResolvedModule& module,
           (valid_register_component(cached) || use.named_vector_projection) &&
           !(use.excludes_register_component && cached.component);
       if (cached.component) {
-        const auto lookup = module.symbols.lookup(
-            symbol->scope, cached.component->base_spelling);
         component_binding_valid =
             component_binding_valid && lookup && lookup->symbol == symbol->id &&
             lookup->parameterized_index == cached.parameterized_index &&
@@ -1446,7 +1936,7 @@ void check_module_references(const ResolvedModule& module,
       }
       if (!declared || cached.declared_type != declared ||
           declaration_width != symbol->vector_width ||
-          !component_binding_valid ||
+          !register_binding_valid || !component_binding_valid ||
           cached.register_class != (*declared == ScalarType::Pred
                                         ? ResolvedRegisterClass::Predicate
                                         : ResolvedRegisterClass::General)) {
@@ -1454,6 +1944,16 @@ void check_module_references(const ResolvedModule& module,
             diagnostics, use.range,
             "Resolved register metadata disagrees with its owned declaration.");
       }
+      if (use.requires_function_address &&
+          (!declared || !detail::is_function_address_register_type(*declared) ||
+           cached.register_class != ResolvedRegisterClass::General ||
+           (symbol->vector_width && !cached.component) ||
+           (symbol->vector_width && declared &&
+            base::scalar_size_of(*declared) * *symbol->vector_width > 16)))
+        append_model_mismatch(
+            diagnostics, use.range,
+            "Indirect function address requires a scalar General integer or "
+            "bit register no wider than 64 bits.");
     }
     if (use.opaque_use_kind &&
         *use.opaque_use_kind != base::OpaqueResourceKind::Texture &&
@@ -1492,14 +1992,120 @@ void check_module_references(const ResolvedModule& module,
                               "Indirect resource carrier is not a scalar "
                               "64-bit integer or bit register.");
     }
-    if (use.parameterized_index &&
-        (!symbol->parameterized_count ||
-         *use.parameterized_index >= *symbol->parameterized_count)) {
+    if ((use.parameterized_index &&
+         (!symbol->parameterized_count ||
+          *use.parameterized_index >= *symbol->parameterized_count)) ||
+        (symbol->kind == binding::SymbolKind::CallParameter &&
+         symbol->parameterized_count && !use.parameterized_index)) {
       append_model_mismatch(
           diagnostics, use.range,
           "Resolved module operand has an invalid parameterized member index.");
+      continue;
     }
+    const auto before_address = diagnostics.size();
     check_address_symbol_binding(*symbol, use, function, module, diagnostics);
+    if (diagnostics.size() == before_address && use.address_operand &&
+        use.address_operand->instruction_index < intrinsic_causes.size())
+      check_parameter_address_operand(
+          *symbol, use, function, diagnostics,
+          intrinsic_causes[use.address_operand->instruction_index]);
+  }
+}
+
+/** Rejoin semantic role caches against current records before any context skip.
+ * Callback copies are local to this validation; the actual record remains the
+ * independent authority even when the operand cache has been corrupted.
+ */
+void check_parameter_reference_roles(const ResolvedModule& module,
+                                     const ResolvedFunction& function,
+                                     checker::CheckDiagnostics& destination) {
+  checker::CheckDiagnostics diagnostics;
+  std::vector<ModuleReferenceUse> uses;
+  for (size_t i = 0; i < function.body.size(); ++i) {
+    if (!function.body[i])
+      continue;
+    ReferenceCollector collector(uses,
+                                 i < function.instruction_ranges.size()
+                                     ? function.instruction_ranges[i]
+                                     : function.range,
+                                 diagnostics, i);
+    function.body[i]->visit_references(collector);
+  }
+  for (const auto& use : uses) {
+    const auto* symbol =
+        use.symbol_id ? owned_symbol(module, *use.symbol_id) : nullptr;
+    const auto record = std::ranges::find_if(
+        function.parameter_declarations,
+        [&](const auto& value) { return use.symbol_id == value.symbol_id; });
+    const bool legacy =
+        record != function.parameter_declarations.end() &&
+        record->role == ParameterDeclarationRole::LegacyEntryInput;
+    if (use.address_symbol) {
+      // The shared current-binding/domain pass owns identity, scope, member,
+      // and physical declaration proof in both module APIs before context skips.
+      if (!symbol)
+        continue;
+      const auto& cached = *use.address_symbol;
+      if (!valid_parameter_role_cache(
+              &cached, use.enclosing_address_function_kind.value_or(
+                           EnclosingFunctionKind::Unknown)) ||
+          (cached.parameter_role &&
+           (!symbol || record == function.parameter_declarations.end() ||
+            *cached.parameter_role != record->role)) ||
+          (legacy &&
+           (!cached.parameter_role ||
+            cached.declaration_kind != binding::SymbolKind::CallParameter ||
+            cached.declaration_state_space !=
+                base::DeclarationStateSpace::Parameter ||
+            cached.address_state_space !=
+                base::DeclarationStateSpace::Parameter ||
+            cached.enclosing_function_kind != EnclosingFunctionKind::Entry)))
+        append_model_mismatch(diagnostics, use.range,
+                              "Resolved symbol parameter-role cache disagrees "
+                              "with its current owned declaration.");
+      if (legacy) {
+        if (cached.parameter_qualifier == ParameterAddressQualifier::Function)
+          append_model_mismatch(
+              diagnostics, use.range,
+              "Legacy entry input requires the entry parameter frame.");
+      }
+    } else if (legacy) {
+      append_model_mismatch(
+          diagnostics, use.range,
+          "Legacy entry input cannot be used directly as a call argument or "
+          "return; load its value into a register.");
+    }
+  }
+  for (const auto& diagnostic : diagnostics)
+    if (std::ranges::none_of(destination, [&](const auto& previous) {
+          return previous.kind == diagnostic.kind &&
+                 previous.range == diagnostic.range &&
+                 previous.message == diagnostic.message;
+        }))
+      destination.push_back(diagnostic);
+}
+
+/** Check the currently typed body role with independently known context facts. */
+void check_body_parameter_roles(
+    const ResolvedFunction& function,
+    std::optional<checker::PtxVersion> version,
+    const std::optional<base::TargetProfile>& profile,
+    checker::CheckDiagnostics& diagnostics) {
+  DirectiveAvailabilityKeys emitted;
+  for (const auto& record : function.parameter_declarations) {
+    if (record.role == ParameterDeclarationRole::LegacyEntryInput) {
+      if (version && (*version < checker::PtxVersion{1, 0} ||
+                      *version >= checker::PtxVersion{1, 4}))
+        diagnostics.push_back(
+            {.kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+             .range = function.range,
+             .message =
+                 "Legacy entry input requires PTX ISA >= 1.0 and < 1.4."});
+    } else if (record.role == ParameterDeclarationRole::BodyLocal) {
+      append_minimum_requirement(
+          diagnostics, emitted, DirectiveAvailability::BodyParameter, version,
+          profile, function.range, "Body-local call .param");
+    }
   }
 }
 
@@ -1771,6 +2377,42 @@ void check_header_features(std::optional<checker::PtxVersion> version,
   }
 }
 
+/** Borrow the first known debug directive range across all owned source regions. */
+std::optional<SourceRange> target_debug_range(
+    const ResolvedModuleHeader& header) {
+  for (const auto& region : header.regions)
+    for (const auto& option : region.target_options)
+      if (base::classify_target_directive_item(option) ==
+          base::TargetDirectiveItemKind::Debug)
+        return region.range;
+  return std::nullopt;
+}
+/** A supplied AST contributes its own file-wide debug option facts. */
+std::optional<SourceRange> target_debug_range(
+    const syntax_ast::AstModule& ast) {
+  for (const auto& item : ast.items)
+    if (const auto* target = std::get_if<syntax_ast::AstTargetDirective>(&item))
+      for (const auto& option : target->targets)
+        if (base::classify_target_directive_item(option.text) ==
+            base::TargetDirectiveItemKind::Debug)
+          return option.range;
+  return std::nullopt;
+}
+/** Reject definite absence only; section records do not certify decoded DWARF. */
+void check_target_debug_sections(
+    std::optional<SourceRange> debug_range,
+    std::span<const ResolvedDebugSection> sections,
+    std::span<const ResolvedLegacyDwarfRecord> legacy,
+    checker::CheckDiagnostics& diagnostics) {
+  if (debug_range && sections.empty() && legacy.empty())
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::RuleViolation,
+        .range = *debug_range,
+        .message = "Target debug requires DWARF information, but this dataset "
+                   "contains no sections or legacy debug records.",
+    });
+}
+
 /** Validate header payload/provenance consistency under public IR mutation. */
 void check_header_region(const ResolvedSourceTargetRegion& region,
                          SourceRange range,
@@ -1879,7 +2521,7 @@ void check_module_texture_mode(const ResolvedModuleHeader& header,
 void check_resource_contracts(const ResolvedFunction& function,
                               checker::CheckDiagnostics& diagnostics) {
   constexpr size_t resource_kind_count =
-      static_cast<size_t>(ResolvedKernelResourceKind::MaxClusterRank) + 1;
+      static_cast<size_t>(ResolvedKernelResourceKind::MaxNctaPerSm) + 1;
   std::array<bool, resource_kind_count> seen{};
   bool has_max_ntid = false;
   bool has_req_ntid = false;
@@ -1908,10 +2550,29 @@ void check_resource_contracts(const ResolvedFunction& function,
                                                                        : 1;
     if (resource.values.size() != expected_values ||
         resource.explicit_value_count > resource.values.size() ||
-        (dimensions && resource.explicit_value_count == 0)) {
+        (dimensions && resource.explicit_value_count == 0) ||
+        (resource.kind == ResolvedKernelResourceKind::MaxNctaPerSm &&
+         resource.explicit_value_count != 1)) {
       append_model_mismatch(
           diagnostics, resource.range,
           "Resolved kernel resource has an invalid dimensional payload.");
+    }
+    if (resource.kind == ResolvedKernelResourceKind::MaxNctaPerSm &&
+        resource.range != SourceRange{}) {
+      const auto start = [](SourceRange r) {
+        return std::pair{r.start.line, r.start.column};
+      };
+      const auto end = [](SourceRange r) {
+        return std::pair{r.end.line, r.end.column};
+      };
+      if (!valid_instruction_range(resource.range) ||
+          (function.range != SourceRange{} &&
+           (!valid_instruction_range(function.range) ||
+            start(resource.range) < start(function.range) ||
+            end(function.range) < end(resource.range))))
+        append_model_mismatch(
+            diagnostics, resource.range,
+            "Resolved .maxnctapersm has an invalid source range.");
     }
     if (dimensions) {
       for (size_t i = resource.explicit_value_count; i < resource.values.size();
@@ -1965,6 +2626,15 @@ void check_resource_contracts(const ResolvedFunction& function,
 /** Validate function-only attribute, signature, and ABI suffix invariants. */
 void check_function_contract_integrity(const ResolvedFunction& function,
                                        checker::CheckDiagnostics& diagnostics) {
+  if (function.contract.language_values &&
+      (function.contract.language_values->empty() ||
+       std::ranges::any_of(*function.contract.language_values,
+                           [](const std::string& value) {
+                             return !declaration_semantics::languageCode(value);
+                           })))
+    append_model_mismatch(
+        diagnostics, function.range,
+        "Resolved .language requires a nonempty list of supported raw tokens.");
   bool unified = false;
   for (const auto& attribute : function.contract.attributes) {
     if (attribute.kind == ResolvedFunctionAttributeKind::Managed) {
@@ -2030,6 +2700,65 @@ uint8_t formal_vector_width(
   }
 }
 
+/** Check positive shape and bounded products, distinguishing unsized from zero bytes. */
+bool checked_declaration_extent(
+    ScalarType type, uint32_t lanes,
+    std::span<const std::optional<uint64_t>> extents, bool allow_unsized,
+    std::optional<uint64_t>& result) {
+  result.reset();
+  if (!base::find_scalar_type_metadata(type) ||
+      (lanes != 1 && lanes != 2 && lanes != 4))
+    return false;
+  uint64_t bytes = base::scalar_size_of(type) * lanes;
+  if (bytes == 0 || bytes > 16)
+    return false;
+  bool unsized = false;
+  for (size_t axis = 0; axis < extents.size(); ++axis) {
+    if (!extents[axis]) {
+      if (!allow_unsized || axis != 0)
+        return false;
+      unsized = true;
+    } else {
+      const uint64_t count = *extents[axis];
+      if (count == 0 || bytes > std::numeric_limits<uint64_t>::max() / count)
+        return false;
+      bytes *= count;
+    }
+  }
+  if (!unsized)
+    result = bytes;
+  return true;
+}
+
+/** Check typed entry-pointer attributes without inventing an address or ABI slot. */
+bool valid_parameter_pointer(
+    ParameterDeclarationRole role, ScalarType type, uint32_t lanes, bool array,
+    const std::optional<call_argument_compatibility::PointerProperties>&
+        attributes) {
+  if (!attributes)
+    return true;
+  using call_argument_compatibility::PointedStateSpace;
+  const auto& pointer = *attributes;
+  if (role != ParameterDeclarationRole::EntryInput || array || lanes != 1 ||
+      (type != ScalarType::B32 && type != ScalarType::B64 &&
+       type != ScalarType::S32 && type != ScalarType::S64 &&
+       type != ScalarType::U32 && type != ScalarType::U64) ||
+      !std::has_single_bit(pointer.pointed_alignment))
+    return false;
+  if (!pointer.pointed_state_space)
+    return true;
+  switch (*pointer.pointed_state_space) {
+    case PointedStateSpace::Local:
+    case PointedStateSpace::Shared:
+    case PointedStateSpace::Global:
+    case PointedStateSpace::Constant:
+      return true;
+    case PointedStateSpace::Invalid:
+      return false;
+  }
+  return false;
+}
+
 /** Validate vector formal invariants without borrowing syntax. */
 bool valid_formal_vector(
     const declaration_semantics::FunctionParameterContract& parameter) {
@@ -2039,10 +2768,16 @@ bool valid_formal_vector(
   if (width == 1)
     return true;
   const auto* metadata = base::find_scalar_type_metadata(parameter.scalar_type);
-  return parameter.state_space ==
-             call_argument_compatibility::CallArgumentStateSpace::Register &&
-         !parameter.is_array && !parameter.is_pointer &&
-         !parameter.opaque_kind && metadata &&
+  return (parameter.state_space ==
+              call_argument_compatibility::CallArgumentStateSpace::Parameter ||
+          (parameter.state_space ==
+               call_argument_compatibility::CallArgumentStateSpace::Register &&
+           parameter.array_extents.empty())) &&
+         (parameter.array_extents.empty() ||
+          declaration_semantics::detail::parameter_array_extent(
+              parameter.array_extents)
+              .total.has_value()) &&
+         !parameter.is_pointer && !parameter.opaque_kind && metadata &&
          metadata->register_declaration_usage ==
              base::ScalarDeclarationUsage::Fundamental &&
          parameter.scalar_type != ScalarType::Pred &&
@@ -2054,32 +2789,84 @@ bool valid_scalar_contract(
     const declaration_semantics::FunctionParameterContract& parameter) {
   if (parameter.scalar_type == base::ScalarType::Invalid)
     return false;
-  return base::find_scalar_type_metadata(parameter.scalar_type) != nullptr;
+  const auto* metadata = base::find_scalar_type_metadata(parameter.scalar_type);
+  return metadata &&
+         metadata->register_declaration_usage ==
+             base::ScalarDeclarationUsage::Fundamental &&
+         (parameter.scalar_type != ScalarType::Pred ||
+          parameter.state_space ==
+              call_argument_compatibility::CallArgumentStateSpace::Register);
+}
+
+/** Project known normalized axes; callers separately reject invalid numeric keys. */
+std::vector<std::optional<uint64_t>> parameter_axes(
+    const declaration_semantics::FunctionParameterContract& parameter) {
+  std::vector<std::optional<uint64_t>> result;
+  for (const auto& axis : parameter.array_extents)
+    result.push_back(declaration_semantics::contract_constant(axis));
+  return result;
 }
 
 /** Check the normalized signature fields needed by contextual call validation. */
 void check_signature(const declaration_semantics::FunctionSignature& signature,
                      SourceRange range,
                      checker::CheckDiagnostics& diagnostics) {
-  const auto check_parameters = [&](const auto& parameters, bool entry_inputs) {
-    for (const auto& parameter : parameters) {
-      if (!valid_formal_vector(parameter) ||
-          (entry_inputs &&
-           parameter.vector_shape !=
-               call_argument_compatibility::CallArgumentVectorShape::Scalar))
+  const auto check_parameters = [&](const auto& parameters, bool entry_inputs,
+                                    bool input_list) {
+    for (size_t index = 0; index < parameters.size(); ++index) {
+      const auto& parameter = parameters[index];
+      if (!valid_formal_vector(parameter))
         append_model_mismatch(
             diagnostics, range,
             "Resolved function signature has invalid vector shape.");
       if ((parameter.alignment &&
            !std::holds_alternative<uint64_t>(*parameter.alignment)) ||
-          (parameter.array_extent &&
-           !std::holds_alternative<uint64_t>(*parameter.array_extent)) ||
+          !declaration_semantics::detail::parameter_array_extent(
+               parameter.array_extents)
+               .valid ||
           (parameter.pointer_alignment &&
-           !std::holds_alternative<uint64_t>(*parameter.pointer_alignment)) ||
-          (!parameter.is_array && parameter.array_extent))
+           !std::holds_alternative<uint64_t>(*parameter.pointer_alignment)))
         append_model_mismatch(diagnostics, range,
                               "Resolved function signature has invalid "
                               "normalized numeric fields.");
+      if (!parameter.opaque_kind) {
+        const auto alignment =
+            declaration_semantics::contract_constant(parameter.alignment);
+        const auto extents = parameter_axes(parameter);
+        const auto lanes = formal_vector_width(parameter.vector_shape);
+        const bool unsized =
+            input_list && !entry_inputs && index + 1 == parameters.size() &&
+            parameter.state_space == call_argument_compatibility::
+                                         CallArgumentStateSpace::Parameter &&
+            parameter.scalar_type == ScalarType::B8 && lanes == 1;
+        std::optional<uint64_t> bytes;
+        if (!alignment || !std::has_single_bit(*alignment) ||
+            !checked_declaration_extent(parameter.scalar_type, lanes, extents,
+                                        unsized, bytes))
+          append_model_mismatch(diagnostics, range,
+                                "Resolved function signature has invalid "
+                                "alignment, array shape or byte extent.");
+      }
+      const auto properties =
+          declaration_semantics::call_argument_properties(parameter);
+      if ((!parameter.array_extents.empty() &&
+           parameter.state_space != call_argument_compatibility::
+                                        CallArgumentStateSpace::Parameter) ||
+          (!parameter.is_pointer &&
+           (parameter.pointed_state_space || parameter.pointer_alignment)) ||
+          (parameter.is_pointer &&
+           (parameter.state_space != call_argument_compatibility::
+                                         CallArgumentStateSpace::Parameter ||
+            !properties.pointer ||
+            !valid_parameter_pointer(
+                entry_inputs ? ParameterDeclarationRole::EntryInput
+                             : ParameterDeclarationRole::DeviceInput,
+                parameter.scalar_type,
+                formal_vector_width(parameter.vector_shape),
+                !parameter.array_extents.empty(), properties.pointer))))
+        append_model_mismatch(diagnostics, range,
+                              "Resolved function signature has invalid "
+                              "parameter role or pointer attributes.");
       const bool valid_opaque =
           parameter.opaque_kind && entry_inputs &&
           parameter.scalar_type == base::ScalarType::Invalid &&
@@ -2093,16 +2880,62 @@ void check_signature(const declaration_semantics::FunctionSignature& signature,
             diagnostics, range,
             "Resolved function signature has an invalid parameter type.");
       }
-      if (parameter.state_space ==
-          call_argument_compatibility::CallArgumentStateSpace::Invalid) {
+      if ((parameter.state_space !=
+               call_argument_compatibility::CallArgumentStateSpace::Register &&
+           parameter.state_space != call_argument_compatibility::
+                                        CallArgumentStateSpace::Parameter) ||
+          (entry_inputs && parameter.state_space !=
+                               call_argument_compatibility::
+                                   CallArgumentStateSpace::Parameter)) {
         append_model_mismatch(
             diagnostics, range,
             "Resolved function signature has an invalid state space.");
       }
     }
   };
-  check_parameters(signature.return_parameters, false);
-  check_parameters(signature.parameters, signature.is_entry);
+  check_parameters(signature.return_parameters, false, false);
+  check_parameters(signature.parameters, signature.is_entry, true);
+}
+
+/** Apply the whole-value register-formal minimum in a known default ABI context. */
+void check_register_formal_width(
+    const declaration_semantics::FunctionSignature& signature,
+    const checker::TargetInfo& target, SourceRange range,
+    checker::CheckDiagnostics& diagnostics) {
+  if (target.ptx_version < checker::PtxVersion{2, 0} || target.sm_version < 20)
+    return;
+  const auto check = [&](const auto& parameters) {
+    for (const auto& parameter : parameters) {
+      if (parameter.state_space !=
+              call_argument_compatibility::CallArgumentStateSpace::Register ||
+          !parameter.array_extents.empty() ||
+          !valid_scalar_contract(parameter) || !valid_formal_vector(parameter))
+        continue;
+      const auto* metadata =
+          base::find_scalar_type_metadata(parameter.scalar_type);
+      if (metadata->size_bytes * formal_vector_width(parameter.vector_shape) <
+          4)
+        diagnostics.push_back({
+            .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+            .range = range,
+            .message = "Register formal total width must be at least 32 bits "
+                       "under the default ABI.",
+        });
+    }
+  };
+  check(signature.return_parameters);
+  check(signature.parameters);
+}
+
+/** Recheck local interfaces in their enclosing function's active source context. */
+void check_function_register_formals(const ResolvedFunction& function,
+                                     const checker::TargetInfo& target,
+                                     checker::CheckDiagnostics& diagnostics) {
+  check_register_formal_width(function.contract.signature, target,
+                              function.range, diagnostics);
+  for (const auto& prototype : function.call_prototypes)
+    check_register_formal_width(prototype.signature, target, prototype.range,
+                                diagnostics);
 }
 
 /** Revalidate name-only entry inputs against both the ABI and bound symbols. */
@@ -2172,14 +3005,17 @@ void check_opaque_entry_parameters(const ResolvedModule& module,
         (contract &&
          (record.explicit_alignment !=
               declaration_semantics::contract_constant(contract->alignment) ||
-          record.is_array != contract->is_array ||
-          record.array_extent != declaration_semantics::contract_constant(
-                                     contract->array_extent))) ||
+          !declaration_semantics::detail::parameter_array_extent(
+               contract->array_extents)
+               .valid ||
+          record.array_extents != parameter_axes(*contract))) ||
         record.explicit_alignment != symbol->address_alignment ||
         (record.explicit_alignment &&
          !std::has_single_bit(*record.explicit_alignment)) ||
-        (record.is_array ? !record.array_extent || *record.array_extent == 0
-                         : record.array_extent.has_value())) {
+        symbol->is_array != !record.array_extents.empty() ||
+        std::ranges::any_of(record.array_extents, [](const auto& axis) {
+          return !axis || *axis == 0;
+        })) {
       append_model_mismatch(diagnostics, record.range,
                             "Opaque entry input identity or kind disagrees "
                             "with its declaration.");
@@ -2259,66 +3095,6 @@ std::optional<binding::SymbolId> storage_owner(const ResolvedModule& module,
   return std::nullopt;
 }
 
-/** Check positive shape and bounded products, distinguishing unsized from zero bytes. */
-bool checked_declaration_extent(
-    ScalarType type, uint32_t lanes,
-    std::span<const std::optional<uint64_t>> extents, bool allow_unsized,
-    std::optional<uint64_t>& result) {
-  result.reset();
-  if (!base::find_scalar_type_metadata(type) ||
-      (lanes != 1 && lanes != 2 && lanes != 4))
-    return false;
-  uint64_t bytes = base::scalar_size_of(type) * lanes;
-  if (bytes == 0 || bytes > 16)
-    return false;
-  bool unsized = false;
-  for (size_t axis = 0; axis < extents.size(); ++axis) {
-    if (!extents[axis]) {
-      if (!allow_unsized || axis != 0)
-        return false;
-      unsized = true;
-    } else {
-      const uint64_t count = *extents[axis];
-      if (count == 0 || bytes > std::numeric_limits<uint64_t>::max() / count)
-        return false;
-      bytes *= count;
-    }
-  }
-  if (!unsized)
-    result = bytes;
-  return true;
-}
-
-/** Check typed entry-pointer attributes without inventing an address or ABI slot. */
-bool valid_parameter_pointer(const ResolvedParameterDeclaration& record) {
-  if (!record.pointer)
-    return true;
-  using call_argument_compatibility::PointedStateSpace;
-  const auto& pointer = *record.pointer;
-  if (record.role != ParameterDeclarationRole::EntryInput ||
-      !record.array_extents.empty() ||
-      (record.scalar_type != ScalarType::B32 &&
-       record.scalar_type != ScalarType::B64 &&
-       record.scalar_type != ScalarType::S32 &&
-       record.scalar_type != ScalarType::S64 &&
-       record.scalar_type != ScalarType::U32 &&
-       record.scalar_type != ScalarType::U64) ||
-      !std::has_single_bit(pointer.pointed_alignment))
-    return false;
-  if (!pointer.pointed_state_space)
-    return true;
-  switch (*pointer.pointed_state_space) {
-    case PointedStateSpace::Local:
-    case PointedStateSpace::Shared:
-    case PointedStateSpace::Global:
-    case PointedStateSpace::Constant:
-      return true;
-    case PointedStateSpace::Invalid:
-      return false;
-  }
-  return false;
-}
-
 /** Rejoin each signature list with the formals in its own declaration scope. */
 void check_function_parameters(const ResolvedModule& module,
                                const ResolvedFunction& function,
@@ -2344,27 +3120,44 @@ void check_function_parameters(const ResolvedModule& module,
                            ? base::find_scalar_type_metadata(*symbol->type)
                            : nullptr;
     std::optional<uint64_t> extent;
+    const bool legacy =
+        record.role == ParameterDeclarationRole::LegacyEntryInput;
+    const auto* owner = owned_symbol(module, function.symbol_id);
+    const bool body_role =
+        symbol && symbol->kind == binding::SymbolKind::CallParameter &&
+        (record.role == ParameterDeclarationRole::BodyLocal ||
+         (legacy && function.is_entry && !function.is_prototype && owner &&
+          owner->kind == binding::SymbolKind::Function &&
+          owner->function_is_entry));
     const bool unsized = role == ParameterDeclarationRole::DeviceInput &&
                          record.scalar_type == ScalarType::B8 &&
-                         record.array_extents.size() == 1;
+                         record.vector_width == 1 &&
+                         !record.array_extents.empty();
     if (!symbol ||
         symbol->state_space != base::DeclarationStateSpace::Parameter ||
         symbol->scope != record.scope_id ||
         !is_function_owned_scope(module, record.scope_id,
                                  function.declaration_scope) ||
-        record.role != role.value_or(ParameterDeclarationRole::BodyLocal) ||
-        (!role && symbol->kind != binding::SymbolKind::CallParameter) ||
-        !type || type->type != record.scalar_type ||
+        (role ? record.role != *role : !body_role) || !type ||
+        type->type != record.scalar_type ||
+        type->register_declaration_usage !=
+            base::ScalarDeclarationUsage::Fundamental ||
+        record.scalar_type == ScalarType::Pred ||
         record.vector_width != symbol->vector_width.value_or(1) ||
         record.alignment != symbol->address_alignment ||
+        (!record.explicit_alignment &&
+         record.alignment !=
+             base::scalar_size_of(record.scalar_type) * record.vector_width) ||
+        symbol->is_array != !record.array_extents.empty() ||
+        (symbol->parameterized_count && !record.array_extents.empty()) ||
         !std::has_single_bit(record.alignment) ||
         !checked_declaration_extent(record.scalar_type, record.vector_width,
                                     record.array_extents, unsized, extent) ||
         record.byte_extent != extent ||
-        (role &&
-         (record.scope_id != function.declaration_scope ||
-          record.vector_width != 1 || record.array_extents.size() > 1)) ||
-        !valid_parameter_pointer(record))
+        (role && record.scope_id != function.declaration_scope) ||
+        !valid_parameter_pointer(record.role, record.scalar_type,
+                                 record.vector_width,
+                                 !record.array_extents.empty(), record.pointer))
       append_model_mismatch(diagnostics, function.range,
                             "Owned parameter role, identity, shape, or layout "
                             "disagrees with binding.");
@@ -2431,18 +3224,18 @@ void check_function_parameters(const ResolvedModule& module,
       if (properties.state_space == CallArgumentStateSpace::Invalid ||
           declaration_semantics::contract_constant(formal.alignment) !=
               symbol.address_alignment ||
-          (!formal.is_array && formal.array_extent) ||
           (!formal.is_pointer &&
            (formal.pointed_state_space || formal.pointer_alignment)) ||
-          (formal.is_array && !properties.array_size &&
+          (!formal.array_extents.empty() && !properties.array_size &&
            (role != ParameterDeclarationRole::DeviceInput ||
             formal.scalar_type != ScalarType::B8 ||
+            formal_vector_width(formal.vector_shape) != 1 ||
             index + 1 != formals.size())))
         append_model_mismatch(
             diagnostics, symbol.declaration_range,
             "Signature formal has inconsistent normalized ABI fields.");
       if (expected_state == CallArgumentStateSpace::Register) {
-        if (formal.is_array || formal.is_pointer ||
+        if (!formal.array_extents.empty() || formal.is_pointer ||
             records.contains(symbol.id.value))
           append_model_mismatch(
               diagnostics, symbol.declaration_range,
@@ -2457,8 +3250,8 @@ void check_function_parameters(const ResolvedModule& module,
       const bool array = !record.array_extents.empty();
       if (record.role != role || record.scalar_type != formal.scalar_type ||
           record.alignment != properties.array_alignment ||
-          array != formal.is_array || record.array_extents.size() > 1 ||
-          (array && record.array_extents.front() != properties.array_size) ||
+          array != !formal.array_extents.empty() ||
+          record.array_extents != parameter_axes(formal) ||
           record.pointer != properties.pointer)
         append_model_mismatch(
             diagnostics, symbol.declaration_range,
@@ -2480,6 +3273,46 @@ void check_function_parameters(const ResolvedModule& module,
                                : ParameterDeclarationRole::DeviceInput);
 }
 
+/** Recompute the source-defined padded entry total without assigning ABI offsets. */
+void check_entry_parameter_size(const ResolvedFunction& function,
+                                std::optional<checker::PtxVersion> version,
+                                checker::CheckDiagnostics& diagnostics) {
+  if (!function.is_entry || !version)
+    return;
+  const uint64_t limit = *version < checker::PtxVersion{1, 5}   ? 256
+                         : *version < checker::PtxVersion{8, 1} ? 4352
+                                                                : 32764;
+  uint64_t total = 0;
+  for (const auto& record : function.parameter_declarations) {
+    if (record.role != ParameterDeclarationRole::EntryInput)
+      continue;
+    std::optional<uint64_t> bytes;
+    if (!checked_declaration_extent(record.scalar_type, record.vector_width,
+                                    record.array_extents, false, bytes) ||
+        !bytes || !std::has_single_bit(record.alignment))
+      continue;
+    const auto padding = record.alignment - 1;
+    if (total > std::numeric_limits<uint64_t>::max() - padding) {
+      append_model_mismatch(
+          diagnostics, function.range,
+          "Aligned entry parameter byte size overflows uint64_t.");
+      return;
+    }
+    total = ((total + padding) / record.alignment) * record.alignment;
+    if (total > std::numeric_limits<uint64_t>::max() - *bytes) {
+      append_model_mismatch(
+          diagnostics, function.range,
+          "Aligned entry parameter byte size overflows uint64_t.");
+      return;
+    }
+    total += *bytes;
+  }
+  if (total > limit)
+    append_model_mismatch(
+        diagnostics, function.range,
+        "Static entry parameter bytes exceed the PTX version limit.");
+}
+
 /** Gate explicit numeric file metadata independently of target/debug options. */
 void check_debug_file_availability(
     std::span<const binding::DebugFileDeclaration> files,
@@ -2498,10 +3331,22 @@ void check_debug_file_availability(
   }
 }
 
+/** Check the raw unsigned size leaf independently of version and target context. */
+void check_debug_file_sizes(
+    std::span<const binding::DebugFileDeclaration> files,
+    checker::CheckDiagnostics& diagnostics) {
+  for (const auto& file : files)
+    if (file.file_size && !base::parseIntegerMagnitude(file.file_size->text))
+      append_model_mismatch(
+          diagnostics, file.file_size->range,
+          ".file file size must be a single unsigned 64-bit integer.");
+}
+
 /** Rejoin retained debug declarations and references without needing source text. */
 void check_debug_files(const ResolvedModule& module,
                        checker::CheckDiagnostics& diagnostics) {
   const auto& table = module.symbols;
+  check_debug_file_sizes(table.debugFiles(), diagnostics);
   std::unordered_map<uint64_t, const binding::DebugFileDeclaration*> first;
   std::vector<bool> covered(table.symbols().size());
   const auto report = [&](SourceRange range, std::string message) {
@@ -2594,6 +3439,30 @@ void check_declaration_identifiers(const ResolvedModule& module,
   }
 }
 
+/** Check every concrete ordinary .reg declaration independently of reference use.
+ * The binding table owns current declaration facts; retained syntax identity
+ * neither supplies a missing type nor exempts a mutated declaration from legality.
+ */
+void check_register_declaration_types(const ResolvedModule& module,
+                                      checker::CheckDiagnostics& diagnostics) {
+  for (const auto& symbol : module.symbols.symbols()) {
+    if (symbol.kind != binding::SymbolKind::Variable ||
+        symbol.state_space != base::DeclarationStateSpace::Register)
+      continue;
+    const auto* metadata =
+        symbol.type ? base::find_scalar_type_metadata(*symbol.type) : nullptr;
+    if (!metadata || metadata->register_declaration_usage !=
+                         base::ScalarDeclarationUsage::Fundamental)
+      diagnostics.push_back(
+          {.kind = checker::CheckDiagnosticKind::RuleViolation,
+           .range = symbol.declaration_range,
+           .message = fmt::format(
+               "Owned .reg declaration '{}' has an unknown or unsupported "
+               "declaration type; a fundamental scalar type is required.",
+               symbol.name)});
+  }
+}
+
 /** Reject register arrays from owned identities and declaration records. */
 void check_register_arrays(const ResolvedModule& module,
                            checker::CheckDiagnostics& diagnostics) {
@@ -2675,7 +3544,7 @@ void check_module_declaration_placement(
           continue;
         }
         if (*region.version >= checker::PtxVersion{3, 0} &&
-            profile->identity.architecture.number >= 20)
+            base::target_feature_architecture(profile->identity).number >= 20)
           diagnostics.push_back({
               .kind = checker::CheckDiagnosticKind::RuleViolation,
               .range = range,
@@ -2819,6 +3688,20 @@ void check_storage_declarations(const ResolvedModule& module,
       append_model_mismatch(
           diagnostics, declaration.range,
           "Scalar storage type, shape, extent, or alignment is inconsistent.");
+    if (*scalar == ScalarType::B128) {
+      for (const auto& leaf : declaration.initializer) {
+        const auto* value = std::get_if<StorageConstant>(&leaf.value);
+        if (value && value->high_bits != 0 &&
+            (value->high_bits != std::numeric_limits<uint64_t>::max() ||
+             (value->bits & (uint64_t{1} << 63)) == 0))
+          append_model_mismatch(diagnostics,
+                                valid_instruction_range(leaf.range)
+                                    ? leaf.range
+                                    : declaration.range,
+                                "B128 storage constant is outside the "
+                                "normalized two-word image.");
+      }
+    }
     const bool valid_initialization =
         external ? declaration.initialization ==
                            StorageInitializationKind::External &&
@@ -2875,7 +3758,8 @@ void check_common_availability(const ResolvedModule& module,
           region.target_options.empty()
               ? std::nullopt
               : base::find_target_profile(region.target_options.front());
-      if (profile && profile->identity.architecture.number < 20)
+      if (profile &&
+          base::target_feature_architecture(profile->identity).number < 20)
         diagnostics.push_back({
             .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
             .range = declaration.range,
@@ -3041,10 +3925,11 @@ void check_opaque_storage(const ResolvedModule& module,
   }
 }
 
-/** Check metadata declarations against their owning function's binding table. */
+/** Check metadata ownership; calls_only omits unrelated branch metadata during recursion preflight. */
 void check_control_contracts(const ResolvedModule& module,
                              const ResolvedFunction& function,
-                             checker::CheckDiagnostics& diagnostics) {
+                             checker::CheckDiagnostics& diagnostics,
+                             bool calls_only = false) {
   const auto expect = [&](binding::SymbolId id, binding::SymbolKind kind,
                           binding::ScopeId scope, SourceRange range,
                           std::string_view subject) -> const binding::Symbol* {
@@ -3059,20 +3944,21 @@ void check_control_contracts(const ResolvedModule& module,
     }
     return symbol;
   };
-  for (const auto& branches : function.branch_target_sets) {
-    const auto* metadata =
-        expect(branches.symbol_id, binding::SymbolKind::BranchTargetSet,
-               function.declaration_scope, branches.range, ".branchtargets");
-    if (metadata != nullptr && branches.scope_id != metadata->scope) {
-      append_model_mismatch(
-          diagnostics, branches.range,
-          "Resolved .branchtargets has a mismatched owner scope.");
+  if (!calls_only)
+    for (const auto& branches : function.branch_target_sets) {
+      const auto* metadata =
+          expect(branches.symbol_id, binding::SymbolKind::BranchTargetSet,
+                 function.declaration_scope, branches.range, ".branchtargets");
+      if (metadata != nullptr && branches.scope_id != metadata->scope) {
+        append_model_mismatch(
+            diagnostics, branches.range,
+            "Resolved .branchtargets has a mismatched owner scope.");
+      }
+      for (const auto& target : branches.targets) {
+        expect(target.symbol_id, binding::SymbolKind::Label,
+               function.declaration_scope, target.range, "branch target");
+      }
     }
-    for (const auto& target : branches.targets) {
-      expect(target.symbol_id, binding::SymbolKind::Label,
-             function.declaration_scope, target.range, "branch target");
-    }
-  }
   for (const auto& targets : function.call_target_sets) {
     const auto* metadata =
         expect(targets.symbol_id, binding::SymbolKind::CallTargetSet,
@@ -3107,6 +3993,10 @@ void check_control_contracts(const ResolvedModule& module,
           diagnostics, prototype.range,
           "Resolved .callprototype has a mismatched owner scope.");
     }
+    if (prototype.signature.is_entry)
+      append_model_mismatch(diagnostics, prototype.range,
+                            "Resolved .callprototype signature must be a "
+                            "non-entry device-call interface.");
     check_signature(prototype.signature, prototype.range, diagnostics);
   }
 }
@@ -3302,6 +4192,18 @@ CallArgumentProperties call_argument_properties(
   }
   properties.state_space = call_state_space(*reference.state_space);
   properties.scalar_type = *reference.declared_type;
+  if (reference.component) {
+    if (reference.state_space != base::DeclarationStateSpace::Register ||
+        !valid_register_component(call_parameter_register(reference)) ||
+        base::scalar_size_of(*reference.declared_type) *
+                reference.component->declaration_width >
+            16) {
+      properties.state_space = CallArgumentStateSpace::Invalid;
+      properties.scalar_type = base::ScalarType::Invalid;
+      return properties;
+    }
+    properties.vector_shape = CallArgumentVectorShape::Scalar;
+  }
   return properties;
 }
 
@@ -3333,7 +4235,9 @@ bool omits_unsized_byte_input(
         formals,
     size_t actual_count) {
   return !formals.empty() && actual_count == formals.size() - 1 &&
-         formals.back().is_array && !formals.back().array_extent &&
+         !formals.back().array_extents.empty() &&
+         !declaration_semantics::call_argument_properties(formals.back())
+              .array_size &&
          formals.back().scalar_type == base::ScalarType::B8 &&
          formals.back().state_space == CallArgumentStateSpace::Parameter;
 }
@@ -3509,7 +4413,7 @@ void check_call_tables(const ResolvedModule& module,
   };
   for (const auto& function : module.functions) {
     for (size_t index = 0; index < function.body.size(); ++index) {
-      if (!function.body[index])
+      if (!instruction_if<CallDirect>(function.body[index]))
         continue;
       TableObserver observer;
       function.body[index]->visit_references(observer);
@@ -3609,6 +4513,128 @@ void check_call_tables(const ResolvedModule& module,
   }
 }
 
+/** Context failures do not prevent analysis, but malformed joins cannot yield cycle witnesses. */
+bool has_call_graph_structure_error(
+    const checker::CheckDiagnostics& diagnostics) {
+  return std::ranges::any_of(diagnostics, [](const auto& diagnostic) {
+    return diagnostic.kind !=
+               checker::CheckDiagnosticKind::UnsupportedAvailability &&
+           diagnostic.kind !=
+               checker::CheckDiagnosticKind::MissingValidationContext &&
+           diagnostic.kind != checker::CheckDiagnosticKind::UnknownTarget;
+  });
+}
+
+/** Reuse current context-free call joins before graph analysis in either entry point. */
+void check_call_graph_joins(const ResolvedModule& module,
+                            checker::CheckDiagnostics& diagnostics) {
+  const auto signatures = build_signature_index(module, diagnostics);
+  const auto properties = build_parameter_properties(module);
+  check_call_tables(module, diagnostics);
+  for (const auto& error : detail::check_direct_call_visibility(module))
+    append_model_mismatch(diagnostics, error.range, error.message);
+  for (const auto& function : module.functions) {
+    check_signature(function.contract.signature, function.range, diagnostics);
+    check_function_contract_integrity(function, diagnostics);
+    const auto scope = module.symbols.functionScope(function.range);
+    if (!scope || *scope != function.declaration_scope ||
+        module.symbols.scope(*scope).owner != function.symbol_id) {
+      append_model_mismatch(
+          diagnostics, function.range,
+          "Call graph function has no actual declaration occurrence.");
+      continue;
+    }
+    const bool complete =
+        function.body.size() == function.instruction_ranges.size() &&
+        function.body.size() == function.instruction_opcodes.size() &&
+        std::ranges::all_of(function.body, [](const auto& instruction) {
+          return bool(instruction);
+        });
+    if (!complete) {
+      append_model_mismatch(
+          diagnostics, function.range,
+          "Call graph requires complete current instruction provenance.");
+      continue;
+    }
+    check_control_contracts(module, function, diagnostics, true);
+    check_module_references(module, function, diagnostics, true);
+    check_typed_call_literals(module, function, signatures, properties,
+                              diagnostics);
+  }
+}
+
+/** Recompute an ephemeral graph only after the existing current joins are admissible. */
+detail::CallGraphAnalysis current_call_graph(
+    const ResolvedModule& module, checker::CheckDiagnostics& diagnostics) {
+  if (has_call_graph_structure_error(diagnostics))
+    return {};
+  auto graph = detail::analyze_call_cycles(module);
+  diagnostics.insert(diagnostics.end(), graph.diagnostics.begin(),
+                     graph.diagnostics.end());
+  return graph;
+}
+
+/** Keep original diagnostics intact and append each new graph-join failure once. */
+void append_call_graph_diagnostics(checker::CheckDiagnostics& destination,
+                                   const checker::CheckDiagnostics& additions) {
+  const auto key = [](const checker::CheckDiagnostic& diagnostic) {
+    return std::tuple{diagnostic.kind,
+                      diagnostic.range.start.line,
+                      diagnostic.range.start.column,
+                      diagnostic.range.end.line,
+                      diagnostic.range.end.column,
+                      diagnostic.message};
+  };
+  std::set<decltype(key(checker::CheckDiagnostic{}))> known;
+  for (const auto& diagnostic : destination)
+    known.insert(key(diagnostic));
+  for (const auto& diagnostic : additions)
+    if (known.insert(key(diagnostic)).second)
+      destination.push_back(diagnostic);
+}
+
+/** Apply independently known recursion minima at each actual participating call. */
+void check_recursive_calls(const std::vector<detail::RecursiveCall>& calls,
+                           std::optional<checker::PtxVersion> version,
+                           const std::optional<base::TargetProfile>& profile,
+                           DirectiveAvailabilityKeys& emitted,
+                           checker::CheckDiagnostics& diagnostics) {
+  for (const auto& call : calls)
+    append_minimum_requirement(diagnostics, emitted,
+                               call.possible
+                                   ? DirectiveAvailability::PossibleRecursion
+                                   : DirectiveAvailability::Recursion,
+                               version, profile, call.range,
+                               call.possible ? "Statically possible recursion"
+                                             : "Syntactic recursion");
+}
+
+/** Check current function/region cache coherence independently of effective validation context. */
+bool check_current_function_source_context(
+    const ResolvedModule& module, const ResolvedFunction& function,
+    checker::CheckDiagnostics& diagnostics) {
+  if (function.source_region &&
+      *function.source_region >= module.header.regions.size()) {
+    append_model_mismatch(
+        diagnostics, function.range,
+        "Resolved function refers to a missing owned source configuration.");
+    return false;
+  }
+  const auto* region = function.source_region
+                           ? &module.header.regions[*function.source_region]
+                           : nullptr;
+  if (region &&
+      (function.source_version != region->version ||
+       function.source_target !=
+           (region->target_options.empty()
+                ? std::optional<std::string>{}
+                : std::optional<std::string>{region->target_options.front()})))
+    append_model_mismatch(
+        diagnostics, function.range,
+        "Resolved function source configuration does not match its region.");
+  return true;
+}
+
 /** Build checker target context from an owned source region rather than syntax. */
 std::optional<checker::TargetInfo> owned_target_context(
     const ResolvedSourceTargetRegion& region,
@@ -3627,12 +4653,88 @@ std::optional<checker::TargetInfo> owned_target_context(
   }
   return checker::TargetInfo{
       .ptx_version = *region.version,
-      .sm_version = profile->identity.architecture.number,
+      .sm_version = base::target_feature_architecture(profile->identity).number,
       .enabled_family_features = profile->enabled_family_features,
       .identity = profile->identity,
       .capabilities = profile->capabilities,
       .map_f64_to_f32 = region.map_f64_to_f32,
   };
+}
+
+/** A known language-version failure is independent of target completeness. */
+void check_language_availability(const ResolvedFunction& function,
+                                 std::optional<checker::PtxVersion> version,
+                                 checker::CheckDiagnostics& diagnostics) {
+  if (function.contract.language_values && version &&
+      *version < checker::PtxVersion{9, 3})
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+        .range = function.range,
+        .message = ".language requires PTX ISA >= 9.3.",
+    });
+}
+
+/** A known entry-pointer introduction failure does not require target context. */
+void check_entry_pointer_availability(
+    const ResolvedFunction& function,
+    std::optional<checker::PtxVersion> version,
+    checker::CheckDiagnostics& diagnostics) {
+  if (!version || *version >= checker::PtxVersion{2, 2})
+    return;
+  if (std::ranges::any_of(function.parameter_declarations,
+                          [](const ResolvedParameterDeclaration& parameter) {
+                            return parameter.role ==
+                                       ParameterDeclarationRole::EntryInput &&
+                                   parameter.pointer.has_value();
+                          }))
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+        .range = function.range,
+        .message = ".ptr entry parameter requires PTX ISA >= 2.2.",
+    });
+}
+
+/** All symbols/storage use the common language version; region equality remains required. */
+void check_module_weak_availability(const ResolvedModule& module,
+                                    std::optional<checker::PtxVersion> version,
+                                    checker::CheckDiagnostics& diagnostics) {
+  DirectiveAvailabilityKeys emitted;
+  for (const auto& symbol : module.symbols.symbols())
+    if (symbol.linkage == binding::SymbolLinkage::Weak)
+      append_minimum_requirement(
+          diagnostics, emitted, DirectiveAvailability::Weak, version,
+          std::nullopt, symbol.declaration_range, ".weak");
+  for (const auto& storage : module.storage_declarations)
+    if (storage.linkage == binding::SymbolLinkage::Weak)
+      append_minimum_requirement(diagnostics, emitted,
+                                 DirectiveAvailability::Weak, version,
+                                 std::nullopt, storage.range, ".weak");
+}
+
+/** Either current function fact is sufficient; every occurrence selects its own region. */
+void check_function_weak_availability(
+    const ResolvedModule& module, const ResolvedFunction& function,
+    std::optional<checker::PtxVersion> version,
+    checker::CheckDiagnostics& diagnostics) {
+  const auto* symbol = owned_symbol(module, function.symbol_id);
+  if (function.contract.linkage != binding::SymbolLinkage::Weak &&
+      (!symbol || symbol->linkage != binding::SymbolLinkage::Weak))
+    return;
+  DirectiveAvailabilityKeys emitted;
+  append_minimum_requirement(diagnostics, emitted, DirectiveAvailability::Weak,
+                             version, std::nullopt, function.range, ".weak");
+}
+
+/** Check the deprecated hint against independently known effective PTX context. */
+void check_max_ncta_availability(const ResolvedFunction& function,
+                                 std::optional<checker::PtxVersion> version,
+                                 checker::CheckDiagnostics& diagnostics) {
+  DirectiveAvailabilityKeys emitted;
+  for (const auto& resource : function.contract.resources)
+    if (resource.kind == ResolvedKernelResourceKind::MaxNctaPerSm)
+      append_minimum_requirement(diagnostics, emitted,
+                                 DirectiveAvailability::MaxNctaPerSm, version,
+                                 std::nullopt, resource.range, ".maxnctapersm");
 }
 
 /** Check function-level availability using only owned source-level metadata. */
@@ -3667,12 +4769,10 @@ void check_function_contract_availability(
   if (function.contract.blocks_are_clusters)
     append_requirement(diagnostics, availability({9, 0}, 90, "cluster"), target,
                        function.range, ".blocksareclusters");
-  if (function.contract.language_values)
-    append_requirement(diagnostics, availability({9, 3}), target,
-                       function.range, ".language");
   for (const auto& resource : function.contract.resources)
-    append_requirement(diagnostics, resource_availability(resource.kind),
-                       target, resource.range, resource_name(resource.kind));
+    if (resource.kind != ResolvedKernelResourceKind::MaxNctaPerSm)
+      append_requirement(diagnostics, resource_availability(resource.kind),
+                         target, resource.range, resource_name(resource.kind));
 }
 
 }  // namespace
@@ -3680,6 +4780,32 @@ void check_function_contract_availability(
 checker::CheckResult validateModule(const ResolvedModule& module,
                                     ModuleValidationPolicy policy) {
   checker::CheckDiagnostics diagnostics;
+  check_target_debug_sections(target_debug_range(module.header),
+                              module.sections, module.legacy_dwarf_records,
+                              diagnostics);
+  const auto section_version = module.header.regions.empty()
+                                   ? std::optional<checker::PtxVersion>{}
+                                   : module.header.regions.front().version;
+  auto legacy_errors = detail::check_legacy_dwarf(module, section_version);
+  diagnostics.insert(diagnostics.end(), legacy_errors.begin(),
+                     legacy_errors.end());
+  check_module_weak_availability(module, section_version, diagnostics);
+  auto pragma_errors = detail::check_pragmas(module, section_version);
+  diagnostics.insert(diagnostics.end(), pragma_errors.begin(),
+                     pragma_errors.end());
+  auto location_errors =
+      detail::check_debug_locations(module.symbols, module, section_version);
+  diagnostics.insert(diagnostics.end(), location_errors.begin(),
+                     location_errors.end());
+  auto section_errors = detail::check_debug_sections(
+      module.sections, section_version, module.range);
+  auto section_references =
+      detail::check_debug_section_references(module.sections, module.symbols);
+  diagnostics.insert(diagnostics.end(), section_errors.begin(),
+                     section_errors.end());
+  diagnostics.insert(diagnostics.end(), section_references.begin(),
+                     section_references.end());
+
   const auto invalid = [&](SourceRange range, std::string message) {
     diagnostics.push_back(
         {.kind = checker::CheckDiagnosticKind::ModuleSourceMismatch,
@@ -3734,6 +4860,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   const auto parameter_properties = build_parameter_properties(module);
   check_debug_files(module, diagnostics);
   check_declaration_identifiers(module, diagnostics);
+  check_register_declaration_types(module, diagnostics);
   check_register_arrays(module, diagnostics);
   check_module_declaration_placement(module, policy, diagnostics);
   check_storage_declarations(module, diagnostics);
@@ -3745,6 +4872,13 @@ checker::CheckResult validateModule(const ResolvedModule& module,
                                 diagnostics);
   check_opaque_storage(module, storage_version, diagnostics);
   check_call_tables(module, diagnostics);
+  for (const auto& diagnostic : detail::check_direct_call_visibility(module))
+    append_model_mismatch(diagnostics, diagnostic.range, diagnostic.message);
+  for (const auto& diagnostic :
+       detail::check_call_parameter_transfers(module, false))
+    append_model_mismatch(diagnostics, diagnostic.range, diagnostic.message);
+  for (const auto& diagnostic : detail::check_legacy_entry_input_sizes(module))
+    append_model_mismatch(diagnostics, diagnostic.range, diagnostic.message);
   check_cvta_constant_pointer_restriction(module, diagnostics);
   for (const auto& alias : module.function_aliases) {
     const auto* symbol = owned_symbol(module, alias.symbol_id);
@@ -3768,6 +4902,9 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     }
   }
   for (const auto& function : module.functions) {
+    /** Exact intrinsic causes by instruction, never populated by full checks. */
+    std::vector<checker::CheckDiagnostics> address_intrinsic_causes(
+        function.body.size());
     const auto* symbol = owned_symbol(module, function.symbol_id);
     if (symbol == nullptr || symbol->kind != binding::SymbolKind::Function ||
         symbol->name != function.name ||
@@ -3796,6 +4933,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
             ? module.header.regions[*function.source_region].version
             : std::optional<checker::PtxVersion>{};
     check_opaque_entry_parameters(module, function, entry_version, diagnostics);
+    check_entry_parameter_size(function, entry_version, diagnostics);
     check_function_contract_integrity(function, diagnostics);
     const bool complete_instruction_provenance =
         function.instruction_ranges.size() == function.body.size() &&
@@ -3845,32 +4983,18 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     check_resource_contracts(function, diagnostics);
     check_control_contracts(module, function, diagnostics);
     if (complete_instruction_provenance) {
-      check_module_references(module, function, diagnostics);
+      check_module_references(module, function, diagnostics, false,
+                              address_intrinsic_causes);
       check_tcgen_cta_groups(function, diagnostics);
       check_typed_call_literals(module, function, signatures,
                                 parameter_properties, diagnostics);
     }
-    if (function.source_region &&
-        *function.source_region >= module.header.regions.size()) {
-      invalid(
-          function.range,
-          "Resolved function refers to a missing owned source configuration.");
+    check_parameter_reference_roles(module, function, diagnostics);
+    if (!check_current_function_source_context(module, function, diagnostics))
       continue;
-    }
-    const auto region = function.source_region
-                            ? &module.header.regions[*function.source_region]
-                            : nullptr;
-    if (region != nullptr &&
-        (function.source_version != region->version ||
-         function.source_target !=
-             (region->target_options.empty()
-                  ? std::optional<std::string>{}
-                  : std::optional<std::string>{
-                        region->target_options.front()}))) {
-      invalid(
-          function.range,
-          "Resolved function source configuration does not match its region.");
-    }
+    const auto* region = function.source_region
+                             ? &module.header.regions[*function.source_region]
+                             : nullptr;
     if (policy == ModuleValidationPolicy::RequireCompleteContext &&
         (!region || !region->version || region->target_options.empty())) {
       diagnostics.push_back({
@@ -3880,16 +5004,51 @@ checker::CheckResult validateModule(const ResolvedModule& module,
                      "source target context.",
       });
     }
+    check_function_weak_availability(
+        module, function, region ? region->version : std::nullopt, diagnostics);
     if (region) {
+      const auto profile =
+          region->target_options.empty()
+              ? std::optional<base::TargetProfile>{}
+              : base::find_target_profile(region->target_options.front());
+      DirectiveAvailabilityKeys emitted;
+      check_max_ncta_availability(function, region->version, diagnostics);
+      check_body_parameter_roles(function, region->version, profile,
+                                 diagnostics);
+      check_target_list_availability(function, region->version, profile,
+                                     emitted, diagnostics);
+      check_prototype_availability(function, region->version, profile, emitted,
+                                   diagnostics);
+      check_language_availability(function, region->version, diagnostics);
+      check_entry_pointer_availability(function, region->version, diagnostics);
       const auto target =
           owned_target_context(*region, diagnostics, function.range);
       if (target) {
+        check_function_register_formals(function, *target, diagnostics);
         check_function_contract_availability(function, *target, diagnostics);
         if (complete_instruction_provenance)
           check_instruction_body(function, *target, region->texture_mode,
-                                 diagnostics);
+                                 diagnostics, address_intrinsic_causes);
       }
     }
+  }
+  checker::CheckDiagnostics graph_joins;
+  check_call_graph_joins(module, graph_joins);
+  const auto call_graph = current_call_graph(module, graph_joins);
+  append_call_graph_diagnostics(diagnostics, graph_joins);
+  DirectiveAvailabilityKeys recursion_emitted;
+  for (size_t i = 0; i < call_graph.recursive_calls.size(); ++i) {
+    const auto& function = module.functions[i];
+    if (!function.source_region ||
+        *function.source_region >= module.header.regions.size())
+      continue;
+    const auto& region = module.header.regions[*function.source_region];
+    const auto profile =
+        region.target_options.empty()
+            ? std::optional<base::TargetProfile>{}
+            : base::find_target_profile(region.target_options.front());
+    check_recursive_calls(call_graph.recursive_calls[i], region.version,
+                          profile, recursion_emitted, diagnostics);
   }
   if (diagnostics.empty())
     return {};
@@ -3903,6 +5062,56 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
     return associations;
   const auto version = detail::module_version(ast);
   checker::CheckDiagnostics diagnostics;
+  check_module_weak_availability(module, version, diagnostics);
+  auto section_errors =
+      detail::check_debug_sections(module.sections, version, module.range);
+  const auto replacement_sections = detail::debug_sections(ast);
+  const auto replacement_binding = binding::bindSymbols(ast);
+  const auto replacement_legacy =
+      detail::legacy_dwarf_records(ast, replacement_binding.table);
+  auto legacy_errors = detail::check_legacy_dwarf(module, version);
+  auto replacement_legacy_errors = detail::check_legacy_dwarf(
+      ast, replacement_binding.table, replacement_legacy, version);
+  diagnostics.insert(diagnostics.end(), legacy_errors.begin(),
+                     legacy_errors.end());
+  diagnostics.insert(diagnostics.end(), replacement_legacy_errors.begin(),
+                     replacement_legacy_errors.end());
+  check_target_debug_sections(target_debug_range(module.header),
+                              module.sections, module.legacy_dwarf_records,
+                              diagnostics);
+  check_target_debug_sections(target_debug_range(ast), replacement_sections,
+                              replacement_legacy, diagnostics);
+  auto replacement_errors =
+      detail::check_debug_sections(replacement_sections, version, ast.range);
+  auto current_references =
+      detail::check_debug_section_references(module.sections, module.symbols);
+  auto pragma_errors = detail::check_pragmas(module, std::nullopt);
+  auto replacement_pragmas =
+      detail::check_pragmas(ast, replacement_binding.table, version);
+  diagnostics.insert(diagnostics.end(), pragma_errors.begin(),
+                     pragma_errors.end());
+  diagnostics.insert(diagnostics.end(), replacement_pragmas.begin(),
+                     replacement_pragmas.end());
+  check_debug_file_sizes(replacement_binding.table.debugFiles(), diagnostics);
+  auto location_errors =
+      detail::check_debug_locations(module.symbols, module, std::nullopt);
+  auto replacement_locations =
+      detail::check_debug_locations(replacement_binding.table, ast, version);
+  diagnostics.insert(diagnostics.end(), location_errors.begin(),
+                     location_errors.end());
+  diagnostics.insert(diagnostics.end(), replacement_locations.begin(),
+                     replacement_locations.end());
+  auto replacement_references = detail::check_debug_section_references(
+      replacement_sections, replacement_binding.table);
+  diagnostics.insert(diagnostics.end(), section_errors.begin(),
+                     section_errors.end());
+  diagnostics.insert(diagnostics.end(), replacement_errors.begin(),
+                     replacement_errors.end());
+  diagnostics.insert(diagnostics.end(), current_references.begin(),
+                     current_references.end());
+  diagnostics.insert(diagnostics.end(), replacement_references.begin(),
+                     replacement_references.end());
+
   if (policy == ModuleValidationPolicy::RequireCompleteContext)
     check_header_order(detail::module_header_order(ast), ast.range,
                        diagnostics);
@@ -3916,14 +5125,36 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
                         explicit_address_size, ast.range, diagnostics);
   check_debug_files(module, diagnostics);
   check_declaration_identifiers(module, diagnostics);
+  check_register_declaration_types(module, diagnostics);
   check_register_arrays(module, diagnostics);
   check_storage_declarations(module, diagnostics);
   check_opaque_storage(module, version, diagnostics);
+  /** Owned per-function/per-instruction causes, immutable during full checks. */
+  std::vector<std::vector<checker::CheckDiagnostics>> address_intrinsic_causes(
+      module.functions.size());
+
+  for (const auto& diagnostic : detail::check_legacy_entry_input_sizes(module))
+    append_model_mismatch(diagnostics, diagnostic.range, diagnostic.message);
+  for (const auto& diagnostic :
+       detail::check_call_parameter_transfers(module, false))
+    append_model_mismatch(diagnostics, diagnostic.range, diagnostic.message);
   for (const auto& function : module.functions) {
+    auto& intrinsic_causes =
+        address_intrinsic_causes[&function - module.functions.data()];
+    intrinsic_causes.resize(function.body.size());
     check_signature(function.contract.signature, function.range, diagnostics);
     check_function_parameters(module, function, diagnostics);
     check_function_contract_integrity(function, diagnostics);
     check_opaque_entry_parameters(module, function, version, diagnostics);
+    check_entry_parameter_size(function, version, diagnostics);
+    if (function.instruction_ranges.size() == function.body.size())
+      check_module_references(module, function, diagnostics, false,
+                              intrinsic_causes);
+    else
+      append_model_mismatch(
+          diagnostics, function.range,
+          "Resolved function instruction provenance does not match its body.");
+    check_parameter_reference_roles(module, function, diagnostics);
   }
   /** Replacement source selects one texturing mode for every target region. */
   std::optional<TextureMode> explicit_texture_mode;
@@ -3998,7 +5229,18 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
         .message = diagnostic.message,
     });
   }
+  checker::CheckDiagnostics graph_joins;
+  check_call_graph_joins(module, graph_joins);
+  const auto call_graph = current_call_graph(module, graph_joins);
+  append_call_graph_diagnostics(diagnostics, graph_joins);
+  for (const auto& function : module.functions) {
+    check_current_function_source_context(module, function, diagnostics);
+    check_resource_contracts(function, diagnostics);
+    check_max_ncta_availability(function, version, diagnostics);
+  }
   std::optional<checker::TargetInfo> active_target;
+  /** Recognized target facts remain usable when no PTX version is supplied. */
+  std::optional<base::TargetProfile> active_profile;
   /** Strict validation may not silently skip a source region without context. */
   const auto require_context = [&](SourceRange range) {
     if (!active_target &&
@@ -4017,10 +5259,12 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
     if (const auto* target =
             std::get_if<syntax_ast::AstTargetDirective>(&item)) {
       active_target.reset();
+      active_profile.reset();
       if (target->targets.empty())
         continue;
       const auto profile =
           base::find_target_profile(target->targets.front().text);
+      active_profile = profile;
       if (!profile) {
         diagnostics.push_back(checker::CheckDiagnostic{
             .kind = checker::CheckDiagnosticKind::UnknownTarget,
@@ -4031,7 +5275,8 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
       } else if (version) {
         active_target = checker::TargetInfo{
             .ptx_version = *version,
-            .sm_version = profile->identity.architecture.number,
+            .sm_version =
+                base::target_feature_architecture(profile->identity).number,
             .enabled_family_features = profile->enabled_family_features,
             .identity = profile->identity,
             .capabilities = profile->capabilities,
@@ -4057,6 +5302,22 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
     } else if (const auto* function =
                    std::get_if<syntax_ast::AstFunction>(&item)) {
       require_context(function->range);
+      const auto* owned = source_function(*function, module);
+      check_function_weak_availability(module, *owned, version, diagnostics);
+      DirectiveAvailabilityKeys emitted;
+      const auto index = static_cast<size_t>(owned - module.functions.data());
+      if (index < call_graph.recursive_calls.size())
+        check_recursive_calls(call_graph.recursive_calls[index], version,
+                              active_profile, emitted, diagnostics);
+      check_body_parameter_roles(*owned, version, active_profile, diagnostics);
+      check_target_list_availability(*owned, version, active_profile, emitted,
+                                     diagnostics);
+      check_prototype_availability(*owned, version, active_profile, emitted,
+                                   diagnostics);
+      check_language_availability(*owned, version, diagnostics);
+      check_entry_pointer_availability(*owned, version, diagnostics);
+      check_body_directives(function->body, version, active_profile,
+                            active_target, emitted, diagnostics);
       if (!active_target)
         continue;
       check_attributes(function->attributes, *active_target, diagnostics);
@@ -4067,16 +5328,14 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
         append_requirement(diagnostics, availability({9, 0}, 90, "cluster"),
                            *active_target, function->blocks_are_clusters->range,
                            ".blocksareclusters");
-      if (function->language)
-        append_requirement(diagnostics, availability({9, 3}), *active_target,
-                           function->language->range, ".language");
       for (const auto& resource : function->resources)
-        append_requirement(diagnostics, resource_availability(resource.kind),
-                           *active_target, resource.range,
-                           resource_name(resource.kind));
-      check_body_directives(function->body, *active_target, diagnostics);
-      const auto* owned = source_function(*function, module);
-      check_instruction_body(*owned, *active_target, texture_mode, diagnostics);
+        if (resource.kind != syntax_ast::AstKernelResourceKind::MaxNctaPerSm)
+          append_requirement(diagnostics, resource_availability(resource.kind),
+                             *active_target, resource.range,
+                             resource_name(resource.kind));
+      check_function_register_formals(*owned, *active_target, diagnostics);
+      check_instruction_body(*owned, *active_target, texture_mode, diagnostics,
+                             address_intrinsic_causes[index]);
     }
   }
   if (diagnostics.empty())

@@ -13,6 +13,70 @@ syntax_ast::AstSyntax leafSyntax(const syntax_cst::CstFile& cst,
   return syntax_ast::AstSyntax{token.text, token.range};
 }
 
+/** Copy an already parsed section integer without decoding or narrowing it. */
+syntax_ast::AstSectionInteger lowerSectionInteger(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstSectionInteger& value) {
+  return {.sign = value.sign ? std::optional{leafSyntax(cst, *value.sign)}
+                             : std::nullopt,
+          .magnitude = leafSyntax(cst, value.magnitude),
+          .range = cst.sourceRange(value.token_range)};
+}
+/** Copy the single CST structural parse into owning typed section records. */
+syntax_ast::AstSectionDirective lowerSection(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstSectionDirective& section) {
+  syntax_ast::AstSectionDirective result{
+      .name = leafSyntax(cst, section.name),
+      .payload = {},
+      .range = cst.sourceRange(section.token_range)};
+  for (const auto& entry : section.payload) {
+    if (const auto* label =
+            std::get_if<syntax_cst::CstSectionLabelDefinition>(&entry)) {
+      result.payload.emplace_back(syntax_ast::AstSectionLabelDefinition{
+          leafSyntax(cst, label->name), cst.sourceRange(label->token_range)});
+      continue;
+    }
+    const auto& data = std::get<syntax_cst::CstSectionData>(entry);
+    const auto type = leafSyntax(cst, data.type);
+    const auto width = type.text == ".b8"    ? syntax_ast::AstSectionWidth::B8
+                       : type.text == ".b16" ? syntax_ast::AstSectionWidth::B16
+                       : type.text == ".b32" ? syntax_ast::AstSectionWidth::B32
+                                             : syntax_ast::AstSectionWidth::B64;
+    syntax_ast::AstSectionData copied{
+        .width = width,
+        .type = type,
+        .value = {},
+        .range = cst.sourceRange(data.token_range)};
+    if (const auto* integers =
+            std::get_if<std::vector<syntax_cst::CstSectionInteger>>(
+                &data.value)) {
+      auto& values =
+          std::get<std::vector<syntax_ast::AstSectionInteger>>(copied.value);
+      for (const auto& value : *integers)
+        values.push_back(lowerSectionInteger(cst, value));
+    } else if (const auto* symbol =
+                   std::get_if<syntax_cst::CstSectionSymbol>(&data.value)) {
+      copied.value =
+          syntax_ast::AstSectionSymbol{leafSyntax(cst, symbol->name)};
+    } else if (const auto* addend =
+                   std::get_if<syntax_cst::CstSectionAddend>(&data.value)) {
+      copied.value = syntax_ast::AstSectionAddend{
+          leafSyntax(cst, addend->name), leafSyntax(cst, addend->operation),
+          lowerSectionInteger(cst, addend->value)};
+    } else {
+      const auto& difference =
+          std::get<syntax_cst::CstSectionDifference>(data.value);
+      copied.value = syntax_ast::AstSectionDifference{
+          leafSyntax(cst, difference.left),
+          leafSyntax(cst, difference.operation),
+          leafSyntax(cst, difference.right)};
+    }
+    result.payload.emplace_back(std::move(copied));
+  }
+  return result;
+}
+
 syntax_ast::AstImmediateKind immediateKind(TokenKind kind) {
   switch (kind) {
     case TokenKind::Decimal:
@@ -250,6 +314,10 @@ syntax_ast::AstCallParameter lowerCallParameter(
         using Value = std::remove_cvref_t<decltype(value)>;
         if constexpr (std::same_as<Value, syntax_cst::CstIdentifier>)
           return lowerIdentifier(cst, value);
+        else if constexpr (std::same_as<Value, syntax_cst::CstVectorMember>)
+          return syntax_ast::AstVectorMember{
+              lowerIdentifier(cst, value.base), leafSyntax(cst, value.selector),
+              cst.sourceRange(value.token_range)};
         else
           return lowerImmediate(cst, value);
       },
@@ -279,18 +347,7 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
                                           syntax_cst::CstConstantOperand>) {
           return lowerImmediate(cst, value);
         } else if constexpr (std::same_as<Value, syntax_cst::CstAddress>) {
-          auto base = std::visit(
-              [&cst](const auto& item)
-                  -> std::variant<syntax_ast::AstIdentifierRef,
-                                  syntax_ast::AstImmediate,
-                                  syntax_ast::AstConstantOperand> {
-                using Item = std::remove_cvref_t<decltype(item)>;
-                if constexpr (std::same_as<Item, syntax_cst::CstIdentifier>)
-                  return lowerIdentifier(cst, item);
-                else
-                  return lowerImmediate(cst, item);
-              },
-              value.base);
+          auto base = lowerVectorElement(cst, value.base);
           std::optional<syntax_ast::AstAddressOffset> offset;
           if (value.offset) {
             const TokenKind operator_kind =
@@ -316,15 +373,7 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
                                   : SourceRange{}};
           if (value.named_index) {
             const auto& named = *value.named_index;
-            auto index = std::visit(
-                [&cst](const auto& item) -> decltype(address.base) {
-                  using Item = std::remove_cvref_t<decltype(item)>;
-                  if constexpr (std::same_as<Item, syntax_cst::CstIdentifier>)
-                    return lowerIdentifier(cst, item);
-                  else
-                    return lowerImmediate(cst, item);
-                },
-                named.index);
+            auto index = lowerVectorElement(cst, named.index);
             std::optional<syntax_ast::AstAddressOffset> term;
             if (named.displacement)
               term = syntax_ast::AstAddressOffset{
@@ -404,15 +453,7 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
           std::vector<syntax_ast::AstVectorElement> elements;
           elements.reserve(value.elements.size());
           for (const auto& element : value.elements)
-            elements.push_back(std::visit(
-                [&cst](const auto& item) -> syntax_ast::AstVectorElement {
-                  using Item = std::remove_cvref_t<decltype(item)>;
-                  if constexpr (std::same_as<Item, syntax_cst::CstIdentifier>)
-                    return lowerIdentifier(cst, item);
-                  else
-                    return lowerImmediate(cst, item);
-                },
-                element));
+            elements.push_back(lowerVectorElement(cst, element));
           std::vector<SourceRange> commas;
           commas.reserve(value.commas.size());
           for (const auto comma : value.commas)
@@ -427,15 +468,7 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
           std::vector<syntax_ast::AstVectorElement> heads;
           heads.reserve(value.heads.size());
           for (const auto& head : value.heads)
-            heads.push_back(std::visit(
-                [&cst](const auto& item) -> syntax_ast::AstVectorElement {
-                  using Item = std::remove_cvref_t<decltype(item)>;
-                  if constexpr (std::same_as<Item, syntax_cst::CstIdentifier>)
-                    return lowerIdentifier(cst, item);
-                  else
-                    return lowerImmediate(cst, item);
-                },
-                head));
+            heads.push_back(lowerVectorElement(cst, head));
           std::vector<SourceRange> commas;
           commas.reserve(value.commas.size());
           for (const auto comma : value.commas)
@@ -464,8 +497,21 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
               .range = cst.sourceRange(value.token_range),
           };
         } else if constexpr (std::same_as<Value, syntax_cst::CstCallTarget>) {
-          return syntax_ast::AstCallTarget{lowerIdentifier(cst, value.name),
-                                           cst.sourceRange(value.token_range)};
+          return syntax_ast::AstCallTarget{
+              std::visit(
+                  [&cst](const auto& leaf)
+                      -> decltype(syntax_ast::AstCallTarget{}.name) {
+                    using Leaf = std::remove_cvref_t<decltype(leaf)>;
+                    if constexpr (std::same_as<Leaf, syntax_cst::CstIdentifier>)
+                      return lowerIdentifier(cst, leaf);
+                    else
+                      return syntax_ast::AstVectorMember{
+                          lowerIdentifier(cst, leaf.base),
+                          leafSyntax(cst, leaf.selector),
+                          cst.sourceRange(leaf.token_range)};
+                  },
+                  value.name),
+              cst.sourceRange(value.token_range)};
         } else if constexpr (std::same_as<Value,
                                           syntax_cst::CstCallTargetSet>) {
           return syntax_ast::AstCallTargetSet{
@@ -658,9 +704,15 @@ syntax_ast::AstFunctionParameter lowerFunctionParameter(
   std::optional<syntax_ast::AstSyntax> pointer_alignment;
   if (parameter.pointer_alignment)
     pointer_alignment = leafSyntax(cst, *parameter.pointer_alignment);
-  std::optional<syntax_ast::AstConstantExpression> array_size;
-  if (parameter.array_size)
-    array_size = lowerConstantExpression(cst, *parameter.array_size);
+  std::vector<syntax_ast::AstArrayDimension> dimensions;
+  for (const auto& dimension : parameter.array_dimensions) {
+    dimensions.push_back({
+        .size = dimension.size ? std::optional{lowerConstantExpression(
+                                     cst, *dimension.size)}
+                               : std::nullopt,
+        .range = cst.sourceRange(dimension.token_range),
+    });
+  }
 
   return syntax_ast::AstFunctionParameter{
       .state_space = lowerStateSpace(cst.token(parameter.state_space).kind),
@@ -673,8 +725,7 @@ syntax_ast::AstFunctionParameter lowerFunctionParameter(
       .pointer_space = std::move(pointer_space),
       .pointer_alignment = std::move(pointer_alignment),
       .name = lowerIdentifier(cst, {parameter.name}),
-      .is_array = parameter.left_bracket.has_value(),
-      .array_size = std::move(array_size),
+      .array_dimensions = std::move(dimensions),
       .range = cst.sourceRange(parameter.token_range),
   };
 }
@@ -782,6 +833,48 @@ syntax_ast::AstLocDirective lowerLocDirective(
   };
 }
 
+/** Copy closed legacy tokens into the shared small owning value representation. */
+syntax_ast::AstLegacyDwarfRecord lowerLegacyDwarf(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstLegacyDwarfRecord& record) {
+  syntax_ast::AstLegacyDwarfRecord result{
+      .marker = leafSyntax(cst, record.marker),
+      .range = cst.sourceRange(record.token_range)};
+  if (const auto* data =
+          std::get_if<syntax_cst::CstLegacyDwarfData>(&record.payload)) {
+    const auto directive = leafSyntax(cst, data->directive);
+    syntax_ast::AstLegacyDwarfData copied{
+        .kind = directive.text == ".byte"
+                    ? syntax_ast::LegacyDwarfDataKind::Byte
+                : directive.text == ".4byte"
+                    ? syntax_ast::LegacyDwarfDataKind::FourByte
+                    : syntax_ast::LegacyDwarfDataKind::Quad,
+        .directive = directive,
+        .range = cst.sourceRange(data->token_range)};
+    if (const auto* words =
+            std::get_if<std::vector<syntax_cst::TokenId>>(&data->value)) {
+      std::vector<syntax_ast::AstSyntax> values;
+      for (auto id : *words)
+        values.push_back(leafSyntax(cst, id));
+      copied.value = std::move(values);
+    } else
+      copied.value =
+          leafSyntax(cst, std::get<syntax_cst::TokenId>(data->value));
+    result.payload = std::move(copied);
+  } else {
+    const auto& header =
+        std::get<syntax_cst::CstLegacyDwarfSectionHeader>(record.payload);
+    result.payload = syntax_ast::AstLegacyDwarfSectionHeader{
+        .directive = leafSyntax(cst, header.directive),
+        .name = leafSyntax(cst, header.name),
+        .flags = leafSyntax(cst, header.flags),
+        .type_prefix = leafSyntax(cst, header.type_prefix),
+        .type_name = leafSyntax(cst, header.type_name),
+        .range = cst.sourceRange(header.token_range)};
+  }
+  return result;
+}
+
 syntax_ast::AstPragma lowerPragma(const syntax_cst::CstFile& cst,
                                   const syntax_cst::CstPragma& pragma) {
   std::vector<syntax_ast::AstSyntax> strings;
@@ -807,6 +900,9 @@ syntax_ast::AstKernelResourceDirective lowerKernelResourceDirective(
       break;
     case TokenKind::DotReqntid:
       kind = syntax_ast::AstKernelResourceKind::ReqNtid;
+      break;
+    case TokenKind::DotMaxnctapersm:
+      kind = syntax_ast::AstKernelResourceKind::MaxNctaPerSm;
       break;
     case TokenKind::DotMinnctapersm:
       kind = syntax_ast::AstKernelResourceKind::MinNctaPerSm;
@@ -864,6 +960,9 @@ syntax_ast::AstFunctionBodyItem lowerFunctionBodyItem(
           std::get_if<syntax_cst::CstLocDirective>(&body_item)) {
     return lowerLocDirective(cst, *location);
   }
+  if (const auto* record =
+          std::get_if<syntax_cst::CstLegacyDwarfRecord>(&body_item))
+    return lowerLegacyDwarf(cst, *record);
   if (const auto* pragma = std::get_if<syntax_cst::CstPragma>(&body_item))
     return lowerPragma(cst, *pragma);
   if (const auto* block =
@@ -979,15 +1078,13 @@ AstModuleLowerResult lowerSyntaxModule(const syntax_cst::CstFile& cst) {
 
     if (const auto* section =
             std::get_if<syntax_cst::CstSectionDirective>(&item)) {
-      std::vector<syntax_ast::AstSyntax> payload;
-      payload.reserve(section->payload.size());
-      for (const auto token : section->payload)
-        payload.push_back(leafSyntax(cst, token));
-      ast.items.emplace_back(syntax_ast::AstSectionDirective{
-          .name = leafSyntax(cst, section->name),
-          .payload = std::move(payload),
-          .range = cst.sourceRange(section->token_range),
-      });
+      ast.items.emplace_back(lowerSection(cst, *section));
+      continue;
+    }
+
+    if (const auto* record =
+            std::get_if<syntax_cst::CstLegacyDwarfRecord>(&item)) {
+      ast.items.emplace_back(lowerLegacyDwarf(cst, *record));
       continue;
     }
 

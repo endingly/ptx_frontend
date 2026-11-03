@@ -216,24 +216,24 @@ operand_patterns:
   cvt_b32_f32_quad_rbits:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
     - name: src
-      kind: reg_vector
+      kind: value_vector
       role: src
       access: read
       type: f32
       register_width: equal_or_wider
-      vector: {kind: vector, arity: [4], type_policy: element}
-    - {name: rbits, kind: cvt_register_src, role: src2, access: read, type: b32, register_width: same_width}
+      vector: {kind: vector, arity: [4], type_policy: element, allow_named: true}
+    - {name: rbits, kind: cvt_register_src, role: src2, access: read, type: b32, register_width: equal_or_wider}
 
   cvt_b16_f32_quad_rbits:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
     - name: src
-      kind: reg_vector
+      kind: value_vector
       role: src
       access: read
       type: f32
       register_width: equal_or_wider
-      vector: {kind: vector, arity: [4], type_policy: element}
-    - {name: rbits, kind: cvt_register_src, role: src2, access: read, type: b32, register_width: same_width}
+      vector: {kind: vector, arity: [4], type_policy: element, allow_named: true}
+    - {name: rbits, kind: cvt_register_src, role: src2, access: read, type: b32, register_width: equal_or_wider}
 
   cvt_b16_packed:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
@@ -272,39 +272,39 @@ operand_patterns:
   cvt_b16_packed_optional_scale:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
     - {name: src, kind: cvt_register_src, role: src, access: read, type: b32, register_width: equal_or_wider}
-    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: same_width}
+    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: equal_or_wider}
 
   cvt_b32_packed_optional_scale:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
     - {name: src, kind: cvt_register_src, role: src, access: read, type: b16, register_width: equal_or_wider}
-    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: same_width}
+    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: equal_or_wider}
 
   cvt_b32_b8_packed_optional_scale:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
     - {name: src, kind: cvt_register_src, role: src, access: read, type: b8, register_width: equal_or_wider}
-    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: same_width}
+    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: equal_or_wider}
 
   cvt_b16_f32_pair_optional_scale:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
     - {name: src1, kind: cvt_scalar_src, role: src1, access: read, type: f32, register_width: equal_or_wider}
     - {name: src2, kind: cvt_scalar_src, role: src2, access: read, type: f32, register_width: equal_or_wider}
-    - {name: scale_factor, kind: cvt_register_src, role: src3, access: read, type: b16, register_width: same_width}
+    - {name: scale_factor, kind: cvt_register_src, role: src3, access: read, type: b16, register_width: equal_or_wider}
 
   cvt_pack_sat_u8_s32_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: s32, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: s32, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: s32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: s32, register_width: same_width}
     - {name: carry, kind: reg_or_imm, role: src3, access: read, type: b32, register_width: same_width}
 
   cvt_pack_sat_16_s32:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: s32, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: s32, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: s32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: s32, register_width: same_width}
 
   cvt_pack_sat_small_s32_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: s32, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: s32, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: s32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: s32, register_width: same_width}
     - {name: carry, kind: reg_or_imm, role: src3, access: read, type: b32, register_width: same_width}
 
   cvta_register:
@@ -384,6 +384,7 @@ operand_patterns:
       vector:
         kind: vector
         arity: [2, 4]
+        allow_named: true
 
   mov_unpack:
     - name: dst
@@ -395,6 +396,7 @@ operand_patterns:
       vector:
         kind: vector
         arity: [2, 4]
+        allow_named: true
         allow_sink: true
     - name: src
       kind: reg
@@ -796,7 +798,7 @@ operand_patterns:
 
   async_store_shared_scalar:
     - {name: dst, kind: addr, role: addr, access: write, state_space: [shared], address_base: register}
-    - {name: value, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: value, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}, register_width: equal_or_wider}
     - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
 
   async_store_shared_vector:
@@ -806,13 +808,13 @@ operand_patterns:
       role: src
       access: read
       type: {expr: "modifier(type)"}
-      register_width: same_width
-      vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element}
+      register_width: equal_or_wider
+      vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allow_named: true}
     - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
 
   async_store_global:
     - {name: dst, kind: addr, role: addr, access: write, state_space: [global], address_base: register}
-    - {name: value, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: value, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}, register_width: equal_or_wider}
 
   bulk_store_zero:
     - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
@@ -822,9 +824,9 @@ operand_patterns:
   isspacep_generic_address:
     - {name: dst, kind: pred, role: dst, access: write, type: pred}
     # PTX deliberately omits a size suffix: the generic address source is
-    # either 32 or 64 bits.  Equal-or-wider from u32 admits those fundamental
-    # address containers without admitting floating or packed declarations.
-    - {name: src, kind: reg, role: src, access: read, type: u32, register_width: equal_or_wider}
+    # either 32 or 64 bits. The finite address-container policy excludes wider
+    # data carriers while retaining ordinary integer/bit register compatibility.
+    - {name: src, kind: reg, role: src, access: read, type: u64, register_width: word_or_doubleword}
 
   shfl_sync_with_predicate:
     - &shfl_paired_destination
@@ -2275,7 +2277,7 @@ instructions:
               - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
               - {name: src1, kind: cvt_scalar_src, role: src1, access: read, type: f32, register_width: equal_or_wider}
               - {name: src2, kind: cvt_scalar_src, role: src2, access: read, type: f32, register_width: equal_or_wider}
-              - {name: rbits, kind: cvt_register_src, role: src3, access: read, type: b32, register_width: same_width}
+              - {name: rbits, kind: cvt_register_src, role: src3, access: read, type: b32, register_width: equal_or_wider}
         examples:
           - {ptx: "cvt.rs.satfinite.f16x2.f32 %r0, %f0, %f1, %r1;", valid: true}
 
@@ -2314,7 +2316,7 @@ instructions:
               - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
               - {name: src1, kind: cvt_scalar_src, role: src1, access: read, type: f32, register_width: equal_or_wider}
               - {name: src2, kind: cvt_scalar_src, role: src2, access: read, type: f32, register_width: equal_or_wider}
-              - {name: rbits, kind: cvt_register_src, role: src3, access: read, type: b32, register_width: same_width}
+              - {name: rbits, kind: cvt_register_src, role: src3, access: read, type: b32, register_width: equal_or_wider}
         examples:
           - {ptx: "cvt.rs.satfinite.bf16x2.f32 %r0, %f0, %f1, %r1;", valid: true}
 
@@ -2447,7 +2449,7 @@ instructions:
         description: "Finite-saturating FP4 x2 conversion from two f32 values."
         availability:
           any_of:
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.6", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -2468,7 +2470,7 @@ instructions:
         description: "Finite-saturating FP6 x2 conversion from two f32 values."
         availability:
           any_of:
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.6", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -2553,7 +2555,7 @@ instructions:
         description: "Low-bit x2 to f16x2 conversion."
         availability:
           any_of:
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.6", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -2572,7 +2574,7 @@ instructions:
         operands: $cvt_b32_b8_packed
         description: "FP4 x2 to f16x2 conversion from its b8 physical container."
         availability:
-          any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.6", sm: 120, target: sm_120a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}, {ptx: "8.8", sm: 120, family: sm_120f}]
+          any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.6", sm: 120, target: sm_120a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}, {ptx: "8.8", sm: 120, family: sm_120f}]
         rule: data_movement.cvt
         modifiers:
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
@@ -2683,7 +2685,7 @@ instructions:
         description: "Directed ue8m0x2 conversion from two f32 values."
         availability:
           any_of:
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.6", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -2703,7 +2705,7 @@ instructions:
         description: "Directed ue8m0x2 conversion from a packed bf16x2 value."
         availability:
           any_of:
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.6", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -2723,7 +2725,7 @@ instructions:
         description: "Packed ue8m0x2 to bf16x2 conversion."
         availability:
           any_of:
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.6", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -2824,7 +2826,7 @@ instructions:
     variants:
       - name: cvt_pack_sat_u8_s32_b32
         operands: $cvt_pack_sat_u8_s32_b32
-        description: "Register-only saturated packed u8 conversion."
+        description: "Saturating packed u8 conversion from s32 sources."
         availability: {ptx: "6.5", sm: 72}
         modifiers:
           - {name: pack, kind: flag, presence: fixed, value: true, token: ".pack"}
@@ -4091,8 +4093,8 @@ instructions:
       - name: shfl_up_b32
         availability: &shfl_legacy_availability
           any_of:
-            - ptx: "3.0"
-              targets: [sm_30, sm_32, sm_35, sm_37, sm_50, sm_52, sm_53, sm_60, sm_61, sm_62]
+            - {ptx: "3.0", ptx_before: "6.4", sm: 30}
+            - {ptx: "3.0", sm: 30, sm_before: 70}
         modifiers:
           - {name: sync, kind: flag, presence: absent, token: .sync}
           - {name: up, kind: flag, presence: fixed, value: true, token: .up}
@@ -6709,7 +6711,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -6732,7 +6734,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7323,7 +7325,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7355,7 +7357,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7398,7 +7400,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w128
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7430,7 +7432,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w128_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7548,7 +7550,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7580,7 +7582,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7623,7 +7625,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w128
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7655,7 +7657,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w128_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7773,7 +7775,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7805,7 +7807,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7848,7 +7850,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w128
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7880,7 +7882,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w128_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -8073,7 +8075,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cta_im2col_w128
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -8105,7 +8107,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cta_im2col_w128_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -8298,7 +8300,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cta_im2col_w128
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -8330,7 +8332,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cta_im2col_w128_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -8523,7 +8525,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cta_im2col_w128
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -8556,7 +8558,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cta_im2col_w128_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -8716,7 +8718,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4_multicast
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -8740,7 +8742,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.2d.shared::cluster.global.tile::gather4.mbarrier::complete_tx::bytes.multicast::cluster [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar], %mask;", valid: true}
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4_multicast_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9029,7 +9031,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w_multicast
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9063,7 +9065,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.3d.shared::cluster.global.im2col::w.mbarrier::complete_tx::bytes.multicast::cluster [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w_multicast_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9111,7 +9113,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w128_multicast
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9145,7 +9147,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.3d.shared::cluster.global.im2col::w::128.mbarrier::complete_tx::bytes.multicast::cluster [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w128_multicast_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9275,7 +9277,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w_multicast
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9309,7 +9311,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.4d.shared::cluster.global.im2col::w.mbarrier::complete_tx::bytes.multicast::cluster [dst], [tensor_map, {%r0, %r1, %r2, %r3}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w_multicast_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9357,7 +9359,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w128_multicast
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9391,7 +9393,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.4d.shared::cluster.global.im2col::w::128.mbarrier::complete_tx::bytes.multicast::cluster [dst], [tensor_map, {%r0, %r1, %r2, %r3}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w128_multicast_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9521,7 +9523,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w_multicast
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9555,7 +9557,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.5d.shared::cluster.global.im2col::w.mbarrier::complete_tx::bytes.multicast::cluster [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w_multicast_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9603,7 +9605,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w128_multicast
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9638,7 +9640,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w128_multicast_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9686,7 +9688,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_1d_shared_cluster_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9711,7 +9713,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_1d_shared_cluster_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9742,7 +9744,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9768,7 +9770,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9799,7 +9801,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9823,7 +9825,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9854,7 +9856,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9879,7 +9881,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9910,7 +9912,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9935,7 +9937,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9966,7 +9968,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9991,7 +9993,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10022,7 +10024,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_1d_shared_cta_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10047,7 +10049,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_1d_shared_cta_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10078,7 +10080,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cta_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10104,7 +10106,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cta_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10135,7 +10137,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cta_tile_gather4_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10159,7 +10161,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cta_tile_gather4_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10190,7 +10192,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cta_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10215,7 +10217,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cta_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10246,7 +10248,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cta_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10271,7 +10273,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cta_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10302,7 +10304,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cta_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10327,7 +10329,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cta_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10358,7 +10360,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10391,7 +10393,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10435,7 +10437,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10468,7 +10470,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10512,7 +10514,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w128_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10545,7 +10547,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w128_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10589,7 +10591,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10622,7 +10624,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10666,7 +10668,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10699,7 +10701,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10743,7 +10745,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w128_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10776,7 +10778,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w128_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10820,7 +10822,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10853,7 +10855,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10897,7 +10899,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10930,7 +10932,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10974,7 +10976,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w128_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11007,7 +11009,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w128_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11051,7 +11053,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cta_im2col_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11084,7 +11086,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cta_im2col_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11128,7 +11130,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cta_im2col_w_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11161,7 +11163,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cta_im2col_w_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11205,7 +11207,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cta_im2col_w128_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11238,7 +11240,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cta_im2col_w128_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11282,7 +11284,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cta_im2col_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11315,7 +11317,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cta_im2col_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11359,7 +11361,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cta_im2col_w_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11392,7 +11394,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cta_im2col_w_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11436,7 +11438,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cta_im2col_w128_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11469,7 +11471,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cta_im2col_w128_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11513,7 +11515,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cta_im2col_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11546,7 +11548,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cta_im2col_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11590,7 +11592,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cta_im2col_w_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11623,7 +11625,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cta_im2col_w_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11667,7 +11669,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cta_im2col_w128_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11701,7 +11703,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cta_im2col_w128_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11745,7 +11747,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_1d_shared_cluster_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11773,7 +11775,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.1d.shared::cluster.global.tile.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0}], [mbar], %mask;", valid: true}
       - name: cp_async_bulk_tensor_1d_shared_cluster_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11809,7 +11811,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11838,7 +11840,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11874,7 +11876,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11901,7 +11903,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.2d.shared::cluster.global.tile::gather4.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::1 [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar], %mask;", valid: true}
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11937,7 +11939,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11965,7 +11967,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.3d.shared::cluster.global.tile.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], %mask;", valid: true}
       - name: cp_async_bulk_tensor_3d_shared_cluster_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12001,7 +12003,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12029,7 +12031,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.4d.shared::cluster.global.tile.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2, %r3}], [mbar], %mask;", valid: true}
       - name: cp_async_bulk_tensor_4d_shared_cluster_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12065,7 +12067,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12093,7 +12095,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.5d.shared::cluster.global.tile.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar], %mask;", valid: true}
       - name: cp_async_bulk_tensor_5d_shared_cluster_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12129,7 +12131,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12166,7 +12168,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.3d.shared::cluster.global.im2col.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], {%h0}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12217,7 +12219,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12254,7 +12256,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.3d.shared::cluster.global.im2col::w.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12305,7 +12307,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w128_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12342,7 +12344,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.3d.shared::cluster.global.im2col::w::128.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w128_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12393,7 +12395,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12430,7 +12432,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.4d.shared::cluster.global.im2col.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2, %r3}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12481,7 +12483,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12518,7 +12520,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.4d.shared::cluster.global.im2col::w.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2, %r3}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12569,7 +12571,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w128_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12606,7 +12608,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.4d.shared::cluster.global.im2col::w::128.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2, %r3}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w128_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12657,7 +12659,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12694,7 +12696,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.5d.shared::cluster.global.im2col.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar], {%h0, %h1, %h2}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12745,7 +12747,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12782,7 +12784,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.5d.shared::cluster.global.im2col::w.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12833,7 +12835,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w128_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12870,7 +12872,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.5d.shared::cluster.global.im2col::w::128.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w128_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -13025,7 +13027,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_global_shared_cta_tile_scatter4
         completion_kind: bulk_group
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -13046,7 +13048,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_global_shared_cta_tile_scatter4_cache_hint
         completion_kind: bulk_group
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -16956,7 +16958,7 @@ instructions:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
 
       - name: cp_async_bulk_prefetch_tensor_2d_tile_gather4
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -16974,7 +16976,7 @@ instructions:
           - {ptx: "cp.async.bulk.prefetch.tensor.2d.L2.global.tile::gather4 [tensor_map, {%r0, %r1, %r2, %r3, %r4}];", valid: true}
 
       - name: cp_async_bulk_prefetch_tensor_2d_tile_gather4_cache_hint
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -17180,7 +17182,7 @@ instructions:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
 
       - name: cp_async_bulk_prefetch_tensor_3d_im2col_w
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -17205,7 +17207,7 @@ instructions:
           - {ptx: "cp.async.bulk.prefetch.tensor.3d.L2.global.im2col::w [tensor_map, {%r0, %r1, %r2}], {%h0, %h1};", valid: true}
 
       - name: cp_async_bulk_prefetch_tensor_3d_im2col_w_cache_hint
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -17237,7 +17239,7 @@ instructions:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
 
       - name: cp_async_bulk_prefetch_tensor_3d_im2col_w128
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -17262,7 +17264,7 @@ instructions:
           - {ptx: "cp.async.bulk.prefetch.tensor.3d.L2.global.im2col::w::128 [tensor_map, {%r0, %r1, %r2}], {%h0, %h1};", valid: true}
 
       - name: cp_async_bulk_prefetch_tensor_3d_im2col_w128_cache_hint
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -17351,7 +17353,7 @@ instructions:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
 
       - name: cp_async_bulk_prefetch_tensor_4d_im2col_w
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -17376,7 +17378,7 @@ instructions:
           - {ptx: "cp.async.bulk.prefetch.tensor.4d.L2.global.im2col::w [tensor_map, {%r0, %r1, %r2, %r3}], {%h0, %h1};", valid: true}
 
       - name: cp_async_bulk_prefetch_tensor_4d_im2col_w_cache_hint
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -17408,7 +17410,7 @@ instructions:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
 
       - name: cp_async_bulk_prefetch_tensor_4d_im2col_w128
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -17433,7 +17435,7 @@ instructions:
           - {ptx: "cp.async.bulk.prefetch.tensor.4d.L2.global.im2col::w::128 [tensor_map, {%r0, %r1, %r2, %r3}], {%h0, %h1};", valid: true}
 
       - name: cp_async_bulk_prefetch_tensor_4d_im2col_w128_cache_hint
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -17522,7 +17524,7 @@ instructions:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
 
       - name: cp_async_bulk_prefetch_tensor_5d_im2col_w
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -17547,7 +17549,7 @@ instructions:
           - {ptx: "cp.async.bulk.prefetch.tensor.5d.L2.global.im2col::w [tensor_map, {%r0, %r1, %r2, %r3, %r4}], {%h0, %h1};", valid: true}
 
       - name: cp_async_bulk_prefetch_tensor_5d_im2col_w_cache_hint
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -17579,7 +17581,7 @@ instructions:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
 
       - name: cp_async_bulk_prefetch_tensor_5d_im2col_w128
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -17604,7 +17606,7 @@ instructions:
           - {ptx: "cp.async.bulk.prefetch.tensor.5d.L2.global.im2col::w::128 [tensor_map, {%r0, %r1, %r2, %r3, %r4}], {%h0, %h1};", valid: true}
 
       - name: cp_async_bulk_prefetch_tensor_5d_im2col_w128_cache_hint
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -18349,7 +18351,7 @@ instructions:
         availability:
           any_of:
             - {ptx: "8.3", sm: 90, target: sm_90a}
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.7", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -18373,7 +18375,7 @@ instructions:
         availability:
           any_of:
             - {ptx: "8.3", sm: 90, target: sm_90a}
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.7", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -18397,7 +18399,7 @@ instructions:
         availability:
           any_of:
             - {ptx: "8.3", sm: 90, target: sm_90a}
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.7", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -18423,7 +18425,7 @@ instructions:
         availability:
           any_of:
             - {ptx: "8.3", sm: 90, target: sm_90a}
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.7", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -18449,7 +18451,7 @@ instructions:
         availability:
           any_of:
             - {ptx: "8.3", sm: 90, target: sm_90a}
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.7", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -18475,7 +18477,7 @@ instructions:
         availability:
           any_of:
             - {ptx: "8.3", sm: 90, target: sm_90a}
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.7", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -18501,7 +18503,7 @@ instructions:
         availability:
           any_of:
             - {ptx: "8.3", sm: 90, target: sm_90a}
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.7", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -18526,7 +18528,7 @@ instructions:
         availability:
           any_of:
             - {ptx: "8.3", sm: 90, target: sm_90a}
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.7", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -18551,7 +18553,7 @@ instructions:
         availability:
           any_of:
             - {ptx: "8.3", sm: 90, target: sm_90a}
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.7", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -18576,7 +18578,7 @@ instructions:
         availability:
           any_of:
             - {ptx: "8.3", sm: 90, target: sm_90a}
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.7", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -18601,7 +18603,7 @@ instructions:
         availability:
           any_of:
             - {ptx: "8.3", sm: 90, target: sm_90a}
-            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.6", sm: 100, targets: [sm_100a, sm_101a, sm_101f]}
             - {ptx: "8.7", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
             - {ptx: "9.0", sm: 110, family: sm_110f}
@@ -18742,7 +18744,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -18807,7 +18809,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -18874,7 +18876,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -18940,7 +18942,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19007,7 +19009,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19073,7 +19075,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19138,7 +19140,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19202,7 +19204,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19267,7 +19269,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19331,7 +19333,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19396,7 +19398,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19460,7 +19462,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19534,7 +19536,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -19603,7 +19605,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -19672,7 +19674,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -19739,7 +19741,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -19806,7 +19808,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -19873,7 +19875,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -19938,7 +19940,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -20002,7 +20004,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -20105,7 +20107,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20213,7 +20215,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20283,7 +20285,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20352,7 +20354,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20479,7 +20481,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20605,7 +20607,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20712,7 +20714,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20818,7 +20820,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20888,7 +20890,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20957,7 +20959,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21084,7 +21086,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21210,7 +21212,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21317,7 +21319,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21423,7 +21425,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21493,7 +21495,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21562,7 +21564,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21689,7 +21691,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21815,7 +21817,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21877,12 +21879,12 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg
+        kind: reg_or_imm
         role: src
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -21936,12 +21938,12 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg
+        kind: reg_or_imm
         role: src
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -22041,7 +22043,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -22141,7 +22143,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -22202,7 +22204,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -22261,7 +22263,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -22322,12 +22324,12 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg
+        kind: reg_or_imm
         role: src
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -22393,7 +22395,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -22543,12 +22545,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -22705,12 +22708,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -22788,12 +22792,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -22870,12 +22875,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -23050,12 +23056,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -23229,12 +23236,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -23391,12 +23399,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -23552,12 +23561,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -23635,12 +23645,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -23717,12 +23728,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -23897,12 +23909,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -24076,12 +24089,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -24238,12 +24252,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -24399,12 +24414,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -24482,12 +24498,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -24564,12 +24581,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -24744,12 +24762,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -24923,12 +24942,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -25083,17 +25103,18 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -25240,17 +25261,18 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -25320,17 +25342,18 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -25523,12 +25546,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -25727,12 +25751,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -25810,12 +25835,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -25892,12 +25918,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -26114,12 +26141,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -26335,12 +26363,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -26539,12 +26568,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -26742,12 +26772,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -26825,12 +26856,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -26907,12 +26939,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -27129,12 +27162,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -27350,12 +27384,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -27554,12 +27589,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -27757,12 +27793,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -27840,12 +27877,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -27922,12 +27960,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -28144,12 +28183,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -28365,12 +28405,13 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -28567,17 +28608,18 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -28766,17 +28808,18 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -28846,17 +28889,18 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -29004,7 +29048,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -29163,7 +29207,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -29244,7 +29288,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -29324,7 +29368,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -29504,7 +29548,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -29683,7 +29727,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -29843,7 +29887,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30002,7 +30046,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30083,7 +30127,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30163,7 +30207,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30343,7 +30387,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30522,7 +30566,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30682,7 +30726,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30841,7 +30885,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30922,7 +30966,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -31002,7 +31046,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -31182,7 +31226,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -31361,7 +31405,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -31518,12 +31562,12 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -31672,12 +31716,12 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -31749,12 +31793,12 @@ instructions:
         - global
         address_offset_domain: signed32
       - name: src
-        kind: reg_vector
+        kind: value_vector
         role: src
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -31831,7 +31875,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -31893,7 +31937,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -31960,7 +32004,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment

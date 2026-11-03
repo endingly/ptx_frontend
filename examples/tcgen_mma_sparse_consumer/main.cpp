@@ -52,7 +52,7 @@ int main() {
   .reg .b32 %d, %a, %i, %sp;
   .reg .b64 %ad, %bd;
   .reg .pred %p;
-  tcgen05.mma.sp.cta_group::1.kind::f16 [%d], [%a], %bd, [%sp], %i, %p;
+  tcgen05.mma.sp.cta_group::1.kind::f16 [%d], [%a], %bd, [%sp], %i, {%i, %i, %i, %i}, %p;
   ret;
 }
 )ptx";

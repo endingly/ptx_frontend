@@ -82,6 +82,7 @@ TEST(SourceTargetOptions, OwnsExactMapOptionAndResetsAcrossRegions) {
 .func third() { ret; }
 .target sm_12, texmode_unified, map_f64_to_f32
 .func fourth() { ret; }
+.section .debug_info {.b8 0}
 )ptx";
     PtxSyntaxParser parser{source};
     auto ast = parser.parseModule();
@@ -128,7 +129,8 @@ TEST(SourceTargetOptions, RejectsNearSpellingsAtSourceAndOwnedBoundaries) {
     const auto invalid_ast = invalid_parser.parseModule();
     EXPECT_FALSE(invalid_ast && invalid_ast.diagnostics.empty());
     PtxSyntaxParser valid_parser{
-        ".version 3.0\n.target sm_10, debug\n.func f() { ret; }\n"};
+        ".version 3.0\n.target sm_10, debug\n.func f() { ret; }\n.section "
+        ".debug_info {.b8 0}\n"};
     const auto valid_ast = valid_parser.parseModule();
     ASSERT_TRUE(valid_ast && valid_ast.diagnostics.empty());
     auto owned = resolveAndValidateModule(*valid_ast);
@@ -157,6 +159,7 @@ TEST(SourceTargetOptions, AstValidationUsesReplacementSourceOption) {
   PtxSyntaxParser replacement{R"ptx(.version 3.0
 .target sm_10, debug
 .func f() { ret; }
+.section .debug_info {.b8 0}
 )ptx"};
   auto ast = original.parseModule();
   auto retargeted = replacement.parseModule();

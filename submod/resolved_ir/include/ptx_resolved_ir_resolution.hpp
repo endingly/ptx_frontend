@@ -9,7 +9,7 @@ namespace ptx_frontend::resolved_ir {
 
 /** Policy for validating an owned model against source availability context. */
 enum class ModuleValidationPolicy : uint8_t {
-  /** Preserve fragment support; final instruction checks need version/target. */
+  /** Preserve fragments and typed roles; final instruction checks need context. */
   AvailableContext,
   /** Reject a checked source region lacking a recognized version/target. */
   RequireCompleteContext,
@@ -33,6 +33,10 @@ resolveInstruction(const syntax_ast::AstInstruction& ast,
  * The final instruction checker (including its target-independent constraints)
  * and directive availability checks are deferred. Known source context still
  * constrains declaration availability. Success is not full instruction validity.
+ * An entry containing body `.param` requires a PTX version to select its legacy
+ * input or modern call-slot role; missing version reports MissingValidationContext.
+ * Header inputs, device body parameters, and other fragments keep their existing
+ * optional-context behavior. Already typed validation never reselects a role.
  */
 std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
     const syntax_ast::AstModule& ast);

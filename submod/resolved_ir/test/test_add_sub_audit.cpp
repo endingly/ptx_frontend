@@ -13,7 +13,7 @@
 namespace ptx_frontend::resolved_ir {
 namespace {
 
-/** Accept the audited scalar source immediates and the mixed FP32 addend literal. */
+/** Accept numeric scalar sources independently of the mixed FP32 addend. */
 TEST(AddSubAudit, AcceptsAuditedLiteralPositions) {
   for (
       const auto source : {
@@ -21,8 +21,7 @@ TEST(AddSubAudit, AcceptsAuditedLiteralPositions) {
           R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f<3>; add.f32 %f0, %f1, 1.0; })ptx",
           R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f64 %d<3>; add.f64 %d0, 1.0, %d1; })ptx",
           R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f64 %d<3>; sub.f64 %d0, %d1, 1.0; })ptx",
-          // The mixed FP32 addend/subtrahend is immediate-capable; the narrow
-          // source and the destination are not.
+          // Both numeric source roles are immediate-capable; destinations remain registers.
           R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f<3>; .reg .f16 %h<2>; add.f32.f16 %f0, %h1, 1.0; })ptx",
           R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f<3>; .reg .f16 %h<2>; sub.f32.f16 %f0, %h1, 1.0; })ptx",
           R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f<3>; .reg .b16 %b<2>; add.f32.bf16 %f0, %b1, 1.0; })ptx",
@@ -38,18 +37,17 @@ TEST(AddSubAudit, AcceptsAuditedLiteralPositions) {
 
 /** Reject literals outside the audited positions.
  *
- * These are operand-shape rules, so instruction resolution is the right level:
- * the rejection is decided by layout selection alone, with no module binding
- * that an unrelated unresolved name could fail on instead.
+ * Instruction resolution isolates operand and numeric-conversion rules without
+ * an unrelated missing module binding obscuring the rejection.
  */
 TEST(AddSubAudit, RejectsLiteralsOutsideAuditedPositions) {
   for (const auto source : {
            // Destinations are registers for every cohort.
            "add.f32 1.0, %f1, %f2;",
            "add.f32.bf16 1.0, %b1, %f2;",
-           // The narrow source is register-only, including the BF16 cohort.
-           "add.f32.f16 %f0, 1.0, %f2;",
-           "sub.f32.bf16 %f0, 1.0, %f2;",
+           // Narrow floating sources reject the integer category.
+           "add.f32.f16 %f0, 1, %f2;",
+           "sub.f32.bf16 %f0, 1, %f2;",
            // The mixed addend and subtrahend admit floating literals only.
            "add.f32.f16 %f0, %h1, 1;",
            "sub.f32.f16 %f0, %h1, 1;",
@@ -60,6 +58,31 @@ TEST(AddSubAudit, RejectsLiteralsOutsideAuditedPositions) {
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
     EXPECT_FALSE(resolveInstruction(*parsed).has_value());
   }
+}
+
+/** The mixed BF16 numeric source owns its canonical word after source destruction. */
+TEST(AddSubAudit, OwnsMixedBfloatNumericSource) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = test_helpers::parseModule(
+        ".version 9.3 .target sm_100 .entry kernel() { "
+        ".reg .f32 %f<3>; sub.f32.bf16 %f0, 1.0, %f2; }");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveAndValidateModule(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    ASSERT_TRUE(validateModule(*parsed, *resolved));
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+  const auto& sub =
+      dynamic_cast<const SubMixedF32&>(*owned->functions.front().body.front());
+  const auto* immediate = std::get_if<ResolvedImmediate>(&sub.src.value);
+  ASSERT_NE(immediate, nullptr);
+  EXPECT_EQ(immediate->type, ScalarType::BF16);
+  EXPECT_EQ(immediate->bits, 0x3f80u);
+  EXPECT_FALSE(immediate->integer_source_bits.has_value());
+  EXPECT_FALSE(immediate->is_negative);
 }
 
 /** Pin the typed immediate handoff for the newly immediate-capable mixed operand. */
@@ -89,7 +112,7 @@ TEST(AddSubAudit, OwnsMixedAddendImmediateAndRevalidates) {
   EXPECT_EQ(addend->type, ScalarType::F32);
   EXPECT_EQ(addend->bits, 0x3F800000u);
   // The narrow source keeps its register representation, not the wide one.
-  EXPECT_EQ(add.src.value.spelling, "%h1");
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(add.src.value).spelling, "%h1");
 
   const auto& sub =
       dynamic_cast<const SubMixedF32&>(*owned->functions.front().body[1]);

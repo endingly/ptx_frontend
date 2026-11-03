@@ -6,6 +6,21 @@
 namespace ptx_frontend {
 using namespace cst_detail;
 
+/** Preserve one bounded identifier or selected member without admitting arithmetic. */
+std::expected<syntax_cst::CstAddressBase, CstParseDiagnostic>
+PtxCstParser::parseIdentifierOrMember(std::string_view description) {
+  auto identifier = expect(TokenKind::Ident, description);
+  if (!identifier)
+    return std::unexpected(identifier.error());
+  const syntax_cst::CstIdentifier base{*identifier};
+  if (token(peek()).kind == TokenKind::DotIdent) {
+    const TokenId selector = consume();
+    return syntax_cst::CstVectorMember{
+        base, selector, {*identifier, selector + 1}};
+  }
+  return base;
+}
+
 /** Parse the address/tensor/fabric tail after an already consumed `[`; own `]`. */
 std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
 PtxCstParser::parseBracketedAddress(TokenId open) {
@@ -27,11 +42,10 @@ PtxCstParser::parseBracketedAddress(TokenId open) {
         },
         std::move(*immediate));
   } else {
-    auto identifier = expect(TokenKind::Ident, "address base");
+    auto identifier = parseIdentifierOrMember("address base");
     if (!identifier)
       return std::unexpected(identifier.error());
-    last = *identifier;
-    base = syntax_cst::CstIdentifier{*identifier};
+    base = std::move(*identifier);
   }
 
   std::optional<syntax_cst::CstAddressOffset> offset;
@@ -103,10 +117,10 @@ PtxCstParser::parseBracketedAddress(TokenId open) {
             },
             std::move(*immediate)));
       } else {
-        auto identifier = expect(TokenKind::Ident, "fabric handle component");
+        auto identifier = parseIdentifierOrMember("fabric handle component");
         if (!identifier)
           return std::unexpected(identifier.error());
-        elements.emplace_back(syntax_cst::CstIdentifier{*identifier});
+        elements.push_back(std::move(*identifier));
       }
       if (token(peek()).kind != TokenKind::Comma)
         break;
@@ -204,10 +218,15 @@ PtxCstParser::parseCallParameterList(
   std::vector<syntax_cst::CstCallParameter> parameters;
   std::vector<TokenId> commas;
   if (kind == CstCallParameterListKind::Return) {
-    auto parameter = expect(TokenKind::Ident, "call return parameter");
+    auto parameter = parseIdentifierOrMember("call return parameter");
     if (!parameter)
       return std::unexpected(parameter.error());
-    parameters.emplace_back(syntax_cst::CstIdentifier{*parameter});
+    if (const auto* identifier =
+            std::get_if<syntax_cst::CstIdentifier>(&*parameter))
+      parameters.emplace_back(*identifier);
+    else
+      parameters.emplace_back(
+          std::get<syntax_cst::CstVectorMember>(*parameter));
     if (token(peek()).kind == TokenKind::Comma) {
       return std::unexpected(CstParseDiagnostic{
           token(peek()).range,
@@ -216,7 +235,15 @@ PtxCstParser::parseCallParameterList(
   } else {
     while (token(peek()).kind != TokenKind::RParen) {
       if (token(peek()).kind == TokenKind::Ident) {
-        parameters.emplace_back(syntax_cst::CstIdentifier{consume()});
+        auto parameter = parseIdentifierOrMember("call input parameter");
+        if (!parameter)
+          return std::unexpected(parameter.error());
+        if (const auto* identifier =
+                std::get_if<syntax_cst::CstIdentifier>(&*parameter))
+          parameters.emplace_back(*identifier);
+        else
+          parameters.emplace_back(
+              std::get<syntax_cst::CstVectorMember>(*parameter));
       } else if (atNumericStart()) {
         auto parameter = parseNumericOperand();
         if (!parameter)
@@ -272,13 +299,20 @@ PtxCstParser::parseCallOperands() {
     operands.back().trailing_comma = *comma;
   }
 
-  auto target = expect(TokenKind::Ident, "call target");
+  auto target = parseIdentifierOrMember("call target");
   if (!target)
     return std::unexpected(target.error());
-  operands.push_back(
-      {syntax_cst::CstCallTarget{syntax_cst::CstIdentifier{*target},
-                                 {*target, *target + 1}},
-       std::nullopt});
+  syntax_cst::CstCallTarget call_target;
+  if (const auto* identifier =
+          std::get_if<syntax_cst::CstIdentifier>(&*target)) {
+    call_target.name = *identifier;
+    call_target.token_range = {identifier->token, identifier->token + 1};
+  } else {
+    const auto& member = std::get<syntax_cst::CstVectorMember>(*target);
+    call_target.name = member;
+    call_target.token_range = member.token_range;
+  }
+  operands.push_back({std::move(call_target), std::nullopt});
 
   if (token(peek()).kind != TokenKind::Comma) {
     if (has_return_parameters) {
@@ -488,7 +522,10 @@ PtxCstParser::parseIdentifierOperand() {
     std::optional<syntax_cst::CstAddressOffset> displacement;
     if (token(peek()).kind == TokenKind::Ident &&
         token(peek()).text != "WARP_SZ") {
-      index = syntax_cst::CstIdentifier{consume()};
+      auto member = parseIdentifierOrMember("named-array index");
+      if (!member)
+        return std::unexpected(member.error());
+      index = std::move(*member);
       if (token(peek()).kind == TokenKind::Plus ||
           token(peek()).kind == TokenKind::Minus) {
         const TokenId operation = consume();

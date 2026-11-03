@@ -2,6 +2,9 @@
 
 #include <bit>
 #include <cmath>
+#include <ptx_frontend/binding/ptx_symbol_table.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/shl.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/shr.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
@@ -121,11 +124,367 @@ TEST(InstructionConstantExpressions,
   }
 }
 
+/** Expression type is observed before equal-width uses erase that distinction. */
+TEST(InstructionConstantExpressions,
+     BitwiseTypesAndBitsAcrossConsumersAfterSourceDestruction) {
+  /** Independent expression goldens, before instruction or storage conversion. */
+  struct Case {
+    /** Source expression parsed by the ordinary syntax entry point. */
+    std::string_view text;
+    /** Full 64-bit result, independent of destination type. */
+    uint64_t bits;
+    /** Expected expression type, not reconstructed from normalized caches. */
+    bool is_unsigned;
+  };
+  const Case cases[] = {
+      {"(-1) & (-1)", UINT64_MAX, false},
+      {"(-1) & (-1U)", UINT64_MAX, true},
+      {"(-1U) & (-1)", UINT64_MAX, true},
+      {"(-1U) & (-1U)", UINT64_MAX, true},
+      {"(-4 & -1) >> 1", UINT64_MAX - 1, false},
+      {"(-4U & -1) >> 1", UINT64_C(0x7ffffffffffffffe), true},
+      {"(-1) | (0)", UINT64_MAX, false},
+      {"(-1) | (0U)", UINT64_MAX, true},
+      {"(-1U) | (0)", UINT64_MAX, true},
+      {"(-1U) | (0U)", UINT64_MAX, true},
+      {"(-4 | 0) >> 1", UINT64_MAX - 1, false},
+      {"(-4U | 0) >> 1", UINT64_C(0x7ffffffffffffffe), true},
+      {"(-1) ^ (0)", UINT64_MAX, false},
+      {"(-1) ^ (0U)", UINT64_MAX, true},
+      {"(-1U) ^ (0)", UINT64_MAX, true},
+      {"(-1U) ^ (0U)", UINT64_MAX, true},
+      {"(-4 ^ 0) >> 1", UINT64_MAX - 1, false},
+      {"(-4U ^ 0) >> 1", UINT64_C(0x7ffffffffffffffe), true},
+      {"~0", UINT64_MAX, true},
+      {"~0U", UINT64_MAX, true},
+      {"~(-1)", 0, true},
+  };
+  for (const auto& fixture : cases) {
+    SCOPED_TRACE(fixture.text);
+    auto source_expression = expression(fixture.text);
+    ASSERT_TRUE(source_expression);
+    const auto evaluated = declaration_semantics::numericConstantValue(
+        *source_expression->expression);
+    ASSERT_TRUE(evaluated);
+    const auto* integer =
+        std::get_if<declaration_semantics::IntegerConstantValue>(&*evaluated);
+    ASSERT_NE(integer, nullptr);
+    EXPECT_EQ(integer->bits, fixture.bits);
+    EXPECT_EQ(integer->is_unsigned, fixture.is_unsigned);
+    source_expression.reset();
+    std::optional<ResolvedModule> owned;
+    {
+      const std::string source =
+          ".version 9.3\n.target sm_90\n.address_size 64\n"
+          ".global .u64 value = (" +
+          std::string(fixture.text) +
+          ");\n.entry kernel() { .reg .u64 d; mov.u64 d, (" +
+          std::string(fixture.text) + "); ret; }";
+      PtxSyntaxParser parser(source);
+      auto ast = parser.parseModule();
+      ASSERT_TRUE(ast);
+      ASSERT_TRUE(ast.diagnostics.empty());
+      auto resolved = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(resolved) << resolved.error().front().message;
+      EXPECT_TRUE(validateModule(*ast, *resolved));
+      owned = std::move(*resolved);
+    }
+    // Parser, text and module AST are dead before inspecting the owned records.
+    const auto& immediate = firstMov(*owned);
+    EXPECT_EQ(immediate.bits, fixture.bits);
+    EXPECT_EQ(immediate.type, ScalarType::U64);
+    EXPECT_EQ(immediate.integer_source_bits, fixture.bits);
+    EXPECT_EQ(immediate.is_negative,
+              !fixture.is_unsigned && (fixture.bits >> 63) != 0);
+    ASSERT_EQ(owned->storage_declarations.size(), 1u);
+    const auto& initializer = owned->storage_declarations.front().initializer;
+    ASSERT_EQ(initializer.size(), 1u);
+    const auto* storage =
+        std::get_if<StorageConstant>(&initializer.front().value);
+    ASSERT_NE(storage, nullptr);
+    EXPECT_EQ(storage->bits, fixture.bits);
+    EXPECT_EQ(storage->high_bits, 0u);
+    EXPECT_TRUE(validateModule(*owned));
+    ResolvedModule copied(*owned), assigned;
+    assigned = copied;
+    ResolvedFunction function(copied.functions.back()), function_assigned;
+    function_assigned = function;
+    assigned.functions.back() = function_assigned;
+    assigned.functions.back().body.front() = function.body.front()->clone();
+    EXPECT_NE(assigned.functions.back().body.front().get(),
+              owned->functions.back().body.front().get());
+    EXPECT_EQ(firstMov(copied).bits, fixture.bits);
+    EXPECT_EQ(firstMov(assigned).integer_source_bits, fixture.bits);
+    EXPECT_EQ(
+        std::get<StorageConstant>(
+            assigned.storage_declarations.front().initializer.front().value)
+            .bits,
+        fixture.bits);
+    EXPECT_TRUE(validateModule(copied));
+    EXPECT_TRUE(validateModule(assigned));
+  }
+}
+
+/** Accepted shift payloads need no expression history after source destruction. */
+TEST(InstructionConstantExpressions, ShiftPayloadsSurviveOwnedLifetime) {
+  /** Expected normalized bits and source sign, not a retained expression type. */
+  struct Case {
+    /** Written expression parsed through real MOV and storage consumers. */
+    std::string_view text;
+    /** Expected bits after the equal-width use conversion. */
+    uint64_t bits;
+    /** True only for a signed negative expression result. */
+    bool is_negative;
+  };
+  constexpr Case cases[] = {
+      {"1 << 0", UINT64_C(0x0000000000000001), false},
+      {"1 << 63", UINT64_C(0x8000000000000000), true},
+      {"1U << 63", UINT64_C(0x8000000000000000), false},
+      {"-1 >> 0", UINT64_C(0xffffffffffffffff), true},
+      {"-1 >> 63", UINT64_C(0xffffffffffffffff), true},
+      {"-1U >> 0", UINT64_C(0xffffffffffffffff), false},
+      {"-1U >> 63", UINT64_C(0x0000000000000001), false},
+      {"0 << 63", UINT64_C(0x0000000000000000), false},
+      {"1 << (-1 + 2)", UINT64_C(0x0000000000000002), false},
+      {"1 >> 0U", UINT64_C(0x0000000000000001), false},
+  };
+  for (const auto& fixture : cases) {
+    SCOPED_TRACE(fixture.text);
+    std::optional<ResolvedModule> owned;
+    {
+      const std::string source =
+          ".version 9.3\n.target sm_90\n.address_size 64\n"
+          ".global .u64 value = (" +
+          std::string(fixture.text) +
+          ");\n.entry kernel(){ .reg .u64 d; mov.u64 d, (" +
+          std::string(fixture.text) + "); ret; }";
+      PtxSyntaxParser parser(source);
+      auto ast = parser.parseModule();
+      ASSERT_TRUE(ast);
+      ASSERT_TRUE(ast.diagnostics.empty());
+      auto resolved = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(resolved) << resolved.error().front().message;
+      EXPECT_TRUE(validateModule(*ast, *resolved));
+      owned = std::move(*resolved);
+    }
+    // Both source text and module AST have been destroyed before owned checks.
+    EXPECT_EQ(firstMov(*owned).bits, fixture.bits);
+    EXPECT_EQ(firstMov(*owned).integer_source_bits, fixture.bits);
+    EXPECT_EQ(firstMov(*owned).is_negative, fixture.is_negative);
+    ASSERT_EQ(owned->storage_declarations.size(), 1u);
+    const auto& values = owned->storage_declarations.front().initializer;
+    ASSERT_EQ(values.size(), 1u);
+    const auto* storage = std::get_if<StorageConstant>(&values.front().value);
+    ASSERT_NE(storage, nullptr);
+    EXPECT_EQ(storage->bits, fixture.bits);
+    EXPECT_EQ(storage->high_bits, 0u);
+    EXPECT_TRUE(validateModule(*owned));
+    ResolvedModule copied(*owned), assigned;
+    assigned = copied;
+    ResolvedFunction function(copied.functions.back()), function_assigned;
+    function_assigned = function;
+    assigned.functions.back() = function_assigned;
+    assigned.functions.back().body.front() = function.body.front()->clone();
+    EXPECT_NE(assigned.functions.back().body.front().get(),
+              owned->functions.back().body.front().get());
+    EXPECT_EQ(firstMov(copied).bits, fixture.bits);
+    EXPECT_EQ(firstMov(assigned).integer_source_bits, fixture.bits);
+    EXPECT_EQ(
+        std::get<StorageConstant>(
+            assigned.storage_declarations.front().initializer.front().value)
+            .bits,
+        fixture.bits);
+    EXPECT_TRUE(validateModule(copied));
+    EXPECT_TRUE(validateModule(assigned));
+  }
+}
+
+/** Concrete count errors need no target, while unresolved symbols stay deferred. */
+TEST(InstructionConstantExpressions, ShiftDomainNeedsNoTargetOrOriginCache) {
+  for (const auto text : {"symbol + 1"}) {
+    auto parsed = expression(text);
+    ASSERT_TRUE(parsed);
+    const auto value =
+        declaration_semantics::numericConstantValue(*parsed->expression);
+    ASSERT_FALSE(value);
+    EXPECT_TRUE(value.error().deferred);
+  }
+  for (const auto text : {"symbol << 1", "symbol >> 1"}) {
+    SCOPED_TRACE(text);
+    auto parsed = expression(text);
+    ASSERT_TRUE(parsed);
+    const auto value =
+        declaration_semantics::numericConstantValue(*parsed->expression);
+    ASSERT_FALSE(value);
+    EXPECT_FALSE(value.error().deferred);
+    EXPECT_EQ(value.error().range,
+              rangeOf("mov.u64 %rd0, (" + std::string(text) + ");", text));
+    EXPECT_EQ(value.error().message,
+              "Invalid constant expression (operand types, literal, "
+              "division/remainder by zero, or shift count).");
+  }
+  const std::string source =
+      ".entry kernel(){ .reg .u64 d; mov.u64 d, (1 << 65); ret; }";
+  PtxSyntaxParser parser(source);
+  auto ast = parser.parseModule();
+  ASSERT_TRUE(ast);
+  ASSERT_TRUE(ast.diagnostics.empty());
+  const auto resolved = resolveModule(*ast);
+  ASSERT_FALSE(resolved);
+  ASSERT_EQ(resolved.error().size(), 1u);
+  EXPECT_EQ(resolved.error().front().message,
+            "Constant expression shift count must be in 0..63.");
+  EXPECT_EQ(resolved.error().front().range, rangeOf(source, "65"));
+}
+
+/** Instruction count operands do not inherit the expression shift-count limit. */
+TEST(InstructionConstantExpressions, ShiftInstructionsKeepTheirOperandDomain) {
+  const std::string source =
+      ".version 9.3\n.target sm_90\n.address_size 64\n"
+      ".entry kernel(){ .reg .u32 r<3>; shl.b32 r0, r1, 64; "
+      "shr.u32 r0, r1, (32 + 33); ret; }";
+  PtxSyntaxParser parser(source);
+  auto ast = parser.parseModule();
+  ASSERT_TRUE(ast);
+  ASSERT_TRUE(ast.diagnostics.empty());
+  auto resolved = resolveAndValidateModule(*ast);
+  ASSERT_TRUE(resolved) << resolved.error().front().message;
+  const auto& left =
+      dynamic_cast<const ShlB32&>(*resolved->functions.back().body[0]);
+  const auto& right =
+      dynamic_cast<const ShrU32&>(*resolved->functions.back().body[1]);
+  EXPECT_EQ(std::get<ResolvedImmediate>(left.amount.value).bits, 64u);
+  EXPECT_EQ(std::get<ResolvedImmediate>(right.amount.value).bits, 65u);
+  EXPECT_TRUE(validateModule(*resolved));
+}
+
+/** Shared count evaluation and consumer diagnostics remain distinct stages. */
+TEST(InstructionConstantExpressions, ShiftCountErrorsAcrossSourceConsumers) {
+  using Kind = declaration_semantics::DeclarationDiagnosticKind;
+  /** Lawful matched source pair with the existing diagnostic presentation. */
+  struct Case {
+    /** Top-level declarations for the accepted and rejected sources. */
+    std::string_view valid_globals, invalid_globals;
+    /** Function body for the accepted and rejected sources. */
+    std::string_view valid_body, invalid_body;
+    /** Independently located rejected count token. */
+    std::string_view count;
+    /** Declaration wrapper kind, absent for instruction-owned propagation. */
+    std::optional<Kind> wrapper_kind;
+    /** Written whole-expression slice retained by a declaration wrapper. */
+    std::string_view wrapper_expression;
+    /** Existing wrapper message, independent of the evaluator's count message. */
+    std::string_view wrapper_message;
+  };
+  const Case cases[] = {
+      {".global .u64 x = (1U << 63);", ".global .u64 x = (1 << 64);", "", "",
+       "64", Kind::InvalidInitializerExpression, "(1 << 64)",
+       "Initializer contains an invalid constant expression."},
+      {".global .u8 x[1 << 0];", ".global .u8 x[1 << 65];", "", "", "65",
+       Kind::InvalidArrayDimension, "1 << 65",
+       "Array dimension must evaluate to a positive integer constant."},
+      {"", "", "mov.u64 d, (1U << 63);", "mov.u64 d, (1 << 64);", "64",
+       std::nullopt, "", ""},
+      {".extern .func callee(.reg .u64 x);",
+       ".extern .func callee(.reg .u64 x);", "call callee, ((1U << 63));",
+       "call callee, ((1 << 65));", "65", std::nullopt, "", ""},
+      {"", "", "ld.global.u8 r, [a+(0 << 63)];",
+       "ld.global.u8 r, [a+(0 << 64)];", "64", std::nullopt, "", ""},
+  };
+  for (const auto& fixture : cases) {
+    SCOPED_TRACE(fixture.invalid_globals);
+    SCOPED_TRACE(fixture.invalid_body);
+    for (const bool accepted : {true, false}) {
+      const std::string source =
+          ".version 9.3\n.target sm_90\n.address_size 64\n" +
+          std::string(accepted ? fixture.valid_globals
+                               : fixture.invalid_globals) +
+          "\n.entry kernel(){ .reg .u32 r; .reg .u64 a, d; " +
+          std::string(accepted ? fixture.valid_body : fixture.invalid_body) +
+          " ret; }";
+      PtxSyntaxParser parser(source);
+      auto ast = parser.parseModule();
+      ASSERT_TRUE(ast);
+      ASSERT_TRUE(ast.diagnostics.empty());
+      const auto bound = binding::bindSymbols(*ast);
+      ASSERT_TRUE(bound.diagnostics.empty());
+      const auto declarations =
+          declaration_semantics::checkDeclarations(*ast, bound.table);
+      if (!accepted && fixture.wrapper_kind) {
+        const syntax_ast::AstVariableDeclaration* declaration = nullptr;
+        for (const auto& item : ast->items)
+          if (const auto* variable =
+                  std::get_if<syntax_ast::AstVariableDeclaration>(&item))
+            declaration = variable;
+        ASSERT_NE(declaration, nullptr);
+        const auto& declarator = declaration->declarators.front();
+        const syntax_ast::AstConstantExpression* node = nullptr;
+        if (*fixture.wrapper_kind == Kind::InvalidInitializerExpression) {
+          ASSERT_TRUE(declarator.initializer);
+          node = std::get_if<syntax_ast::AstConstantExpression>(
+              &declarator.initializer->value);
+        } else {
+          ASSERT_FALSE(declarator.array_dimensions.empty());
+          ASSERT_TRUE(declarator.array_dimensions.front().size);
+          node = &*declarator.array_dimensions.front().size;
+        }
+        ASSERT_NE(node, nullptr);
+        const auto value = declaration_semantics::numericConstantValue(*node);
+        ASSERT_FALSE(value);
+        EXPECT_FALSE(value.error().deferred);
+        EXPECT_EQ(value.error().message,
+                  "Constant expression shift count must be in 0..63.");
+        auto expected_count = rangeOf(source, fixture.wrapper_expression);
+        expected_count.start.column += static_cast<int32_t>(
+            fixture.wrapper_expression.rfind(fixture.count));
+        expected_count.end = {expected_count.start.line,
+                              expected_count.start.column +
+                                  static_cast<int32_t>(fixture.count.size())};
+        EXPECT_EQ(value.error().range, expected_count);
+        const auto* binary_node = node;
+        if (const auto* parenthesized =
+                std::get_if<syntax_ast::AstConstantParenthesized>(&node->node))
+          binary_node = parenthesized->expression.get();
+        const auto* binary =
+            std::get_if<syntax_ast::AstConstantBinary>(&binary_node->node);
+        ASSERT_NE(binary, nullptr);
+        EXPECT_EQ(value.error().range, binary->right->range);
+        ASSERT_EQ(declarations.size(), 1u);
+        EXPECT_EQ(declarations.front().kind, *fixture.wrapper_kind);
+        EXPECT_EQ(declarations.front().range,
+                  rangeOf(source, fixture.wrapper_expression));
+        EXPECT_EQ(declarations.front().message, fixture.wrapper_message);
+      } else {
+        EXPECT_TRUE(declarations.empty());
+      }
+      const auto resolved = resolveAndValidateModule(*ast);
+      if (accepted) {
+        ASSERT_TRUE(resolved) << resolved.error().front().message;
+        EXPECT_TRUE(validateModule(*resolved));
+      } else {
+        ASSERT_FALSE(resolved);
+        ASSERT_EQ(resolved.error().size(), 1u);
+        if (fixture.wrapper_kind) {
+          EXPECT_EQ(resolved.error().front().range,
+                    rangeOf(source, fixture.wrapper_expression));
+          EXPECT_EQ(resolved.error().front().message, fixture.wrapper_message);
+        } else {
+          EXPECT_EQ(resolved.error().front().range,
+                    rangeOf(source, fixture.count));
+          EXPECT_EQ(resolved.error().front().message,
+                    "Constant expression shift count must be in 0..63.");
+        }
+      }
+    }
+  }
+}
+
 /** Floating arithmetic evaluates in f64 and comparisons yield signed integers. */
 TEST(InstructionConstantExpressions, FloatingDomainAndFinalNarrowing) {
   for (const auto text :
        {"1.0 + 2.0 * 3.0", "1 ? 7.0 : 9.0", "0d401c000000000000 + 0.0",
-        "1. + 2.e0 * 3.E+0", "1 ? 7. : 9."}) {
+        "1. + 2.e0 * 3.E+0", "1 ? 7. : 9.", "1 + 2.0 * 3", "1 ? 7 : 9.0",
+        "0 ? 9.0 : 7", "8.0 + -1"}) {
     SCOPED_TRACE(text);
     auto source_expression = expression(text);
     ASSERT_TRUE(source_expression);
@@ -177,10 +536,11 @@ TEST(InstructionConstantExpressions, FloatingDomainAndFinalNarrowing) {
 /** Errors retain their failing subtree and never become a numeric zero. */
 TEST(InstructionConstantExpressions, InvalidAndDeferredAreDistinct) {
   for (const auto text :
-       {"1 / 0", "1 % 0", "1 << 64", "1 >> -1", "1 + 2.0", "(.u64)1.0",
-        "1.0 & 2.0", "1.0 ? 2.0 : 3.0", "0f3f800000 + 1.0", "1.0 / 0.0",
-        "0.0 / -0.0", "1 ? 7 : 1/0", "0 && 1/0", "1 || 1/0",
-        "18446744073709551616 + 1"}) {
+       {"1 / 0", "1 % 0", "1 << 64", "1 >> -1", "(.u64)1.0", "1.0 & 2.0",
+        "1.0 ? 2.0 : 3.0", "0f3f800000 + 1.0", "1.0 / 0.0", "0.0 / -0.0",
+        "+0f3f800000", "-0f3f800000", "(.u64)0f3f800000",
+        "1 ? 7.0 : 0f3f800000", "0 ? 0f3f800000 : 7.0", "1 ? 7 : 1/0",
+        "0 && 1/0", "1 || 1/0", "18446744073709551616 + 1"}) {
     SCOPED_TRACE(text);
     auto source_expression = expression(text);
     ASSERT_TRUE(source_expression);

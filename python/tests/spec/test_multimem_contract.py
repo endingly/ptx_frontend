@@ -5,7 +5,8 @@ import unittest
 
 from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.model import (AsyncCompletionKind, ModifierPresence,
-                                     OperandAddressBasePolicy, OperandAddressOffsetDomain, OperandKind)
+                                     OperandAddressBasePolicy, OperandAddressOffsetDomain, OperandKind,
+                                     OperandRegisterWidthPolicy)
 
 
 class MultimemContractTests(unittest.TestCase):
@@ -169,7 +170,15 @@ class MultimemContractTests(unittest.TestCase):
             operands = variant.operand_layouts[0].operands
             register = next(operand for operand in operands if operand.name in {"dst", "src"})
             if vec:
-                self.assertIs(register.kind, OperandKind.REGISTER_VECTOR)
+                self.assertIs(register.kind, OperandKind.VALUE_VECTOR
+                              if register.name == "src" and family in {"st", "red"}
+                              else OperandKind.REGISTER_VECTOR)
+            elif variant.name in {
+                    "multimem_st_float_packed_none_scalar_default_weak",
+                    "multimem_st_float_packed_none_scalar_default_ordered",
+                    "multimem_red_float_packed_add_scalar_default_red"}:
+                self.assertEqual(register.name, "src")
+                self.assertIs(register.kind, OperandKind.REGISTER_OR_IMMEDIATE)
             elif family in {"st", "red"} and types <= {"f32", "f64", "e5m2x4", "e4m3x4"}:
                 self.assertIs(register.kind, OperandKind.REGISTER_OR_IMMEDIATE)
             else:
@@ -234,14 +243,41 @@ class MultimemContractTests(unittest.TestCase):
             operands = variant.operand_layouts[0].operands
             source = next(operand for operand in operands if operand.name == "src")
             types = {value.value for value in self._field(variant, "type").values}
-            if source.kind is OperandKind.REGISTER_VECTOR:
+            if source.kind in {OperandKind.REGISTER_VECTOR, OperandKind.VALUE_VECTOR}:
                 continue
             if types <= {"f16x2", "bf16x2"}:
-                self.assertIs(source.kind, OperandKind.REGISTER)
+                if variant.name in {
+                    "multimem_st_float_packed_none_scalar_default_weak",
+                    "multimem_st_float_packed_none_scalar_default_ordered",
+                    "multimem_red_float_packed_add_scalar_default_red",
+                }:
+                    self.assertEqual(types, {"f16x2", "bf16x2"})
+                    self.assertIs(source.kind, OperandKind.REGISTER_OR_IMMEDIATE)
+                else:
+                    self.assertIs(source.kind, OperandKind.REGISTER)
             else:
                 self.assertIs(source.kind, OperandKind.REGISTER_OR_IMMEDIATE)
                 if types.isdisjoint({"f32", "f64"}):
                     self.assertEqual(source.immediate_conversion_policy.value, "narrow")
+
+    def test_all_data_register_contracts_are_same_width(self) -> None:
+        """Keep the complete nonbulk data cohort separate from address/size/mask roles."""
+
+        contracts = []
+        for variant in self.variants:
+            for layout in variant.operand_layouts:
+                for operand in layout.operands:
+                    if (operand.name in {"dst", "src"} and operand.kind in {
+                            OperandKind.REGISTER, OperandKind.REGISTER_OR_IMMEDIATE,
+                            OperandKind.REGISTER_VECTOR, OperandKind.VALUE_VECTOR}):
+                        contracts.append((variant.name, operand))
+                        self.assertIs(operand.register_width_policy,
+                                      OperandRegisterWidthPolicy.SAME_WIDTH)
+        self.assertEqual(len(contracts), 112)
+        self.assertEqual(sum(len(next(modifier for modifier in variant.modifiers
+                                     if modifier.name == operand.type_expression.modifier_name).values)
+                             for name, operand in contracts
+                             for variant in self.variants if variant.name == name), 504)
 
     def test_bulk_direction_mask_and_alignment(self) -> None:
         """Bulk multimem transfers have one direction and no mbarrier operand."""

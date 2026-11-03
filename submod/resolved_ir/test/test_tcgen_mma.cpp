@@ -87,20 +87,23 @@ TEST(TcgenMmaF16, SourceTopologyAndOneWrittenAlias) {
               ".kind::f16 [%d], " + a + ", %bd, %i" +
               (mask ? ", " + lanes : "") + ", %p" + (scale ? ", 15" : "") + ";";
           SCOPED_TRACE(body);
-          EXPECT_TRUE(accepts_mma(mma_source(body)));
+          EXPECT_EQ(accepts_mma(mma_source(body)), mask);
         }
       }
     }
   }
-  EXPECT_TRUE(accepts_mma(mma_source(
-      "tcgen05.mma.kind::f16.cta_group::1 [%d], %ad, %bd, %i, !%p;")));
-  EXPECT_TRUE(accepts_mma(
-      mma_source("tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, 2;")));
+  EXPECT_TRUE(
+      accepts_mma(mma_source("tcgen05.mma.kind::f16.cta_group::1 [%d], %ad, "
+                             "%bd, %i, {%i, %i, %i, %i}, !%p;")));
+  EXPECT_TRUE(
+      accepts_mma(mma_source("tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, "
+                             "%bd, %i, {%i, %i, %i, %i}, 2;")));
   EXPECT_TRUE(accepts_mma(
       mma_source("tcgen05.mma.cta_group::1.kind::f16 [%d], %ua, %ub, %ui, "
                  "{%fm0, %fm1, %fm2, %fm3}, 0;")));
-  EXPECT_TRUE(accepts_mma(mma_source(
-      "tcgen05.mma.cta_group::1.kind::f16 [%d], %sa, %sb, %si, 1;")));
+  EXPECT_TRUE(
+      accepts_mma(mma_source("tcgen05.mma.cta_group::1.kind::f16 [%d], %sa, "
+                             "%sb, %si, {%i, %i, %i, %i}, 1;")));
 }
 
 /** Preserve integer truth after conversion and release of syntax storage. */
@@ -117,7 +120,7 @@ TEST(TcgenMmaF16, OwnedIntegerPredicateTruth) {
     {
       auto ast = parse_mma(mma_source(
           std::string("tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, "
-                      "%i, ") +
+                      "%i, {%i, %i, %i, %i}, ") +
           source + ";"));
       ASSERT_TRUE(ast);
       auto result = resolveAndValidateModule(*ast);
@@ -139,31 +142,41 @@ TEST(TcgenMmaF16, OwnedIntegerPredicateTruth) {
 /** Carrier, predicate, mask, scale and source-grammar negatives stay closed. */
 TEST(TcgenMmaF16, RejectsMalformedSourcesAndTargets) {
   for (std::string_view instruction : {
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %fa, %bd, %i, %p;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], 0, %bd, %i, %p;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %fi, %p;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, 0, %p;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %ui;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %fa, %bd, %i, {%i, %i, "
+           "%i, %i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], 0, %bd, %i, {%i, %i, %i, "
+           "%i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %fi, {%i, %i, "
+           "%i, %i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, 0, {%i, %i, %i, "
+           "%i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, "
+           "%i, %i}, %ui;",
            "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%m0, %m1, "
            "%m2}, %p;",
            "tcgen05.mma.cta_group::2.kind::f16 [%d], %ad, %bd, %i, {%m0, %m1, "
            "%m2, %m3}, %p;",
            "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {}, %p;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %p, -1;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %p, 16;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %p, "
-           "4294967296;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %p, %ui;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, "
+           "%i, %i}, %p, -1;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, "
+           "%i, %i}, %p, 16;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, "
+           "%i, %i}, %p, 4294967296;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, "
+           "%i, %i}, %p, %ui;",
            "tcgen05.mma.kind::f16.cta_group::1.kind::f16 [%d], %ad, %bd, %i, "
-           "%p;",
+           "{%i, %i, %i, %i}, %p;",
        }) {
     SCOPED_TRACE(instruction);
     EXPECT_FALSE(accepts_mma(mma_source(instruction)));
   }
   const std::string plain =
-      "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %p;";
+      "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, %i, "
+      "%i}, %p;";
   const std::string scaled =
-      "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %p, 0;";
+      "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, %i, "
+      "%i}, %p, 0;";
   for (const auto& [target, version, plain_ok, scaled_ok] : {
            std::tuple{"sm_100a", "8.6", true, true},
            std::tuple{"sm_100f", "8.7", false, false},
@@ -195,7 +208,6 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
   auto& instruction = *owned->functions.front().body[0].get();
   auto& form = dynamic_cast<Tcgen05MmaF16&>(instruction);
   ASSERT_TRUE(form.a_register);
-  ASSERT_TRUE(form.disable_output_lane);
   ASSERT_TRUE(form.scale_input_d);
   const auto context = mma_context(*owned);
   const auto reject = [&]() {
@@ -208,7 +220,7 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
   EXPECT_EQ(tcgen_mma_f16_view(instruction)->instruction.source,
             &form.idesc.value);
   EXPECT_EQ(tcgen_mma_f16_view(instruction)->disable_output_lane,
-            &form.disable_output_lane->value);
+            &form.disable_output_lane.value);
   ASSERT_TRUE(std::holds_alternative<ResolvedPredicate>(
       *tcgen_mma_f16_view(instruction)->enable_d));
   EXPECT_TRUE(
@@ -234,22 +246,22 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
   form.idesc.value.declared_type = ScalarType::F32;
   reject();
   form.idesc.value.declared_type = ScalarType::B32;
-  const auto last_lane = form.disable_output_lane->value.elements.back();
-  form.disable_output_lane->value.elements.pop_back();
+  const auto last_lane = form.disable_output_lane.value.elements.back();
+  form.disable_output_lane.value.elements.pop_back();
   reject();
-  form.disable_output_lane->value.elements.push_back(last_lane);
-  form.disable_output_lane->value.elements[0]->register_class =
+  form.disable_output_lane.value.elements.push_back(last_lane);
+  form.disable_output_lane.value.elements[0]->register_class =
       ResolvedRegisterClass::Predicate;
   reject();
-  form.disable_output_lane->value.elements[0]->register_class =
+  form.disable_output_lane.value.elements[0]->register_class =
       ResolvedRegisterClass::General;
-  form.disable_output_lane->value.elements[0]->declared_type = ScalarType::B64;
+  form.disable_output_lane.value.elements[0]->declared_type = ScalarType::B64;
   reject();
-  form.disable_output_lane->value.elements[0]->declared_type = ScalarType::B32;
-  ASSERT_TRUE(form.disable_output_lane->value.elements[0]->symbol_id);
-  form.disable_output_lane->value.elements[0]->declared_type.reset();
+  form.disable_output_lane.value.elements[0]->declared_type = ScalarType::B32;
+  ASSERT_TRUE(form.disable_output_lane.value.elements[0]->symbol_id);
+  form.disable_output_lane.value.elements[0]->declared_type.reset();
   reject();
-  form.disable_output_lane->value.elements[0]->declared_type = ScalarType::B32;
+  form.disable_output_lane.value.elements[0]->declared_type = ScalarType::B32;
   auto& predicate = std::get<ResolvedPredicate>(form.enable_input_d.value);
   predicate.register_ref.register_class = ResolvedRegisterClass::General;
   reject();
@@ -286,11 +298,11 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
   form.enable_input_d.locs.front().start.line = 0;
   reject();
   form.enable_input_d.locs.front() = predicate_range;
-  ASSERT_EQ(form.disable_output_lane->locs.size(), 4U);
-  const auto mask_range = form.disable_output_lane->locs.back();
-  form.disable_output_lane->locs.pop_back();
+  ASSERT_EQ(form.disable_output_lane.locs.size(), 4U);
+  const auto mask_range = form.disable_output_lane.locs.back();
+  form.disable_output_lane.locs.pop_back();
   reject();
-  form.disable_output_lane->locs.push_back(mask_range);
+  form.disable_output_lane.locs.push_back(mask_range);
   ASSERT_EQ(form.scale_input_d->locs.size(), 1U);
   const auto scale_range = form.scale_input_d->locs.front();
   form.scale_input_d->locs.front().end.line = 0;
@@ -330,7 +342,7 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
   form.operand_layout.value = 0;
   reject();
   EXPECT_FALSE(tcgen_mma_f16_view(instruction));
-  form.operand_layout.value = 3;
+  form.operand_layout.value = 1;
   EXPECT_TRUE(instruction.check(context).has_value());
   EXPECT_TRUE(validateModule(*owned).has_value());
 }
@@ -338,9 +350,11 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
 /** MMA joins TCGEN-only per-body group checks and arrive-one eligibility. */
 TEST(TcgenMmaF16, GroupParticipationAndBodyReset) {
   const std::string mma_one =
-      "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %p;";
+      "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, %i, "
+      "%i}, %p;";
   const std::string mma_two =
-      "tcgen05.mma.cta_group::2.kind::f16 [%d], %ad, %bd, %i, %p;";
+      "tcgen05.mma.cta_group::2.kind::f16 [%d], %ad, %bd, %i, {%i, %i, %i, %i, "
+      "%i, %i, %i, %i}, %p;";
   EXPECT_FALSE(accepts_mma(
       mma_source(mma_one + "\n  tcgen05.cp.cta_group::2.128x256b [%d], %ad;")));
   EXPECT_FALSE(accepts_mma(
@@ -629,6 +643,481 @@ TEST(TcgenMmaOperations, KnownTargetIntersections) {
     EXPECT_TRUE(contains(report.checked, TcgenF16Checked::Target));
     EXPECT_EQ(!contains(report.violations, TcgenF16Violation::Target),
               accepted);
+  }
+}
+
+/** Build real physical donor symbols and independent same-width bit-data controls. */
+std::string descriptor_role_source(std::string_view statement) {
+  return R"ptx(.version 9.3
+.target sm_100a
+.address_size 64
+.entry descriptor_roles() {
+.reg .b32 %d<2>, %b32;
+.reg .u32 %u32;
+.reg .s32 %s32;
+.reg .f32 %f32;
+.reg .b64 %b64;
+.reg .u64 %u64;
+.reg .s64 %s64;
+.reg .f64 %f64;
+.reg .v2 .b32 %v32;
+.reg .v2 .b64 %v64;
+.reg .pred %p;
+mov.b32 %f32, 0;
+mov.b64 %f64, 0;
+mov.b32 %b32, %f32;
+mov.b64 %b64, %f64;
+mov.u32 %u32, 0;
+mov.s32 %s32, 0;
+mov.u64 %u64, 0;
+mov.s64 %s64, 0;
+add.rn.f64 %f64,%f64,%f64;
+)ptx" + std::string(statement) +
+         "\nret;\n}\n";
+}
+
+/** Parse owned source without retaining parser storage. */
+std::optional<syntax_ast::AstModule> descriptor_role_ast(
+    std::string_view source) {
+  PtxSyntaxParser parser(source);
+  auto parsed = parser.parseModule();
+  if (!parsed || !parsed.diagnostics.empty())
+    return std::nullopt;
+  return std::move(*parsed);
+}
+
+/** Exact-width descriptor carriers differ from fundamental bit-data compatibility. */
+TEST(TcgenMmaF16, DeclaredDescriptorCarriersAndCurrentRoles) {
+  const auto profile = base::find_target_profile("sm_100a");
+  ASSERT_TRUE(profile);
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3},
+                 .sm_version = profile->identity.architecture.number,
+                 .enabled_family_features = profile->enabled_family_features,
+                 .identity = profile->identity,
+                 .capabilities = profile->capabilities}};
+  {
+    SCOPED_TRACE("TCGEN-MMA-A");
+    const auto source_for = [](std::string_view carrier) {
+      std::string statement =
+          "tcgen05.mma.cta_group::1.kind::f16 [%d0], CARRIER, %b64, %b32, "
+          "{%f32,%f32,%f32,%f32},%p;";
+      statement.replace(statement.find("CARRIER"), 7, carrier);
+      return descriptor_role_source(statement);
+    };
+    for (std::string_view carrier : {"%b64", "%u64", "%s64"}) {
+      const auto source = source_for(carrier);
+      auto ast = descriptor_role_ast(source);
+      ASSERT_TRUE(ast);
+      auto result = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(result) << result.error().front().message;
+      auto copy = *result;
+      EXPECT_TRUE(
+          validateModule(copy, ModuleValidationPolicy::RequireCompleteContext));
+    }
+    for (std::string_view carrier :
+         {"%f64", "%b32", "%v64", "%p", "0", "[%b64]"}) {
+      auto ast = descriptor_role_ast(source_for(carrier));
+      ASSERT_TRUE(ast) << carrier;
+      const auto lowered = resolveModule(*ast);
+      ASSERT_FALSE(lowered) << carrier;
+      EXPECT_FALSE(lowered.error().empty());
+      EXPECT_FALSE(resolveAndValidateModule(*ast)) << carrier;
+    }
+    const auto good_source = source_for("%b64");
+    std::optional<ResolvedModule> owned;
+    {
+      auto ast = descriptor_role_ast(good_source);
+      ASSERT_TRUE(ast);
+      auto result = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(result);
+      owned.emplace(std::move(*result));
+    }
+    auto& function = owned->functions.front();
+    auto* form = dynamic_cast<Tcgen05MmaF16*>(function.body[9].get());
+    ASSERT_NE(form, nullptr);
+    auto& role = form->a_register->value;
+    const auto original = role;
+    const auto donor = [&](ScalarType type) {
+      for (const auto& item : function.body) {
+        if (const auto* mov = dynamic_cast<const MovScalar*>(item.get());
+            mov && mov->dst_register &&
+            mov->dst_register->value.declared_type == type)
+          return mov->dst_register->value;
+      }
+      ADD_FAILURE() << "Missing real declared donor";
+      return original;
+    };
+    const auto reject_role = [&]() {
+      const auto direct = form->check(context);
+      ASSERT_FALSE(direct);
+      EXPECT_TRUE(
+          std::ranges::any_of(direct.error(), [](const auto& diagnostic) {
+            return diagnostic.kind ==
+                   checker::CheckDiagnosticKind::OperandTypeMismatch;
+          }));
+      const auto current = validateModule(
+          *owned, ModuleValidationPolicy::RequireCompleteContext);
+      ASSERT_FALSE(current);
+      EXPECT_TRUE(
+          std::ranges::any_of(current.error(), [](const auto& diagnostic) {
+            return diagnostic.kind ==
+                   checker::CheckDiagnosticKind::OperandTypeMismatch;
+          }));
+      auto good_ast = descriptor_role_ast(good_source);
+      ASSERT_TRUE(good_ast);
+      EXPECT_FALSE(validateModule(*good_ast, *owned));
+    };
+    for (auto type : {ScalarType::F64, ScalarType::B32}) {
+      role = donor(type);
+      reject_role();
+      auto bad_copy = *owned;
+      EXPECT_FALSE(validateModule(bad_copy));
+      auto bad_function = function;
+      EXPECT_FALSE(bad_function.body[9]->check(context));
+      auto bad_clone = form->clone();
+      EXPECT_FALSE(bad_clone->check(context));
+      role = original;
+      EXPECT_TRUE(validateModule(*owned));
+    }
+    role.declared_type.reset();
+    reject_role();
+    role = original;
+    role.declared_type = ScalarType::F64;
+    const auto forged_cache = validateModule(*owned);
+    ASSERT_FALSE(forged_cache);
+    EXPECT_TRUE(
+        std::ranges::any_of(forged_cache.error(), [](const auto& diagnostic) {
+          return diagnostic.kind ==
+                 checker::CheckDiagnosticKind::ModuleSourceMismatch;
+        }));
+    role = donor(ScalarType::F64);
+    role.declared_type = ScalarType::B64;
+    EXPECT_FALSE(validateModule(*owned));
+    role.declared_type.reset();
+    EXPECT_FALSE(validateModule(*owned));
+    role = original;
+    role.symbol_id.reset();
+    role.declared_type.reset();
+    EXPECT_TRUE(form->check(context));
+    EXPECT_FALSE(validateModule(*owned));
+    role = original;
+    for (auto type : {ScalarType::U64, ScalarType::S64}) {
+      role = donor(type);
+      EXPECT_TRUE(form->check(context));
+      EXPECT_TRUE(validateModule(*owned));
+    }
+    role = original;
+    auto copy = *owned;
+    ResolvedModule assigned;
+    assigned = copy;
+    auto moved = std::move(assigned);
+    EXPECT_TRUE(validateModule(moved));
+    auto function_copy = function;
+    function_copy = function;
+    auto instruction_copy = form->clone();
+    EXPECT_TRUE(instruction_copy->check(context));
+    auto* copied_form =
+        dynamic_cast<Tcgen05MmaF16*>(function_copy.body[9].get());
+    ASSERT_TRUE(copied_form);
+    const auto copied_view = tcgen_mma_f16_view(*copied_form);
+    ASSERT_TRUE(copied_view);
+    EXPECT_EQ(copied_view->instruction.source, &copied_form->idesc.value);
+    EXPECT_NE(copied_view->instruction.source, &form->idesc.value);
+    auto good_ast = descriptor_role_ast(good_source);
+    ASSERT_TRUE(good_ast);
+    EXPECT_TRUE(validateModule(*good_ast, *owned));
+    auto changed_ast = descriptor_role_ast(source_for("%u64"));
+    ASSERT_TRUE(changed_ast);
+    const auto changed_result = validateModule(*changed_ast, *owned);
+    ASSERT_FALSE(changed_result);
+    EXPECT_TRUE(
+        std::ranges::any_of(changed_result.error(), [](const auto& diagnostic) {
+          return diagnostic.kind ==
+                 checker::CheckDiagnosticKind::ModuleSourceMismatch;
+        }));
+  }
+  {
+    SCOPED_TRACE("TCGEN-MMA-B");
+    const auto source_for = [](std::string_view carrier) {
+      std::string statement =
+          "tcgen05.mma.cta_group::1.kind::f16 [%d0], %b64, CARRIER, %b32, "
+          "{%f32,%f32,%f32,%f32},%p;";
+      statement.replace(statement.find("CARRIER"), 7, carrier);
+      return descriptor_role_source(statement);
+    };
+    for (std::string_view carrier : {"%b64", "%u64", "%s64"}) {
+      const auto source = source_for(carrier);
+      auto ast = descriptor_role_ast(source);
+      ASSERT_TRUE(ast);
+      auto result = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(result) << result.error().front().message;
+      auto copy = *result;
+      EXPECT_TRUE(
+          validateModule(copy, ModuleValidationPolicy::RequireCompleteContext));
+    }
+    for (std::string_view carrier :
+         {"%f64", "%b32", "%v64", "%p", "0", "[%b64]"}) {
+      auto ast = descriptor_role_ast(source_for(carrier));
+      ASSERT_TRUE(ast) << carrier;
+      const auto lowered = resolveModule(*ast);
+      ASSERT_FALSE(lowered) << carrier;
+      EXPECT_FALSE(lowered.error().empty());
+      EXPECT_FALSE(resolveAndValidateModule(*ast)) << carrier;
+    }
+    const auto good_source = source_for("%b64");
+    std::optional<ResolvedModule> owned;
+    {
+      auto ast = descriptor_role_ast(good_source);
+      ASSERT_TRUE(ast);
+      auto result = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(result);
+      owned.emplace(std::move(*result));
+    }
+    auto& function = owned->functions.front();
+    auto* form = dynamic_cast<Tcgen05MmaF16*>(function.body[9].get());
+    ASSERT_NE(form, nullptr);
+    auto& role = form->b.value;
+    const auto original = role;
+    const auto donor = [&](ScalarType type) {
+      for (const auto& item : function.body) {
+        if (const auto* mov = dynamic_cast<const MovScalar*>(item.get());
+            mov && mov->dst_register &&
+            mov->dst_register->value.declared_type == type)
+          return mov->dst_register->value;
+      }
+      ADD_FAILURE() << "Missing real declared donor";
+      return original;
+    };
+    const auto reject_role = [&]() {
+      const auto direct = form->check(context);
+      ASSERT_FALSE(direct);
+      EXPECT_TRUE(
+          std::ranges::any_of(direct.error(), [](const auto& diagnostic) {
+            return diagnostic.kind ==
+                   checker::CheckDiagnosticKind::OperandTypeMismatch;
+          }));
+      const auto current = validateModule(
+          *owned, ModuleValidationPolicy::RequireCompleteContext);
+      ASSERT_FALSE(current);
+      EXPECT_TRUE(
+          std::ranges::any_of(current.error(), [](const auto& diagnostic) {
+            return diagnostic.kind ==
+                   checker::CheckDiagnosticKind::OperandTypeMismatch;
+          }));
+      auto good_ast = descriptor_role_ast(good_source);
+      ASSERT_TRUE(good_ast);
+      EXPECT_FALSE(validateModule(*good_ast, *owned));
+    };
+    for (auto type : {ScalarType::F64, ScalarType::B32}) {
+      role = donor(type);
+      reject_role();
+      auto bad_copy = *owned;
+      EXPECT_FALSE(validateModule(bad_copy));
+      auto bad_function = function;
+      EXPECT_FALSE(bad_function.body[9]->check(context));
+      auto bad_clone = form->clone();
+      EXPECT_FALSE(bad_clone->check(context));
+      role = original;
+      EXPECT_TRUE(validateModule(*owned));
+    }
+    role.declared_type.reset();
+    reject_role();
+    role = original;
+    role.declared_type = ScalarType::F64;
+    const auto forged_cache = validateModule(*owned);
+    ASSERT_FALSE(forged_cache);
+    EXPECT_TRUE(
+        std::ranges::any_of(forged_cache.error(), [](const auto& diagnostic) {
+          return diagnostic.kind ==
+                 checker::CheckDiagnosticKind::ModuleSourceMismatch;
+        }));
+    role = donor(ScalarType::F64);
+    role.declared_type = ScalarType::B64;
+    EXPECT_FALSE(validateModule(*owned));
+    role.declared_type.reset();
+    EXPECT_FALSE(validateModule(*owned));
+    role = original;
+    role.symbol_id.reset();
+    role.declared_type.reset();
+    EXPECT_TRUE(form->check(context));
+    EXPECT_FALSE(validateModule(*owned));
+    role = original;
+    for (auto type : {ScalarType::U64, ScalarType::S64}) {
+      role = donor(type);
+      EXPECT_TRUE(form->check(context));
+      EXPECT_TRUE(validateModule(*owned));
+    }
+    role = original;
+    auto copy = *owned;
+    ResolvedModule assigned;
+    assigned = copy;
+    auto moved = std::move(assigned);
+    EXPECT_TRUE(validateModule(moved));
+    auto function_copy = function;
+    function_copy = function;
+    auto instruction_copy = form->clone();
+    EXPECT_TRUE(instruction_copy->check(context));
+    auto* copied_form =
+        dynamic_cast<Tcgen05MmaF16*>(function_copy.body[9].get());
+    ASSERT_TRUE(copied_form);
+    const auto copied_view = tcgen_mma_f16_view(*copied_form);
+    ASSERT_TRUE(copied_view);
+    EXPECT_EQ(copied_view->instruction.source, &copied_form->idesc.value);
+    EXPECT_NE(copied_view->instruction.source, &form->idesc.value);
+    auto good_ast = descriptor_role_ast(good_source);
+    ASSERT_TRUE(good_ast);
+    EXPECT_TRUE(validateModule(*good_ast, *owned));
+    auto changed_ast = descriptor_role_ast(source_for("%u64"));
+    ASSERT_TRUE(changed_ast);
+    const auto changed_result = validateModule(*changed_ast, *owned);
+    ASSERT_FALSE(changed_result);
+    EXPECT_TRUE(
+        std::ranges::any_of(changed_result.error(), [](const auto& diagnostic) {
+          return diagnostic.kind ==
+                 checker::CheckDiagnosticKind::ModuleSourceMismatch;
+        }));
+  }
+  {
+    SCOPED_TRACE("TCGEN-MMA-idesc");
+    const auto source_for = [](std::string_view carrier) {
+      std::string statement =
+          "tcgen05.mma.cta_group::1.kind::f16 [%d0], %b64, %b64, CARRIER, "
+          "{%f32,%f32,%f32,%f32},%p;";
+      statement.replace(statement.find("CARRIER"), 7, carrier);
+      return descriptor_role_source(statement);
+    };
+    for (std::string_view carrier : {"%b32", "%u32", "%s32"}) {
+      const auto source = source_for(carrier);
+      auto ast = descriptor_role_ast(source);
+      ASSERT_TRUE(ast);
+      auto result = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(result) << result.error().front().message;
+      auto copy = *result;
+      EXPECT_TRUE(
+          validateModule(copy, ModuleValidationPolicy::RequireCompleteContext));
+    }
+    for (std::string_view carrier :
+         {"%f32", "%b64", "%v32", "%p", "0", "[%b32]"}) {
+      auto ast = descriptor_role_ast(source_for(carrier));
+      ASSERT_TRUE(ast) << carrier;
+      const auto lowered = resolveModule(*ast);
+      ASSERT_FALSE(lowered) << carrier;
+      EXPECT_FALSE(lowered.error().empty());
+      EXPECT_FALSE(resolveAndValidateModule(*ast)) << carrier;
+    }
+    const auto good_source = source_for("%b32");
+    std::optional<ResolvedModule> owned;
+    {
+      auto ast = descriptor_role_ast(good_source);
+      ASSERT_TRUE(ast);
+      auto result = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(result);
+      owned.emplace(std::move(*result));
+    }
+    auto& function = owned->functions.front();
+    auto* form = dynamic_cast<Tcgen05MmaF16*>(function.body[9].get());
+    ASSERT_NE(form, nullptr);
+    auto& role = form->idesc.value;
+    const auto original = role;
+    const auto donor = [&](ScalarType type) {
+      for (const auto& item : function.body) {
+        if (const auto* mov = dynamic_cast<const MovScalar*>(item.get());
+            mov && mov->dst_register &&
+            mov->dst_register->value.declared_type == type)
+          return mov->dst_register->value;
+      }
+      ADD_FAILURE() << "Missing real declared donor";
+      return original;
+    };
+    const auto reject_role = [&]() {
+      const auto direct = form->check(context);
+      ASSERT_FALSE(direct);
+      EXPECT_TRUE(
+          std::ranges::any_of(direct.error(), [](const auto& diagnostic) {
+            return diagnostic.kind ==
+                   checker::CheckDiagnosticKind::OperandTypeMismatch;
+          }));
+      const auto current = validateModule(
+          *owned, ModuleValidationPolicy::RequireCompleteContext);
+      ASSERT_FALSE(current);
+      EXPECT_TRUE(
+          std::ranges::any_of(current.error(), [](const auto& diagnostic) {
+            return diagnostic.kind ==
+                   checker::CheckDiagnosticKind::OperandTypeMismatch;
+          }));
+      auto good_ast = descriptor_role_ast(good_source);
+      ASSERT_TRUE(good_ast);
+      EXPECT_FALSE(validateModule(*good_ast, *owned));
+    };
+    for (auto type : {ScalarType::F32, ScalarType::B64}) {
+      role = donor(type);
+      reject_role();
+      auto bad_copy = *owned;
+      EXPECT_FALSE(validateModule(bad_copy));
+      auto bad_function = function;
+      EXPECT_FALSE(bad_function.body[9]->check(context));
+      auto bad_clone = form->clone();
+      EXPECT_FALSE(bad_clone->check(context));
+      role = original;
+      EXPECT_TRUE(validateModule(*owned));
+    }
+    role.declared_type.reset();
+    reject_role();
+    role = original;
+    role.declared_type = ScalarType::F32;
+    const auto forged_cache = validateModule(*owned);
+    ASSERT_FALSE(forged_cache);
+    EXPECT_TRUE(
+        std::ranges::any_of(forged_cache.error(), [](const auto& diagnostic) {
+          return diagnostic.kind ==
+                 checker::CheckDiagnosticKind::ModuleSourceMismatch;
+        }));
+    role = donor(ScalarType::F32);
+    role.declared_type = ScalarType::B32;
+    EXPECT_FALSE(validateModule(*owned));
+    role.declared_type.reset();
+    EXPECT_FALSE(validateModule(*owned));
+    role = original;
+    role.symbol_id.reset();
+    role.declared_type.reset();
+    EXPECT_TRUE(form->check(context));
+    EXPECT_FALSE(validateModule(*owned));
+    role = original;
+    for (auto type : {ScalarType::U32, ScalarType::S32}) {
+      role = donor(type);
+      EXPECT_TRUE(form->check(context));
+      EXPECT_TRUE(validateModule(*owned));
+    }
+    role = original;
+    auto copy = *owned;
+    ResolvedModule assigned;
+    assigned = copy;
+    auto moved = std::move(assigned);
+    EXPECT_TRUE(validateModule(moved));
+    auto function_copy = function;
+    function_copy = function;
+    auto instruction_copy = form->clone();
+    EXPECT_TRUE(instruction_copy->check(context));
+    auto* copied_form =
+        dynamic_cast<Tcgen05MmaF16*>(function_copy.body[9].get());
+    ASSERT_TRUE(copied_form);
+    const auto copied_view = tcgen_mma_f16_view(*copied_form);
+    ASSERT_TRUE(copied_view);
+    EXPECT_EQ(copied_view->instruction.source, &copied_form->idesc.value);
+    EXPECT_NE(copied_view->instruction.source, &form->idesc.value);
+    auto good_ast = descriptor_role_ast(good_source);
+    ASSERT_TRUE(good_ast);
+    EXPECT_TRUE(validateModule(*good_ast, *owned));
+    auto changed_ast = descriptor_role_ast(source_for("%u32"));
+    ASSERT_TRUE(changed_ast);
+    const auto changed_result = validateModule(*changed_ast, *owned);
+    ASSERT_FALSE(changed_result);
+    EXPECT_TRUE(
+        std::ranges::any_of(changed_result.error(), [](const auto& diagnostic) {
+          return diagnostic.kind ==
+                 checker::CheckDiagnosticKind::ModuleSourceMismatch;
+        }));
   }
 }
 

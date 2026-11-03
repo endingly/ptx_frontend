@@ -81,8 +81,15 @@ struct CstAddressOffset {
   CstTokenRange token_range;
 };
 
-using CstAddressBase =
-    std::variant<CstIdentifier, CstImmediate, CstConstantOperand>;
+/** Explicit scalar selection from a named ordinary register vector. */
+struct CstVectorMember {
+  CstIdentifier base;
+  TokenId selector{};
+  CstTokenRange token_range;
+};
+
+using CstAddressBase = std::variant<CstIdentifier, CstImmediate,
+                                    CstConstantOperand, CstVectorMember>;
 
 /** One named-array subscript, distinct from a byte-address offset. */
 struct CstNamedArrayIndex {
@@ -105,12 +112,6 @@ struct CstAddress {
   CstTokenRange token_range;
   /** Present only for the single-bracket named-array source form. */
   std::optional<CstNamedArrayIndex> named_index;
-};
-
-struct CstVectorMember {
-  CstIdentifier base;
-  TokenId selector{};
-  CstTokenRange token_range;
 };
 
 /** Arithmetic minus applied to one identifier or selected register spelling. */
@@ -182,8 +183,8 @@ enum class CstCallParameterListKind : uint8_t {
   Input,
 };
 
-using CstCallParameter =
-    std::variant<CstIdentifier, CstImmediate, CstConstantOperand>;
+using CstCallParameter = std::variant<CstIdentifier, CstImmediate,
+                                      CstConstantOperand, CstVectorMember>;
 
 struct CstCallParameterList {
   CstCallParameterListKind kind{};
@@ -195,7 +196,8 @@ struct CstCallParameterList {
 };
 
 struct CstCallTarget {
-  CstIdentifier name;
+  /** Written direct name or explicit ordinary register selection. */
+  std::variant<CstIdentifier, CstVectorMember> name;
   CstTokenRange token_range;
 };
 
@@ -450,12 +452,57 @@ struct CstModuleDirective {
   CstTokenRange token_range;
 };
 
-/** An outermost DWARF section with a lossless, uninterpreted payload. */
+/** A signed integer leaf borrowing only tokens owned by its CST file. */
+struct CstSectionInteger {
+  /** Optional written unary sign, independent of the magnitude token. */
+  std::optional<TokenId> sign;
+  /** Original nonnegative integer spelling, including radix and U suffix. */
+  TokenId magnitude{};
+  /** Complete leaf extent including its optional sign. */
+  CstTokenRange token_range;
+};
+/** A label definition in one section fragment. */
+struct CstSectionLabelDefinition {
+  TokenId name{};
+  TokenId colon{};
+  CstTokenRange token_range;
+};
+/** An unresolved single symbolic address. */
+struct CstSectionSymbol {
+  TokenId name{};
+};
+/** A symbolic address plus a checked signed byte addend. */
+struct CstSectionAddend {
+  TokenId name{};
+  /** Written plus or minus; a minus reverses the signed leaf's value. */
+  TokenId operation{};
+  CstSectionInteger value;
+};
+/** A difference whose operands must belong to one logical section. */
+struct CstSectionDifference {
+  TokenId left{};
+  TokenId operation{};
+  TokenId right{};
+};
+/** One selected data production; raw punctuation remains in the CST file. */
+struct CstSectionData {
+  TokenId type{};
+  std::variant<std::vector<CstSectionInteger>, CstSectionSymbol,
+               CstSectionAddend, CstSectionDifference>
+      value;
+  CstTokenRange token_range;
+};
+/** A structurally parsed section entry, in written order. */
+using CstSectionEntry = std::variant<CstSectionLabelDefinition, CstSectionData>;
+/** An outermost DWARF section retaining both raw source and its one structural parse. */
 struct CstSectionDirective {
   TokenId directive{};
   TokenId name{};
   TokenId left_brace{};
-  std::vector<TokenId> payload;
+  /** Exact original token IDs, including malformed payload and punctuation. */
+  std::vector<TokenId> payload_tokens;
+  /** Typed entries projected once from those same retained tokens. */
+  std::vector<CstSectionEntry> payload;
   TokenId right_brace{};
   std::optional<TokenId> terminator;
   CstTokenRange token_range;
@@ -474,9 +521,8 @@ struct CstFunctionParameter {
   std::optional<TokenId> pointer_align_directive;
   std::optional<TokenId> pointer_alignment;
   TokenId name{};
-  std::optional<TokenId> left_bracket;
-  std::optional<CstConstantExpression> array_size;
-  std::optional<TokenId> right_bracket;
+  /** Written outer-to-inner axes; empty denotes a scalar formal. */
+  std::vector<CstArrayDimension> array_dimensions;
   CstTokenRange token_range;
 };
 
@@ -559,12 +605,42 @@ struct CstRecoveryNode {
   SourceRange range;
 };
 
+/** Token-backed legacy numeric-list or single-symbol payload. */
+struct CstLegacyDwarfData {
+  /** Written directive and closed value-role selection. */
+  TokenId directive{};
+  std::variant<std::vector<TokenId>, TokenId> value;
+  /** Commas remain lexical data, not a second semantic value list. */
+  std::vector<TokenId> commas;
+  /** Half-open token-buffer extent of this payload in its owning CstFile. */
+  CstTokenRange token_range;
+};
+/** Token-backed finite legacy section header with separate @ and type leaves. */
+struct CstLegacyDwarfSectionHeader {
+  /** Separate source leaves, valid for the owning CstFile token-buffer lifetime. */
+  TokenId directive{}, name{}, flags{}, type_prefix{}, type_name{};
+  /** Original punctuation and complete half-open header extent. */
+  std::vector<TokenId> commas;
+  CstTokenRange token_range;
+};
+/** One closed serialization production after an exact marker. */
+struct CstLegacyDwarfRecord {
+  /** Exact marker in the owning CstFile token buffer. */
+  TokenId marker{};
+  /** Closed lexical production, with no decoded numeric cache. */
+  std::variant<CstLegacyDwarfData, CstLegacyDwarfSectionHeader> payload;
+  /** Optional written punctuation and full half-open record extent. */
+  std::optional<TokenId> terminator;
+  CstTokenRange token_range;
+};
+
 struct CstBlock;
 
 using CstFunctionBodyItem =
     std::variant<CstVariableDeclaration, CstLabel, CstCallPrototype,
                  CstCallTargets, CstBranchTargets, CstLocDirective, CstPragma,
-                 std::unique_ptr<CstBlock>, CstInstruction, CstRecoveryNode>;
+                 std::unique_ptr<CstBlock>, CstInstruction, CstRecoveryNode,
+                 CstLegacyDwarfRecord>;
 
 /** A lexically nested function-body block. */
 struct CstBlock {
@@ -599,7 +675,7 @@ struct CstFunction {
 using CstModuleItem =
     std::variant<CstModuleDirective, CstSectionDirective, CstPragma,
                  CstVariableDeclaration, CstAliasDirective, CstFunction,
-                 CstRecoveryNode>;
+                 CstRecoveryNode, CstLegacyDwarfRecord>;
 
 struct CstModule {
   std::vector<CstModuleItem> items;

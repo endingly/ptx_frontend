@@ -16,3 +16,19 @@ Checker 对普通 tiled 访问要求坐标数量恰好等于 rank，每个坐标
 已建模的 TMA 家族还包括选定的 `tensormap.replace` 与 `tensormap.cp_fenceproxy` 形式、tensor reduction、rank 3–5 的 `im2col`/`im2col::w`/`im2col::w::128`、rank-2 四行 gather/scatter、cluster multicast mask，以及显式 `.cta_group::1/::2` 路由。具体 mode、方向、操作数与 target 组合由生成的 descriptor 选择；相邻但未支持的组合会在选择或检查时失败。同一函数内的 TMA 可混用省略、group-1 与 group-2 拼写，因为 TMA group 路由按指令确定。[TCGEN group 规则](tensor_memory_allocation_coverage.md)只作用于 TCGEN 指令。
 
 [`TensorMapKnownFacts` 与选定用途投影](../tensor_map_known_facts.md)可针对强类型选定指令，有条件地检查调用方提供的 descriptor 事实。`project_tensor_known_access_context(const Instruction&, const checker::Context&)` 返回复制的 access 和诊断：非 tensor 形式二者均无；tensor metadata 损坏时有诊断而无 access；target 不可用时保留复制的 access，并把 availability 标为 false。该查询不解码或认证原始 128 字节 descriptor。若没有调用方事实或运行时执行，descriptor 内容、与真实字节的 rank 一致性、swizzle、stride、bounds、barrier locality 和同步仍未得到证明。已支持的 tensor load、store、reduction 与 prefetch 形式现有规范 `.L2::cache_hint` 及可选的末尾 B64 cache-policy 操作数；详见 [tensor 缓存控制](../tensor_cache_controls.md)。固定手册未给出完整 128 字节字段布局，故 raw-object decoder 不在此前端切片范围内；known-facts 与 cache 查询都不解码 descriptor 字节。[frontend 收口矩阵](tensor_async_closeout.md)逐项链接路线图要求、源码和测试。
+
+对于 `.shared::cluster` destination，rank-2 `.tile::gather4` 与 rank-3–5 普通
+`.im2col::w` 要求 PTX8.6 起的 exact `sm_100a`，或 PTX8.8 起的 `sm_100f` family。
+Catalog 中的 `sm_103a`/`sm_103f` 保留该 family feature；仅有 numeric
+`sm_100`/`sm_103` 或跨 family 的 `sm_110a`/`sm_110f` 均不满足该具体 feature
+条款。Cache hint、information、multicast 与显式 CTA-group form 继承同一限制。
+独立的 CTA-group 或 multicast 许可不能覆盖它：所有适用条件必须同时满足。
+
+相邻 `.im2col::w::128`、`.tile::scatter4` 和普通 tiled CTA-group form 保留各自的
+`110a/f` 许可。Shared-CTA gather4 与 W 保留自己的 generic SM100-or-higher 规则。
+Frontend 遵循固定 PTX9.3 的 feature-specific Target Notes；可能存在的手册/工具
+差异不构成更宽 target family 许可。
+[Target 回归](../../../submod/resolved_ir/test/test_tensor_target_restrictions.cpp) 将实际
+availability 诊断与可选 `TensorMapKnownFacts` 结果区分：即使 target 可用，缺少
+descriptor facts 时仍可为 `Unresolved`；不可用 target 仍返回 copied selected-use
+facts，并将 availability 标为 false。两种状态都不认证 MAP bytes 或运行时 completion。

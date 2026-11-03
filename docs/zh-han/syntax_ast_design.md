@@ -110,13 +110,18 @@ scope，并递归 resolve 其中 instruction 到所属 function 按源码顺序�
 `ResolvedBlock`。function body（含 nested block）也接受 `.loc`：basic
 `file line column` triple，或成对的 PTX 7.2 `function_name label {+ integer}` /
 `inlined_at file line column` payload；CST 保留标点，AST 保留 field 与 range。`.file`
-index 与 `.debug_str` section/raw-label identity 会在独立的 debug-metadata binding namespace
+index 与 `.debug_str` section/typed-label identity 会在独立的 debug-metadata binding namespace
 中建立，`.loc` 也会验证这些 reference；向 instruction/label 附着 source location 仍留待后续处理。当前 module grammar
-也在 outermost scope 接受 `.section name { ... }`，CST/AST 保留匹配 brace 和 raw DWARF
-payload token spelling；section name 只是 syntax，不是普通可绑定 identifier。DWARF payload type、
-private label 及 `.loc` offset 验证仍留待后续处理。除此之外，当前 module grammar
+也在 outermost scope 接受 `.section name { ... }`。匹配 brace、trivia 与原始 payload token
+由 `CstSectionDirective.payload_tokens` 保留，`payload` 是对同一 token 的一次结构化解析。
+AST 的 `payload` 改为拥有式 `AstSectionEntry`（label definition 或 typed data），替代原来的
+`vector<AstSyntax>`。整数 leaf 拥有可选 sign、原始 magnitude spelling 和 range；符号数据区分
+single symbol、checked signed addend 与同 section label difference。不保留 expression AST
+或第二份 raw semantic payload。section name 是 metadata，不是普通声明；`.loc` 附着与 offset
+验证仍是独立边界。除此之外，当前 module grammar
 会在 module、entry header 和 function/nested-block statement scope 保留 `.pragma` 的非空、
-comma-separated string list；它不进入 binding 或 Resolved IR。entry header 中 pragma 可与四个
+comma-separated string list。Pragma string 不创建 bound name；resolved module 拥有
+带实际 bound placement scope 的 advisory record。entry header 中 pragma 可与四个
 已支持的 kernel-resource directive 交错，具体顺序仍由 CST header token sequence 无损保留。
 `CstRecoveryNode` 是当前带 tag 的纯 CST recovery 模型：`Inserted` 持有 expected
 `TokenKind` 和 zero-width range、没有 token-buffer span；`Skipped` 持有非空的真实 source-token
@@ -210,3 +215,67 @@ identity 与 byte offset；这不需要重新扩大 Syntax AST 的职责。
 ## Arithmetic-negated register 语法
 
 `CstNegatedRegisterOperand` 保留 minus token，child 限定为一个 identifier 或 vector member。`AstNegatedRegisterOperand` 拥有 minus range、child range 及 full range。Parser 在带符号数字立即数解析前识别 `-Ident[.selector]`，不引入递归 unary operand。独立的 `ArithmeticNegatedRegister` syntax shape 仅在批准的 `vmad` source slot 开放。Binding、lowering、source identity 与 layout classification 显式遍历该 child。Predicate `!` 取反保持独立，拒绝 `!-%r`。
+
+Function header 与局部 `.callprototype` 数组在 `array_dimensions` 中复用
+`CstArrayDimension` / `AstArrayDimension` 向量，逐轴保留从外到内的 bracket、
+可选 expression 与 range。它们替换原 CST 单一 bracket/size 字段及 AST
+`is_array/array_size`；空向量表示 scalar。Token round-trip 保持不变；dimension 与 AST expression tree 仍为 move-only，
+既有 `AstConstantOperand` copy 操作深度 clone 自身拥有的 expression，详见[公共 member migration](parameter_declarations.md)。
+
+`ptx_syntax_sections.hpp` 仅公开 owning syntax leaf 与 section value record。公共 module header 仍保持 instruction/module/expression AST type 不完整；`ptx_syntax_ast.hpp` 仍是完整 AST 的入口。
+
+
+### 历史调试序列化
+
+大小写敏感的 `@@DWARF` marker 在 module、function body 或 nested block statement
+位置引入一条闭合 production；支持所有已识别 source target 的 PTX ISA **[1.2, 2.0)**，
+不授予 function header 位置。`.byte` 为 unsigned hexadecimal list（0..255），
+`.4byte` 为 0..UINT32_MAX，`.quad` 为 0..UINT64_MAX；list 必须非空。后两者还支持
+单个普通或单前导点 symbolic label，保留为未链接值，不要求普通 PTX symbol binding。
+
+`0x`/`0X` 以及可选 `U`/`u` 后缀继承现有 PTX integer token；后缀是派生选择，并非
+历史语法的显式措辞。一元正负号、decimal/octal/binary 数值、symbol/numeric 混合 list、
+addend、difference、label definition 和任意 host assembly 不在模型中。支持公开例子
+的 `.section name, "", @progbits` header；将 name 泛化为普通或单前导点 identifier
+来自该例子，flags 仍须恰为空字符串，type 仍须恰为 `progbits`。
+
+空白、注释和换行分隔 token，不结束 record。一个结构完整的 payload 加可选分号
+结束 record，后续 token 返回普通 PTX grammar；错误恢复保留后续 marker、block
+和 function。Lossless CST 保存注释及 source text；owning AST value 保留精确
+marker、word/header spelling 和 record 内 range，`@`、`progbits` 是独立 leaf。
+
+`ptx_syntax_legacy_dwarf.hpp` 仅含小型 owning value，不引入 module、instruction
+或 expression AST 定义。Module/body variant 复用同一个 `AstLegacyDwarfRecord`；
+`ResolvedModule::legacy_dwarf_records` 是唯一有序 `{value, scope_id}` stream。
+Scope 来自模块 symbol table 的实际 declaration occurrence 和 block；canonical
+function 的 preferred owned scope 不能代替实际 definition occurrence。Metadata 不生成
+executable node、label slot 或 instruction provenance index；module/function source
+identity 忽略它，普通程序结构仍影响 identity。
+
+Current 和 supplied dataset 独立检查 typed word、range、scope ownership 及格式窗口。
+Source-aware 对两者采用 supplied effective version，AST-free 使用当前 module context。
+已知越界版本即使缺少完整 target 也拒绝；`AvailableContext` 缺少版本时仅延迟格式
+窗口，intrinsic 检查继续，Strict 缺失 context 仍拒绝。合法当前 metadata 修改和合法
+不同 dataset 无需旧 source byte equality；跨格式替换须移除或重建当前不兼容格式数据。
+
+`.target debug` 的确定缺失为每个 dataset 独立满足 **modern section 为零且 legacy
+record 为零**。未知 linked label、header 或非空 byte 仅避免确定缺失，不能认证实际
+DWARF recognition、解码、linked address 或 binary authenticity。已知完整 legacy
+context 无法同时满足 pre-2.0 格式及 PTX-3.0 debug option；缺版本测试仅是 partial
+context control。
+
+依据：[历史 debug marker](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-atatdwarf)
+及[历史格式窗口](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives)。
+
+### ASCII 空白与物理位置
+
+string 和 comment 之外的空白恰为 SP（`0x20`）、HT（`0x09`）、
+LF（`0x0a`）、VT（`0x0b`）、FF（`0x0c`）与 CR（`0x0d`）。这组六种
+byte 是 frontend 对 PTX ASCII 与等效空白规则采用的工程解释，不是规范中
+逐项列出的六种 terminal，也不是 Unicode 空白策略。
+
+SP、HT、VT、FF 各推进一个物理 byte column。VT 与 FF 不产生新 source line；
+既有 CR、LF、CRLF 处理不变。token、leading trivia、末尾 EOF trivia 与
+`CstFile::sourceText()` 保留精确 byte 和 range。string 或 comment 内的物理 VT
+继续按该 token 的既有规则保存为原始内容，不增加 backslash-v escape，也不做
+源码 normalization。logical/debug location 仍是独立契约。

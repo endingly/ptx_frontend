@@ -37,6 +37,28 @@ their existing contracts. See the pinned PTX 9.3
 [local](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#local-state-space),
 and [variable declaration](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variable-declarations) rules.
 
+## Absolute variable placement
+
+Absolute fixed variable placement is not parsed or allocated. PTX ISA 9.3
+§5.4.1 mentions the capability without a determinate executable production in
+the referenced declaration clauses. This remains the named
+[`ADOPTED_REFERENCE_GAP`](converage/syntax_coverage.md#fixed-variable-addresses-adopted-reference-gap),
+not implemented fixed-address support.
+
+| Ordinary declaration | Retained fact |
+| --- | --- |
+| `.global .u32 x;` | Zero initialization, 4-byte extent, natural alignment 4 |
+| `.global .u32 x=0x100;` | Initializer contents 256, 4-byte extent |
+| `.global .u32 x[256];` | 256 elements, 1024-byte extent |
+| `.global .align 256 .u32 x;` | Alignment divisor 256, 4-byte extent |
+| `.global .align 16 .u32 x[2]={0x100,0};` | Alignment 16, two elements, 8-byte extent, contents 256 and 0 |
+
+None selects absolute address 256. The owned records describe declarations,
+contents and layout inputs, with no absolute-placement field or allocator.
+Implicit zero initialization does not fabricate a list of explicit initializer
+values. These ordinary records can be validated and copied after source/AST
+destruction; no fixed-placement source or owned case is implied.
+
 ## Identity and layout inputs
 
 Each source declarator contributes one record in source traversal order.
@@ -107,6 +129,11 @@ word is zero for elements of at most 64 bits. `StorageRelocation`
 retains the bound symbol, optional parameterized member, state-space/generic/
 function address interpretation, a byte addend, and an optional raw byte mask
 (`0xff` shifted by 0, 8, ..., 56 bits).
+Mask callees must be integer literals; decimal, leading-zero octal, binary,
+and hexadecimal spellings (including an unsigned suffix) use the common integer
+decoder and select the same eight allowed mask values. For example,
+`255(257)`, `0377(257)`, `0b11111111(257)`, and `0xff(257)` each store `1`.
+Expression-valued or parenthesized mask callees and floating literals are rejected.
 The mask selects a byte after applying the addend and places that byte in the
 low eight bits. Arithmetic after extraction is rejected rather than reordered.
 Symbol identity follows lexical binding, including same-named declarations in
@@ -134,16 +161,41 @@ Integer literals and expressions still use PTX's `.s64`/`.u64` evaluation domain
 the wider destination does not enable 128-bit literals or expression arithmetic.
 For `.b128`, the frontend sign-extends a signed result and zero-extends an
 unsigned result only after evaluation. Thus `-1` fills both words with ones,
-whereas `-1U` fills only the low word. Sparse aggregate positions remain zero.
+whereas `-1U` fills only the low word. Precisely, after evaluating the whole
+expression, `lo = source.bits` and `hi = (!source.is_unsigned && lo.bit63) ?
+UINT64_MAX : 0`. Sparse aggregate positions remain zero.
+
+Owned `StorageConstant` records erase the source expression and signedness. Both
+module validator APIs check each retained constant leaf of actual `.b128`
+storage against `hi == 0 || (hi == UINT64_MAX && lo.bit63)`, including unused
+storage, comma declarators, and every flattened array leaf. Thus a low word with
+bit 63 set permits both high zero and high all-ones; current value edits between
+these forms do not recover source history. The check is independent of target
+context and initialization mode. Empty and implicit-zero storage do not gain
+synthetic leaves, and existing external and parameterized-group source
+initializer restrictions remain. Invalid values report the owned leaf range,
+falling back to the declaration range when the leaf has no usable range.
 
 This widening is an explicit frontend policy, not a GPU-verified conformance
 claim: PTX specifies conversion at initialization but does not explicitly state
 the upper-half rule for `.b128`. No GPU validation was available, and observed
 anomalous upper words in ptxas 13.3.33 output are not reproduced by this contract.
 
-Floating initialization supports `.f32`/`.f64` literals with signs and
+Floating initialization supports decimal and exact-F64 literals with signs and
 parentheses, including decimal trailing-point forms such as `1.` and `1.e2`;
-compound floating arithmetic is not normalized. Opaque object
+supported compound arithmetic and integer-condition ternaries use the shared
+binary64 constant evaluator, followed by the common `.f32`/`.f64` destination
+conversion. Mixed integer/floating operands promote to binary64 using integer
+signedness; floating comparisons produce integer results. Exact-F32 literals
+retain their raw payload only as unsigned direct initializers. Parentheses,
+unary signs, arithmetic, comparisons, casts, and conditional expression uses of
+exact-F32 are rejected even in unselected branches. Decimal and exact-F64 unary
+signs remain valid, including negative zero. Bit destinations accept only equal
+source precision: `.b32` receives a direct exact-F32 literal, while `.b64`
+receives decimal/exact-F64 literals or supported binary64 expressions. Raw
+payload and negative-zero bits are preserved. `.b8/.b16/.b128` and mismatched
+`.b32/.b64` source precision are rejected; integer destinations remain incompatible
+with floating results. Opaque object
 metadata includes module-global declarations with preserved array shape,
 explicit alignment, and typed named-member initialization. See the
 [texture contract](converage/texture_coverage.md) for its identity and static-field boundary.

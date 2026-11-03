@@ -139,7 +139,7 @@ TEST(ModuleStrictInvariants, TargetItemsAreClassifiedAtEveryBoundary) {
   }
   auto module = resolve_owned_fixture(
       ".version 9.3\n.target sm_12, texmode_independent, debug, "
-      "map_f64_to_f32\n");
+      "map_f64_to_f32\n.section .debug_info {.b8 0}\n");
   ASSERT_TRUE(module);
   EXPECT_TRUE(validateModule(*module));
   for (const auto option : {"bogus", "sm_90"}) {
@@ -409,13 +409,10 @@ TEST(ModuleStrictInvariants, OpaqueNormalizedFieldsFailBothValidators) {
                   declaration_semantics::InvalidStructuralKey{"bad"};
             },
             [](auto& formal) {
-              formal.array_extent =
-                  declaration_semantics::InvalidStructuralKey{"bad"};
+              formal.array_extents = {
+                  declaration_semantics::InvalidStructuralKey{"bad"}};
             },
-            [](auto& formal) {
-              formal.is_array = false;
-              formal.array_extent = uint64_t{2};
-            },
+            [](auto& formal) { formal.array_extents = {std::nullopt}; },
             [](auto& formal) {
               formal.pointer_alignment =
                   declaration_semantics::InvalidStructuralKey{"bad"};

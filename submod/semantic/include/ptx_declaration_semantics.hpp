@@ -17,6 +17,17 @@
 
 namespace ptx_frontend::declaration_semantics {
 
+/**
+ * Decode exactly one raw .language operand token, borrowing ``spelling`` only
+ * for this call and retaining no view. Returns its code or nullopt for invalid
+ * input. Quoted official names are ASCII case-insensitive; complete unsigned
+ * integer tokens accept 0..10, including Reserved numeric codes 1 and 2.
+ * No whitespace trimming, string unescaping, quoted-numeric coercion or unquoted
+ * name aliases are performed. Directive omission/default handling belongs to
+ * the caller; an empty operand is invalid.
+ */
+[[nodiscard]] std::optional<uint64_t> languageCode(std::string_view spelling);
+
 /** Why a source constant cannot supply a concrete numeric operand value. */
 struct ConstantEvaluationDiagnostic {
   /** Failing subexpression rather than an unrelated instruction range. */

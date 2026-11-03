@@ -365,7 +365,7 @@ TEST(VectorIntegration, PreservesFamilyAndPackingFences) {
         std::array<std::string_view, 2>{"red.global.add.v2.f32 [A], {F.x,F.y};",
                                         "red.global.add.v2.f32 [A], F;"},
         std::array<std::string_view, 2>{
-            "mov.b64 %rd, {V.x,V.y}; mov.b64 {W.x,_}, %rd;", "mov.b64 %rd, V;"},
+            "mov.b64 %rd, {V.x,V.y}; mov.b64 {W.x,_}, %rd;", "mov.b64 %rd, Q;"},
         std::array<std::string_view, 2>{
             "mov.b128 %bits, {%wide0,%wide1}; mov.b128 {%wide2,_}, %bits;",
             "mov.b128 %bits, %bits;"},
@@ -381,6 +381,7 @@ TEST(VectorIntegration, PreservesFamilyAndPackingFences) {
     const auto positive = owned_chain(pair[0], "sm_100");
     ASSERT_TRUE(positive) << positive.error().front().message;
     EXPECT_TRUE(validateModule(*positive));
+    SCOPED_TRACE(pair[1]);
     const auto negative = owned_chain(pair[1], "sm_100");
     ASSERT_FALSE(negative);
     EXPECT_NE(negative.error().front().range, SourceRange{});

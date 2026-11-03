@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <variant>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <span>
@@ -457,6 +458,190 @@ TEST(ResolvedIrChecker, RejectsDnfAtEveryAvailabilityCheckerEntrypoint) {
   };
   expect_single_unsupported_availability(check_memory_vector(
       memory_vector, vector_fields, vector_operands, context));
+}
+
+/** Every plain fallback returns a located error; synthetic numeric SM contexts isolate the bound. */
+TEST(ResolvedIrChecker, ExclusiveSmBoundAtEveryPlainAndDnfEntrypoint) {
+  for (int mode : {0, 1, 2})
+    for (uint32_t sm : {69u, 70u}) {
+      AvailabilityDescriptor gate{.minimum_sm_version = 30};
+      if (mode == 1)
+        gate.sm_before = 70;
+      if (mode == 2) {
+        gate.any_of[0] = {.minimum_sm_version = 30, .sm_before = 70};
+        gate.any_of_count = 1;
+      }
+      const Context context{.target = {.ptx_version = {9, 3}, .sm_version = sm},
+                            .instruction_range = kInstructionRange};
+      const auto expect_bound = [&](const CheckResult& result) {
+        if (mode == 0 || sm < 70) {
+          EXPECT_TRUE(result);
+          return;
+        }
+        ASSERT_FALSE(result);
+        ASSERT_EQ(result.error().size(), 1u);
+        EXPECT_EQ(result.error()[0].kind,
+                  mode == 1 ? CheckDiagnosticKind::UnsupportedSmVersion
+                            : CheckDiagnosticKind::UnsupportedAvailability);
+        EXPECT_EQ(result.error()[0].range, kInstructionRange);
+      };
+      const VariantDescriptor base_variant{.variant_name = "UpperBound",
+                                           .availability = gate};
+      expect_bound(check_availability(base_variant, context));
+
+      const OperandLayoutDescriptor layouts[] = {{
+          .layout_name = "Dnf",
+          .availability = gate,
+      }};
+      const VariantDescriptor layout_variant{
+          .variant_name = "Dnf",
+          .operand_layouts = layouts,
+      };
+      expect_bound(
+          check_operand_layout_availability(layout_variant, 0, context));
+
+      const ModifierValueAvailabilityDescriptor modifier_descriptors[] = {{
+          .kind_id = "flag",
+          .value_kind = ModifierValueKind::Bool,
+          .bool_value = true,
+          .availability = gate,
+      }};
+      const ModifierValueView modifier_values[] = {{
+          .kind_id = "flag",
+          .value_kind = ModifierValueKind::Bool,
+          .bool_value = true,
+          .is_present = true,
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      }};
+      expect_bound(check_modifier_value_availability(modifier_descriptors,
+                                                     modifier_values, context));
+
+      const OperandDescriptor value_descriptors[] = {{
+          .target_field_id = "value",
+          .role = OperandRole::Source,
+          .access = OperandAccess::Read,
+          .allowed_shapes = OperandShape::Register,
+      }};
+      const OperandView value_operand{
+          .field_id = "value",
+          .actual_shape = OperandShape::Register,
+          .value_availability = gate,
+          .value_name = "late_value",
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      };
+      expect_bound(check_operands(value_descriptors, {},
+                                  std::span{&value_operand, 1}, {}, context));
+
+      const AddressStateSpaceDescriptor state_spaces[] = {{
+          .state_space = MemoryStateSpace::Global,
+          .availability = gate,
+      }};
+      const OperandDescriptor state_descriptors[] = {{
+          .target_field_id = "address",
+          .role = OperandRole::Address,
+          .access = OperandAccess::Read,
+          .allowed_shapes = OperandShape::Address,
+          .allowed_address_state_spaces = state_spaces,
+      }};
+      const OperandView state_operand{
+          .field_id = "address",
+          .actual_shape = OperandShape::Address,
+          .address_state_space = MemoryStateSpace::Global,
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      };
+      expect_bound(check_operands(state_descriptors, {},
+                                  std::span{&state_operand, 1}, {}, context));
+
+      const OperandDescriptor parameter_descriptors[] = {{
+          .target_field_id = "address",
+          .role = OperandRole::Address,
+          .access = OperandAccess::Read,
+          .allowed_shapes = OperandShape::Address,
+          .state_space_modifier_field_id = "state_space",
+          .parameter_constraint =
+              {
+                  .direction = ParameterDirection::Input,
+                  .function_availability = gate,
+              },
+      }};
+      const FieldView parameter_fields[] = {{
+          .field_id = "state_space",
+          .memory_state_space = MemoryStateSpace::Parameter,
+      }};
+      const OperandView parameter_operand{
+          .field_id = "address",
+          .actual_shape = OperandShape::Address,
+          .address_state_space = MemoryStateSpace::Parameter,
+          .enclosing_function_kind = EnclosingFunctionKind::Device,
+          .parameter_direction = ParameterDirection::Input,
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      };
+      expect_bound(check_operands(parameter_descriptors, parameter_fields,
+                                  std::span{&parameter_operand, 1}, {},
+                                  context));
+
+      const VariantDescriptor::MemoryVectorDescriptor memory_vector{
+          .type_field_id = "type",
+          .vector_field_id = "vector",
+          .address_field_id = "address",
+          .availability = gate,
+      };
+      const FieldView vector_fields[] = {{
+          .field_id = "type",
+          .scalar_type = ScalarType::U32,
+      }};
+      const OperandView vector_operands[] = {
+          {.field_id = "vector",
+           .actual_shape = OperandShape::Vector,
+           .vector_arity = 8,
+           .locations = std::span<const SourceRange>{&kInstructionRange, 1}},
+          {.field_id = "address",
+           .actual_shape = OperandShape::Address,
+           .address_state_space = MemoryStateSpace::Global,
+           .locations = std::span<const SourceRange>{&kInstructionRange, 1}},
+      };
+      expect_bound(check_memory_vector(memory_vector, vector_fields,
+                                       vector_operands, context));
+    }
+}
+
+/** Manual concrete checker facts keep bounds conjunctive with exact identity, capabilities and source options. */
+TEST(ResolvedIrChecker,
+     ExclusiveSmBoundPreservesTargetCapabilityAndMapConjunctions) {
+  constexpr AvailabilityDescriptor gate{
+      .any_of = {{{.exact_target_architecture = {10},
+                   .has_exact_target = true,
+                   .capability_count = 1,
+                   .requires_map_f64_to_f32 = true,
+                   .capabilities = {"tensor"},
+                   .sm_before = 13}}},
+      .any_of_count = 1};
+  constexpr std::array<std::string_view, 1> capabilities{"tensor"};
+  TargetInfo target{.ptx_version = {1, 3},
+                    .sm_version = 10,
+                    .identity = base::parse_target_identity("sm_10"),
+                    .capabilities = capabilities,
+                    .map_f64_to_f32 = true};
+  EXPECT_TRUE(is_available(gate, target));
+  target.sm_version = 13;
+  EXPECT_FALSE(is_available(gate, target));
+  auto unbounded = gate;
+  unbounded.any_of[0].sm_before.reset();
+  EXPECT_TRUE(is_available(unbounded, target));
+  target.sm_version = 10;
+  target.map_f64_to_f32 = false;
+  EXPECT_FALSE(is_available(gate, target));
+  target.map_f64_to_f32 = true;
+  target.capabilities = {};
+  EXPECT_FALSE(is_available(gate, target));
+  target.capabilities = capabilities;
+  target.identity.reset();
+  EXPECT_FALSE(is_available(gate, target));
+  target.identity = base::parse_target_identity("sm_11");
+  EXPECT_FALSE(is_available(gate, target));
+  AvailabilityDescriptor empty{.minimum_sm_version = 70, .sm_before = 70};
+  for (uint32_t sm : {0u, 69u, 70u, 71u})
+    EXPECT_FALSE(is_available(empty, {.sm_version = sm}));
 }
 
 TEST(ResolvedIrChecker, RejectsZeroImmediateMultipleDivisor) {
@@ -1696,5 +1881,147 @@ TEST(ResolvedIrChecker, EvaluatesExactTargetSetsAndConjunctiveRequirements) {
   singular.any_of[0].exact_target_architecture = {33};
   target.identity = base::parse_target_identity("sm_33");
   EXPECT_FALSE(is_available(singular, target));
+}
+
+TEST(ResolvedIrChecker,
+     JoinsAllSinkPermissionToActualPayloadAndSelectedFields) {
+  const std::array<uint8_t, 2> arities{4, 8};
+  OperandDescriptor descriptor{
+      .target_field_id = "dst",
+      .type_expression = {.kind = OperandTypeExpressionKind::ModifierField,
+                          .modifier_field_id = "type"},
+      .role = OperandRole::Destination,
+      .access = OperandAccess::Write,
+      .allowed_shapes = OperandShape::Vector,
+      .allowed_vector_arities = arities,
+      .vector_arity_modifier_field_id = "vector",
+      .vector_type_policy = VectorTypePolicy::Element,
+      .allow_vector_sink = true,
+      .vector_sink_payload_bits = 256};
+  ResolvedRegisterVector vector;
+  vector.elements.resize(8);
+  vector.source.range = {{1, 1}, {1, 50}};
+  std::array<SourceRange, 8> ranges;
+  for (size_t i = 0; i < ranges.size(); ++i)
+    ranges[i] = {{1, static_cast<int32_t>(2 + i * 3)},
+                 {1, static_cast<int32_t>(3 + i * 3)}};
+  OperandView operand{.field_id = "dst",
+                      .actual_shape = OperandShape::Vector,
+                      .register_vector = &vector,
+                      .vector_arity = 8,
+                      .vector_sink_count = 8,
+                      .locations = ranges};
+  std::array<FieldView, 2> fields{
+      {{.field_id = "type", .scalar_type = ScalarType::U32},
+       {.field_id = "vector", .vector_arity = VectorArity::V8}}};
+  const Context context{.target = {}, .instruction_range = {{1, 1}, {1, 100}}};
+  const auto check = [&] {
+    return check_operands(std::span{&descriptor, 1}, fields,
+                          std::span{&operand, 1}, {}, context);
+  };
+  ASSERT_TRUE(check());
+  const auto typed_descriptor = descriptor;
+  descriptor.type_expression.kind = OperandTypeExpressionKind::None;
+  const auto untyped_null = check();
+  ASSERT_FALSE(untyped_null);
+  EXPECT_EQ(untyped_null.error().front().kind,
+            CheckDiagnosticKind::InvalidVectorOperand);
+  descriptor = typed_descriptor;
+  EXPECT_TRUE(check());
+  vector.elements[0].emplace();
+  vector.elements[0]->spelling = "%r0";
+  vector.elements[0]->declared_type = ScalarType::U32;
+  operand.vector_sink_count = 7;
+  operand.vector_element_registers[0] = &*vector.elements[0];
+  operand.vector_element_shapes[0] = OperandShape::Register;
+  operand.vector_element_types[0] = ScalarType::U32;
+  EXPECT_TRUE(check());
+  descriptor.type_expression.kind = OperandTypeExpressionKind::None;
+  EXPECT_TRUE(check());
+  descriptor = typed_descriptor;
+  vector.elements[0].reset();
+  operand.vector_sink_count = 8;
+  operand.vector_element_registers[0] = nullptr;
+  operand.vector_element_shapes[0] = {};
+  operand.vector_element_types[0] = ScalarType::Invalid;
+  ASSERT_TRUE(check());
+  const auto reject_descriptor = [&](auto mutate) {
+    const auto original = descriptor;
+    mutate(descriptor);
+    EXPECT_FALSE(check());
+    descriptor = original;
+  };
+  reject_descriptor([](auto& d) {
+    d.type_expression.kind = OperandTypeExpressionKind::None;
+  });
+  reject_descriptor([](auto& d) {
+    d.type_expression.kind = OperandTypeExpressionKind::FixedScalar;
+    d.type_expression.fixed_scalar_type = ScalarType::U32;
+  });
+  reject_descriptor([](auto& d) { d.type_expression.modifier_field_id = {}; });
+  reject_descriptor([](auto& d) { d.vector_arity_modifier_field_id = {}; });
+  reject_descriptor([](auto& d) {
+    d.role = OperandRole::Source;
+    d.access = OperandAccess::Read;
+  });
+  reject_descriptor([](auto& d) { d.access = OperandAccess::ReadWrite; });
+  reject_descriptor([](auto& d) { d.allow_vector_sink = false; });
+  reject_descriptor([](auto& d) { d.vector_sink_payload_bits = 0; });
+  reject_descriptor([](auto& d) { d.vector_sink_payload_bits = 128; });
+  reject_descriptor(
+      [](auto& d) { d.vector_type_policy = VectorTypePolicy::Aggregate; });
+  reject_descriptor([](auto& d) { d.source_value_vector = true; });
+  const auto reject_view = [&](auto mutate) {
+    const auto original = operand;
+    mutate(operand);
+    EXPECT_FALSE(check());
+    operand = original;
+  };
+  reject_view([](auto& o) { o.register_vector = nullptr; });
+  reject_view([](auto& o) { o.vector_arity = 4; });
+  reject_view([](auto& o) { o.vector_sink_count = 9; });
+  reject_view([](auto& o) { o.vector_sink_count = 7; });
+  reject_view([](auto& o) { o.vector_sink_count = 0; });
+  reject_view(
+      [](auto& o) { o.vector_element_shapes[0] = OperandShape::Register; });
+  reject_view([](auto& o) { o.vector_element_types[0] = ScalarType::U32; });
+  reject_view([](auto& o) { o.vector_immediate_bits[0] = 0; });
+  ResolvedRegisterRef reg;
+  reject_view([&](auto& o) { o.vector_element_registers[0] = &reg; });
+  ResolvedValueVector values;
+  reject_view([&](auto& o) { o.value_vector = &values; });
+  const auto original_vector = vector;
+  vector.source.range = {};
+  EXPECT_FALSE(check());
+  vector = original_vector;
+  vector.source.whole_base.emplace();
+  EXPECT_FALSE(check());
+  vector = original_vector;
+  vector.source.kind = ResolvedVectorSourceKind::NamedVector;
+  EXPECT_FALSE(check());
+  vector = original_vector;
+  vector.elements[0].emplace();
+  EXPECT_FALSE(check());
+  vector = original_vector;
+  const auto original_fields = fields;
+  fields[0].scalar_type.reset();
+  const auto no_type = check();
+  ASSERT_FALSE(no_type);
+  EXPECT_TRUE(std::ranges::any_of(no_type.error(), [](const auto& d) {
+    return d.kind == CheckDiagnosticKind::MissingTypeField;
+  }));
+  fields = original_fields;
+  fields[1].vector_arity.reset();
+  const auto no_arity = check();
+  ASSERT_FALSE(no_arity);
+  EXPECT_TRUE(std::ranges::any_of(no_arity.error(), [](const auto& d) {
+    return d.kind == CheckDiagnosticKind::MissingVectorArityField;
+  }));
+  fields = original_fields;
+  for (const auto type :
+       {ScalarType::Invalid, ScalarType::U16, ScalarType::F16x2}) {
+    fields[0].scalar_type = type;
+    EXPECT_FALSE(check());
+  }
 }
 }  // namespace ptx_frontend::resolved_ir::checker

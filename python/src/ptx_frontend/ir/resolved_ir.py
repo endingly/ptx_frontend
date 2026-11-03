@@ -544,7 +544,8 @@ class ResolvedOperandBinding:
     source_value_vector: bool = False
     allow_destination_sink: bool = False
     allow_predicate_sink: bool = False
-    mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER
+    # None identifies a non-token binding; engaged forms are canonical token policy.
+    mbarrier_state_token_form: MbarrierStateTokenForm | None = None
     sink_availability: tuple[tuple[str, Any], ...] = ()
     allow_function_symbol: bool = False
     allow_call_table: bool = False
@@ -564,6 +565,7 @@ class ResolvedOperandBinding:
     texture_unbracketed: bool = False
     texture_resource_kind: TextureResourceRole | None = None
     texture_residency_required: bool = False
+    integer_immediate_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -884,7 +886,7 @@ def _build_variant(
     tensor_destination = _build_tensor_destination(semantic_variant, tensor_access_mode)
     tensor_multicast = _build_tensor_multicast(semantic_variant, tensor_access_mode)
     tensor_cta_group_applicable = _build_tensor_cta_group(
-        semantic_variant, tensor_access_mode, tensor_multicast
+        semantic_variant, tensor_access_mode, tensor_multicast, tensor_destination
     )
     expected_tensor_rank = _build_expected_tensor_rank(semantic_variant, tensor_access_mode)
     active_modifiers = tuple(
@@ -1429,8 +1431,9 @@ def _build_tensor_multicast(
 
 def _build_tensor_cta_group(
     variant: VariantSpec, mode: TensorAccessMode | None, multicast: bool,
+    tensor_destination: TensorDestination | None,
 ) -> bool:
-    """Validate a written tensor-load CTA group and preserve omitted applicability."""
+    """Validate the mode/destination target intersection and preserve omission."""
 
     if mode is None:
         return False
@@ -1477,8 +1480,17 @@ def _build_tensor_cta_group(
     qualified = {"any_of": [
         {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
         {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
-        {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
     ]}
+    restricted_cluster_mode = (
+        mode in {TensorAccessMode.TILE_GATHER4, TensorAccessMode.IM2COL_W}
+        and tensor_destination is TensorDestination.CLUSTER
+    )
+    if not restricted_cluster_mode:
+        qualified["any_of"][0] = {"ptx": "8.6", "sm": 100,
+                                  "targets": ["sm_100a", "sm_101a", "sm_101f"]}
+        qualified["any_of"].append(
+            {"ptx": "9.0", "sm": 110, "family": "sm_110f"}
+        )
     if variant.availability != qualified:
         raise ValueError(f"variant {variant.name!r}: invalid CTA-group target gate")
     return True
@@ -1925,6 +1937,20 @@ def _build_operand_layout(
     video_instruction: VideoInstructionSpec | None = None,
 ) -> ResolvedOperandLayout:
     fields = tuple(_build_operand_field(operand) for operand in operands)
+    for operand, field in zip(operands, fields):
+        if operand.integer_immediate_type is None:
+            continue
+        expression = operand.type_expression
+        if (operand.kind is not OperandKind.REGISTER_OR_IMMEDIATE
+                or field.value_kind is not ResolvedValueKind.REG_OR_IMM
+                or _require_operand_role(field) is not ResolvedOperandRole.SOURCE
+                or _require_operand_access(field) is not ResolvedOperandAccess.READ
+                or expression is None
+                or expression.kind is not OperandTypeExpressionKind.FIXED_SCALAR
+                or (expression.scalar_type, operand.integer_immediate_type) not in (
+                    ("f16", "b16"), ("bf16", "b16"),
+                    ("f16x2", "b32"), ("bf16x2", "b32"))):
+            raise ValueError("integer_immediate_type requires a read scalar half or packed half RegOrImm binding")
     return ResolvedOperandLayout(
         layout_id=layout_id,
         cpp_name=file_stem_to_pascal_case(layout_id),
@@ -1932,6 +1958,7 @@ def _build_operand_layout(
         bindings=tuple(
             ResolvedOperandBinding(
                 target_field_id=field.name,
+                integer_immediate_type=operand.integer_immediate_type,
                 type_expression=_resolve_operand_type_expression(
                     operand.type_expression,
                     modifier_field_ids,
@@ -1983,7 +2010,8 @@ def _build_operand_layout(
                 source_value_vector=operand.kind is OperandKind.VALUE_VECTOR,
                 allow_destination_sink=operand.allow_destination_sink,
                 allow_predicate_sink=operand.allow_predicate_sink,
-                mbarrier_state_token_form=operand.mbarrier_state_token_form,
+                mbarrier_state_token_form=(operand.mbarrier_state_token_form
+                    if operand.kind is OperandKind.MBARRIER_STATE_TOKEN else None),
                 sink_availability=tuple(operand.sink_availability.items()),
                 allow_function_symbol=operand.kind == OperandKind.MOV_SCALAR_SOURCE,
                 allow_call_table=operand.kind == OperandKind.INDIRECT_CALL_METADATA,

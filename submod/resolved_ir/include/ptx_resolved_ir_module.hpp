@@ -11,6 +11,8 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_unified_id.hpp>
 #include <ptx_frontend/semantic/ptx_function_contract.hpp>
+#include <ptx_frontend/syntax/ptx_syntax_legacy_dwarf.hpp>
+#include <ptx_frontend/syntax/ptx_syntax_sections.hpp>
 
 namespace ptx_frontend::resolved_ir {
 
@@ -76,6 +78,8 @@ enum class ResolvedKernelResourceKind : uint8_t {
   ReqNctaPerCluster,
   ExplicitCluster,
   MaxClusterRank,
+  /** Written deprecated maximum-CTA optimization hint, distinct from the minimum. */
+  MaxNctaPerSm,
 };
 
 /** Owned source-level resource directive, not a physical allocation decision. */
@@ -197,7 +201,7 @@ struct ResolvedCallPrototypeContract {
 
 /** Owned resource and ABI attributes attached to one resolved function. */
 struct ResolvedFunctionContract {
-  /** Canonical source ABI; parameter identities remain in parameter_declarations. */
+  /** Syntactic header ABI only; legacy body inputs live in parameter_declarations. */
   declaration_semantics::FunctionSignature signature;
   /** Function linkage preserved from the owning module symbol. */
   binding::SymbolLinkage linkage{};
@@ -282,7 +286,8 @@ struct ResolvedFunction {
   /**
    * Owned .param returns, inputs, then body declarations in lexical traversal
    * order. Filter ParameterDeclarationRole::EntryInput for source-ordered
-   * entry inputs.
+   * header entry inputs, or LegacyEntryInput for PTX 1.0–1.3 body inputs.
+   * Lexical record order implies no host launch slots or allocation offsets.
    */
   std::vector<ResolvedParameterDeclaration> parameter_declarations;
   /** Name-only opaque entry inputs in source order, independent of scalar ABI. */
@@ -342,6 +347,32 @@ struct ResolvedCallTableContract {
   /** Compare complete owned table contracts. */
   bool operator==(const ResolvedCallTableContract&) const = default;
 };
+/** Reuse the small owning section value records; no source or AST object is borrowed. */
+using ResolvedDebugSection = syntax_ast::AstSectionDirective;
+
+/** Written advisory placement, independent of pragma content or executable effects. */
+enum class ResolvedPragmaPlacement : uint8_t { Module, EntryHeader, Statement };
+
+/** Owning opaque advisory metadata; all scope identities refer to its module table. */
+struct ResolvedPragma {
+  /** Written placement, with no backend-string interpretation. */
+  ResolvedPragmaPlacement placement{};
+  /** Actual module, entry declaration occurrence, or function/block scope. */
+  binding::ScopeId scope_id;
+  /** Owned raw quoted string spellings and ranges, in written list order. */
+  std::vector<syntax_ast::AstSyntax> strings;
+  /** Complete physical directive range containing every string leaf. */
+  SourceRange range;
+};
+
+/** Owning serialization value with its actual lexical scope in the module table. */
+struct ResolvedLegacyDwarfRecord {
+  /** Original typed marker, payload and within-record physical provenance. */
+  syntax_ast::AstLegacyDwarfRecord value;
+  /** Module or actual function-definition/block occurrence, never a canonical preferred scope. */
+  binding::ScopeId scope_id;
+};
+
 /** Owns all resolved declarations, functions, and source correspondence data. */
 struct ResolvedModule {
   /** Owning symbol table; every retained SymbolId and ScopeId refers to it. */
@@ -352,14 +383,20 @@ struct ResolvedModule {
   std::vector<ResolvedFunctionAlias> function_aliases;
   /** Owned ordered source contexts used for AST-free source availability checks. */
   ResolvedModuleHeader header;
+  /** Ordered owning fragments, including repeated names and nonempty relocations. */
+  std::vector<ResolvedDebugSection> sections;
+  /** Owning advisory records in source traversal order; never executable nodes. */
+  std::vector<ResolvedPragma> pragmas;
   /** Source extent of the complete module. */
   SourceRange range;
   /** Owned non-parameter storage declarations, in source traversal order. */
   std::vector<ResolvedStorageDeclaration> storage_declarations;
   /** Consumed call tables keyed by actual storage identity; unique per module. */
   std::vector<ResolvedCallTableContract> call_tables;
-  /** Canonical module syntax identity excluding target, version, and locations. */
+  /** Executable/declaration syntax identity, excluding debug sections and source-header metadata. */
   std::string source_identity;
+  /** Sole lexical-order stream; values own their text and survive source/AST destruction. */
+  std::vector<ResolvedLegacyDwarfRecord> legacy_dwarf_records;
 };
 
 }  // namespace ptx_frontend::resolved_ir

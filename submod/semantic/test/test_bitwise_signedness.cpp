@@ -26,20 +26,49 @@ struct BitwiseCase {
 TEST(BitwiseSignedness, UsesUsualConversionsForBinaryOperators) {
   constexpr auto all_bits = UINT64_MAX;
   constexpr std::array cases{
-      BitwiseCase{"-1 & -1", all_bits, false},
-      BitwiseCase{"-1 | 0", all_bits, false},
-      BitwiseCase{"-1 ^ 0", all_bits, false},
-      BitwiseCase{"-1 & -1U", all_bits, true},
-      BitwiseCase{"0U | -1", all_bits, true},
-      BitwiseCase{"-1 ^ 0U", all_bits, true},
-      BitwiseCase{"(-1 & -1) < 0", 1, false},
-      BitwiseCase{"(-1 | 0) < 0", 1, false},
-      BitwiseCase{"(-1 ^ 0) < 0", 1, false},
+      BitwiseCase{"(-1) & (-1)", all_bits, false},
+      BitwiseCase{"((-1) & (-1)) < 0", 1, false},
+      BitwiseCase{"(-1) & (-1U)", all_bits, true},
+      BitwiseCase{"((-1) & (-1U)) < 0", 0, false},
+      BitwiseCase{"(-1U) & (-1)", all_bits, true},
+      BitwiseCase{"((-1U) & (-1)) < 0", 0, false},
+      BitwiseCase{"(-1U) & (-1U)", all_bits, true},
+      BitwiseCase{"((-1U) & (-1U)) < 0", 0, false},
+      BitwiseCase{"(-4 & -1) >> 1", all_bits - 1, false},
+      BitwiseCase{"(((-4 & -1) & 1) - 2) < 0", 1, false},
+      BitwiseCase{"(-4U & -1) >> 1", UINT64_C(0x7ffffffffffffffe), true},
+      BitwiseCase{"(((-4U & -1) & 1) - 2) < 0", 0, false},
+      BitwiseCase{"(-1) | (0)", all_bits, false},
+      BitwiseCase{"((-1) | (0)) < 0", 1, false},
+      BitwiseCase{"(-1) | (0U)", all_bits, true},
+      BitwiseCase{"((-1) | (0U)) < 0", 0, false},
+      BitwiseCase{"(-1U) | (0)", all_bits, true},
+      BitwiseCase{"((-1U) | (0)) < 0", 0, false},
+      BitwiseCase{"(-1U) | (0U)", all_bits, true},
+      BitwiseCase{"((-1U) | (0U)) < 0", 0, false},
       BitwiseCase{"(-4 | 0) >> 1", all_bits - 1, false},
-      BitwiseCase{"((.s64)(-4 | 0)) >> 1", all_bits - 1, false},
-      BitwiseCase{"(-1 & -1U) < 0", 0, false},
+      BitwiseCase{"(((-4 | 0) & 1) - 2) < 0", 1, false},
+      BitwiseCase{"(-4U | 0) >> 1", UINT64_C(0x7ffffffffffffffe), true},
+      BitwiseCase{"(((-4U | 0) & 1) - 2) < 0", 0, false},
+      BitwiseCase{"(-1) ^ (0)", all_bits, false},
+      BitwiseCase{"((-1) ^ (0)) < 0", 1, false},
+      BitwiseCase{"(-1) ^ (0U)", all_bits, true},
+      BitwiseCase{"((-1) ^ (0U)) < 0", 0, false},
+      BitwiseCase{"(-1U) ^ (0)", all_bits, true},
+      BitwiseCase{"((-1U) ^ (0)) < 0", 0, false},
+      BitwiseCase{"(-1U) ^ (0U)", all_bits, true},
+      BitwiseCase{"((-1U) ^ (0U)) < 0", 0, false},
+      BitwiseCase{"(-4 ^ 0) >> 1", all_bits - 1, false},
+      BitwiseCase{"(((-4 ^ 0) & 1) - 2) < 0", 1, false},
+      BitwiseCase{"(-4U ^ 0) >> 1", UINT64_C(0x7ffffffffffffffe), true},
+      BitwiseCase{"(((-4U ^ 0) & 1) - 2) < 0", 0, false},
       BitwiseCase{"~0", all_bits, true},
+      BitwiseCase{"~0U", all_bits, true},
+      BitwiseCase{"~(-1)", 0, true},
       BitwiseCase{"(~0) < 0", 0, false},
+      BitwiseCase{"(.s64)(-1U | 0) < 0", 1, false},
+      BitwiseCase{"(.u64)(-1 | 0) < 0", 0, false},
+      BitwiseCase{"((.s64)(-4 | 0)) >> 1", all_bits - 1, false},
       BitwiseCase{"(-1 + 0) < 0", 1, false},
   };
   for (const auto& test : cases) {
@@ -63,6 +92,30 @@ TEST(BitwiseSignedness, UsesUsualConversionsForBinaryOperators) {
     ASSERT_TRUE(value.has_value());
     EXPECT_EQ(value->bits, test.bits);
     EXPECT_EQ(value->is_unsigned, test.is_unsigned);
+    const auto numeric = numericConstantValue(*expression);
+    ASSERT_TRUE(numeric);
+    const auto* integer = std::get_if<IntegerConstantValue>(&*numeric);
+    ASSERT_NE(integer, nullptr);
+    EXPECT_EQ(integer->bits, test.bits);
+    EXPECT_EQ(integer->is_unsigned, test.is_unsigned);
+  }
+}
+
+/** Floating operands parse cleanly but cannot enter integer bitwise evaluation. */
+TEST(BitwiseSignedness, RejectsFloatingOperandsForEveryBinaryOperator) {
+  for (const auto operation : {"&", "|", "^"}) {
+    SCOPED_TRACE(operation);
+    PtxSyntaxParser parser("mov.u64 d, (1.0 " + std::string(operation) +
+                           " 1);");
+    const auto parsed = parser.parseInstruction();
+    ASSERT_TRUE(parsed);
+    ASSERT_TRUE(parsed.diagnostics.empty());
+    const auto& operand =
+        std::get<syntax_ast::AstConstantOperand>(parsed->operands[1]);
+    const auto value = numericConstantValue(*operand.expression);
+    ASSERT_FALSE(value);
+    EXPECT_FALSE(value.error().deferred);
+    EXPECT_FALSE(constantIntegerValue(*operand.expression));
   }
 }
 

@@ -39,7 +39,7 @@ class HistoricalFloatDefaultTests(unittest.TestCase):
         expected = {f'{op}_implicit_f32': approximate_ftz for op in
                     ('div', 'rcp', 'sqrt', 'rsqrt', 'sin', 'cos', 'lg2', 'ex2')}
         expected.update({f'{op}_implicit_f64': FloatingPointDefault.ROUND_NEAREST_EVEN
-                         for op in ('div', 'sqrt', 'mad')})
+                         for op in ('div', 'rcp', 'sqrt', 'mad')})
         expected['rsqrt_implicit_f64'] = FloatingPointDefault.APPROXIMATE
         self.assertEqual(forms, expected)
 

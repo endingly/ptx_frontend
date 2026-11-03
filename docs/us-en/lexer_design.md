@@ -398,3 +398,37 @@ ctest --test-dir out/build/ci-linux-gcc-debug --output-on-failure
 
 These limitations should be changed only together with focused lexer tests that
 define the new lexical contract.
+
+## Contextual instruction keywords
+
+For the archived PTX ISA 9.3, the frontend adopts a contextual reading of
+instruction keywords. Section 4.3.2 calls instruction keywords reserved tokens,
+while section 4.4 gives the ordinary identifier character grammar without an
+explicit keyword exclusion. The concrete official examples declare
+`.global .u32 bar[] = { 2, 3, 5 };` and reference `generic(bar)` in
+[initializers](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#initializers).
+The [function example](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#function-declarations-and-definitions)
+also defines and directly calls a device function named `bar`.
+
+The adopted reconciliation recognizes instruction roots in opcode positions and
+applies the ordinary character grammar in explicit user-defined name positions.
+It does not impose a context-free instruction-keyword name ban or a special
+exception for `bar`. The reserved-token wording retains interpretive tension;
+this is not a claim that the manual supplies a complete lexer grammar or that
+every spelling fits every syntactic role. Existing type, state-space, ABI,
+visibility, predefined-name and contextual-sink rules still apply.
+
+PTX remains case-sensitive: `add` is an opcode in `add.u32`, while `add`, `Add`,
+`ADD`, `_add`, `$add`, `%add`, `add0`, `add_` and `add$` can be ordinary explicit
+names. No prefix stripping or case folding is used. `ADD.u32` does not become
+`add.u32`; a dot-containing mnemonic is not an ordinary identifier. Standalone
+`_`, `$`, `%`, empty names and invalid punctuation retain their existing role or
+character-grammar restrictions.
+
+Table 2 has 136 instruction roots. `fabric` is separately explicit in the
+[fabric instruction sections](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#fabric-instructions-submit),
+although absent from that table. The expanded packaged opcode set matches these
+137 roots; raw YAML is pre-expansion data and is not evidence of 40 missing roots.
+Neither count defines an additional identifier-ban catalogue. A variable or
+function named `fabric` does not bypass the independent syntax/version/target
+checks for `fabric` instructions.

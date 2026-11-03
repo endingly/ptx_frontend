@@ -43,8 +43,8 @@ class TcgenTf32ContractTests(unittest.TestCase):
                               (1, 64, "F", True), (1, 128, "D", False),
                               (2, 128, "B", False), (2, 256, "A", False)})
 
-    def test_eight_typed_layouts_preserve_optional_presence(self) -> None:
-        """One kind owns eight layouts; source scale keeps original value."""
+    def test_four_typed_layouts_preserve_optional_presence(self) -> None:
+        """One kind owns four masked layouts; source scale keeps original value."""
 
         raw = load_yaml(packaged_spec_dir() /
                         "tensor_memory_data_movement.yaml")
@@ -52,19 +52,19 @@ class TcgenTf32ContractTests(unittest.TestCase):
         mma = next(item for item in tcgen.variants
                    if item.name == "tcgen05_mma_tf32")
         self.assertIs(mma.rule, SemanticRule.TENSOR_MEMORY_MMA)
-        self.assertEqual(len(mma.operand_layouts), 8)
+        self.assertEqual(len(mma.operand_layouts), 4)
         self.assertEqual(mma.modifier_order_aliases,
                          (("mma", "kind", "cta_group", "ashift", "collector"),))
         self.assertEqual({layout.name for layout in mma.operand_layouts}, {
             f"{a}_{m}_{s}" for a in ("shared", "tensor")
-            for m in ("mask", "no_mask") for s in ("scale", "no_scale")})
-        base = {"group": 1, "a_placement": "shared", "mask_count": None,
+            for m in ("mask",) for s in ("scale", "no_scale")})
+        base = {"group": 1, "a_placement": "shared", "mask_count": 4,
                 "scale_source_value": None}
-        self.assertIsNone(normalize_tf32_source_topology(base).mask_count)
+        self.assertEqual(normalize_tf32_source_topology(base).mask_count, 4)
         self.assertEqual(normalize_tf32_source_topology({
             **base, "group": 2, "a_placement": "tensor", "mask_count": 8,
             "scale_source_value": 15}).mask_count, 8)
-        for changed in ({"mask_count": 0}, {"mask_count": 5},
+        for changed in ({"mask_count": None}, {"mask_count": 0}, {"mask_count": 5},
                         {"scale_source_value": -1},
                         {"scale_source_value": 16},
                         {"scale_source_value": 1 << 32},

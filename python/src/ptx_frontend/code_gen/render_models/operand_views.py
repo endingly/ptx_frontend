@@ -514,6 +514,7 @@ class OperandMovSourceViewModel:
     local_cpp: str
     param_cpp: str
     const_cpp: str
+    parameter_directions_default: str
     input_cpp: str
     return_cpp: str
     member_expr: str
@@ -1058,6 +1059,7 @@ def build_check_operand_view(
         return OperandCvtSourceViewModel(member_expr=member_expr, field_id=field.name)
     if field.value_kind is ResolvedValueKind.MOV_SOURCE:
         return OperandMovSourceViewModel(
+            parameter_directions_default=_cpp_default(backend, CppDomain.PARAMETER_DIRECTIONS),
             global_cpp=_cpp(backend, CppDomain.MEMORY_STATE_SPACES, 'global'),
             shared_cpp=_cpp(backend, CppDomain.MEMORY_STATE_SPACES, 'shared'),
             local_cpp=_cpp(backend, CppDomain.MEMORY_STATE_SPACES, 'local'),

@@ -1,5 +1,7 @@
 # Symbol Binding 设计
 
+当前支持范围、语法与操作接受条件、类型和目标限制以英文 [SDK 支持契约](../sdk_support.md#symbol-binding-design) 为唯一维护依据；本文保留技术参考与历史证据。
+
 ## 定位
 
 symbol binding 位于 Syntax AST 与 Resolved IR/checker 之间：
@@ -19,87 +21,11 @@ auto binding = binding::bindSymbols(module);
 
 ## Scope 与 symbol
 
-每个 module 有一个根 scope，每个 `.entry/.func` item 有一个以 module scope 为 parent 的
-function scope，每个 nested `AstBlock` 则有按 source range 识别的 child block scope。当前收集：
-
-- module/function variable declaration；
-- function input 与 return parameter；
-- function symbol；
-- label，以及 function-local `.callprototype`、`.calltargets` 与
-  `.branchtargets` declaration；即使写在 nested block 内，也放入所属的 function scope。
-
-`SymbolId` 与 `ScopeId` 是强类型索引。`Symbol` 保留名称、kind、声明位置，以及变量或
-parameter 的 state space/type；function symbol 还记录 `.func/.entry` 类别。
-`SymbolLinkage` 直接记录 `.extern/.visible/.weak/.common`。`Common` 与 `Weak`、
-`Visible` 保持不同，表示普通 module-scope global definition；binding 不选择跨 object
-的 definition。Function symbol 通过 `owned_scope` 指向其
-function scope。若同一 function 同时存在 prototype 与
-definition，每个 item 都有独立 scope，而 `owned_scope` 优先指向 definition。
-每个 function scope 同时拥有该次声明的 `SourceRange`。`functionScope(range)` 返回唯一
-匹配的 occurrence；缺失或含糊时返回空值。调用者无需对齐 function 与 scope vector 的遍历，
-处理 prototype 局部 parameter 时也不能用 `owned_scope` 取代此 occurrence identity。
-
-同 scope 的查找优先 exact name，再查 parameterized name，最后沿 parent scope 向上。
-因此 block declaration 可以遮蔽 outer/module symbol，sibling block 彼此不可见；label 和
-control-flow metadata 则有意保持 function-local，而非 block-local。
-
-debug identity 使用独立的 module metadata namespace。`.file` index 会规范化为
-`uint64_t`（decimal/octal/binary/hex 与可选 `u`/`U` suffix），并以 `DebugFile` symbol 绑定；重复 index
-一律报错，即使 filename 与 metadata 完全相同；诊断保留当前及首次 index 的 range。
-第一个 `SymbolId` 仅用于诊断恢复与 `.loc` binding；不同 index 可以命名同一文件。
-`SymbolTable::debugFiles()` 借用按源码顺序拥有的记录，保存规范化 index、bound symbol、
-原始 index/filename token、可选 timestamp/file-size token 及其 source range；被拒绝的
-重复声明也保留。filename escape 不解码，也不做路径去重；省略的数值 metadata 仍表示默认零。
-此约束依据 [PTX ISA 9.3 §11.5.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-file)
-及 CUDA 13.3 `ptxas` 的重复 index 诊断。`.debug_str` section 本身及其 typed `AstSectionLabelDefinition` 都会成为
-`DebugStringLabel` symbol。普通 `SymbolTable::lookup()` 会跳过这两种 debug kind，因此 PTX
-program declaration 可以使用相同 spelling。`.loc` 的 basic 与 `inlined_at` file field 会生成
-`DebugFile` reference，而 `function_name` 生成 `DebugFunctionName` reference；后者只能解析为
-`.debug_str` section 自身或其中 label。这些 metadata identity 会诊断 unresolved reference，
-但绝不作为 PTX operand。
-
-声明拼写在词法分析之后按
-[PTX ISA 9.3 §4.4](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#identifiers)
-的 ASCII 文法检查：字母可单独成名；以 `_`、`$` 或 `%` 开头时，后面至少还需一个
-字母、数字、`_` 或 `$`。百分号只能位于开头。因此 `_x`、`$x`、`%r` 与 `_x<2>`
-等参数化基名仍合法，普通声明中的 `_` 或 `$` 则在名称 token 处报告
-`InvalidIdentifier`。紧凑声明的前缀遵循相同规则：`_x<2>`、`$x<2>` 合法，
-`_<2>`、`$<2>` 则被拒绝。检查覆盖变量、函数、普通形参、标签、别名及 `.debug_str`
-原始载荷标签；调试文件编号与合成的 `.debug_str` 节身份不受该名称文法约束。
-声明检查直接读取 AST 拼写，不依赖符号查找；无 AST 的模块验证检查保留名称，
-并在声明名称范围报告 `RuleViolation`。源码关联仍保留拼写身份，不规范化名称。
-
-词法器仍将 `_` 保留为标识符，以支持上下文用途。指令 sink 继续由具体操作数规则决定。
-按 [PTX ISA 9.3 §11.3.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-directives-callprototype)，
-`.callprototype` 保留强制的函数名 `_`，并允许输入与返回形参使用虚拟名称 `_`；
-这些虚拟名称不成为绑定符号或 owned ABI 名称。`$` 没有对应例外。
-
-`SymbolTable::debugLocations()` 借用表拥有的、按 module 顺序排列的
-`DebugLocationDeclaration` 记录。每项保存 lexical `ScopeId`、base
-`DebugLocationSourceTriple`、可选 `DebugLocationInlineContext` 与物理 range。
-所有 leaf 复用拥有字符串的 `DebugFileSourceLeaf`，不借用 AST，也不另存可变的解码坐标。
-表的复制与赋值复制这些值；赋值、move 与销毁使借用 span 失效。
-新增 table layout 要求二进制 consumer 重新编译。binding 跨函数并按 nested block
-深度优先源码顺序收集事件；inline precedence 由共同 module validator 检查，非 binding 单独保证。
+当前接受条件与限制见英文 [SDK 支持契约](../sdk_support.md#symbol-binding-design--scopes-and-symbols)；API、算法及证据见 [英文技术参考](../us-en/symbol_binding_design.md#scopes-and-symbols)。
 
 ## Parameterized variable name
 
-`name<count>` 依 PTX 语法表示 `name0` 到 `name(count-1)`。symbol table 不展开这些名称，
-而是保存 base name 与 count；lookup `%r2` 会返回同一个 declaration `SymbolId`，并在
-`SymbolLookup::parameterized_index` 中记录 `2`。这样不会因较大的 count 生成大量 symbol。
-成员后缀使用规范十进制拼写：`%r<3>` 匹配 `%r0..%r2`，但不匹配 `%r02`。
-
-收集 declaration 时会比较其实际名称集合。parameterized declaration 与 explicit name，
-以及两个不同 base 的 parameterized declaration，只要展开后存在同 scope 成员重叠，都会
-产生带 previous range 的 duplicate diagnostic；parameterized base 本身不属于展开集合，
-所以 `name<2>` 与 explicit `name` 仍是两个不同 symbol。
-ordinary/ordinary 只比较两个 literal spelling；ordinary/group 用 ordinary spelling
-匹配 group 的成员；group/group 只比较生成出的成员。非法的 zero-count group 没有成员，
-不会产生 overlap candidate；同 base 的 compact declaration 仍沿用 exact-declaration
-duplicate policy。
-
-Parameterized name 可用于任意 state space，但不能同时声明 array 或 initializer。原先
-只允许 `.reg` 的限制已移除，公共 CST/AST 字段也统一命名为 `parameterized_count`。
+当前接受条件与限制见英文 [SDK 支持契约](../sdk_support.md#symbol-binding-design--parameterized-variable-names)；API、算法及证据见 [英文技术参考](../us-en/symbol_binding_design.md#parameterized-variable-names)。
 
 ## Lookup index 与紧凑 group
 
@@ -132,74 +58,8 @@ member 而不进入此 index，现有的 name-set-overlap predicate 仍是最终
 
 ## Reference binding
 
-binding pass 会访问：
-
-- instruction predicate 与各种 operand shape 中的 identifier；
-- array dimension constant expression；
-- scalar/递归 initializer 内的 symbol expression；
-- call target/return/input/target-set 与 direct branch target。
-
-每个 `SymbolReference` 保留 spelling、range、引用种类、可选 target，并具有明确的
-`ReferenceClassification`：
-
-- `DeclaredSymbol`：当前 module 中的普通 declaration；
-- `ExternalSymbol`：绑定到当前 module 的显式 `.extern` declaration；
-- `SpecialRegister`：PTX 预定义 special register，不需要用户 declaration；
-- `Unresolved`：以上均不匹配，是真正未声明的 reference。
-
-成功解析的 parameterized declaration reference 同时保存成员 index。special register
-通过独立的 `special_registers` 语义注册表精确识别；该注册表同时保存现行 element type、
-vector width 与最低 PTX/SM，是名称分类与 Resolved IR 检查的单一事实来源。
-`%envreg<32>`、`%pm<8>`、`%pm0_64..%pm7_64` 与
-`%reserved_smem_offset_<2>` 使用有界匹配，不以任意 `%` 前缀代替。`%tid.x` 等 vector
-member 在 AST 中绑定其 `%tid` base。`WARP_SZ` 已由 lexer 表示为 immediate，不进入
-symbol-reference 路径。
-
-`.extern` 表示 declaration 的定义位于其他 module，不等于允许无 declaration 的名称。
-因此 external reference 仍有正常的 `SymbolId` target，只是 classification 与 symbol
-linkage 明确标记为 external。
-
-`generic()` 是 initializer operator，不作为 symbol reference；其 argument 仍正常绑定。
-mask operator 的 callee 是 literal，同样只绑定其 argument。
-
-call/branch 专用 AST 节点会产生独立 reference kind。binding 已检查 callee 是 function 或
-`.reg` function pointer、call parameter 属于 `.reg/.param`、direct branch target 是当前
-function 的 label，且 indirect target-set operand 是 `.callprototype` 或 `.calltargets`
-symbol，或作为 call-table flist 消费的真实 storage variable；表的适用性仍由 module resolution
-负责。variable declarator name 与 flist name 进入既有 lexical-order index，owned variable
-occurrence 保存 declarator range 用于 AST-free 关联。三种 metadata declaration 都拥有稳定的 function-scope `SymbolId`。member validation、
-duplicate policy 与 prototype/signature semantics 由 declaration semantics 检查；binding 不
-resolve metadata member 或 instruction use。详见 `control_flow_syntax_design.md`。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#symbol-binding-design--reference-binding)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/symbol_binding_design.md#reference-binding)。
 
 ## 当前诊断与边界
 
-当前累积诊断包括 same-scope duplicate symbol、parameterized name-set overlap、无效/为零
-的 parameterized count、冲突的 linkage qualifier，以及真正未声明的 reference。module scope 的同名
-declaration 会先共享稳定的 `SymbolId`，再交给 declaration semantic pass 判断是合法
-redeclaration、签名冲突还是多个 definition。module resolver 会保留 special register
-与 unresolved reference 的区别；scalar `mov` 的统一 source 已将前者解析为带稳定身份与
-component 的 `ResolvedSpecialRegisterRef`。现行声明类型与 intrinsic availability 由语义注册表
-按该身份提供，指令相关的历史读取兼容由 generated checker descriptor 提供。尚未声明
-special-register shape 的 opcode 仍会得到 operand 不支持诊断，而不是“未声明”。declaration
-semantic pass 的设计见 `declaration_semantics_design.md`。
-
-32/64-bit integer/bit-size `mov d, symbol[+offset]` 与 `ld.u32 d, [address]` 也已消费
-binding identity：前者的
-direct symbol 生成 `ResolvedSymbolRef`，带 offset 时把该表示嵌入 `ResolvedAddress` base；
-后者的 symbol address base 使用同一表示。module resolution 保存稳定 `SymbolId`、
-parameterized member、declaration kind、声明 state space 与实际 address state space；direct
-parameter memory address 与 kernel formal parameter 的 `mov` 地址属于 `.param`，
-device-function formal parameter 的 `mov` 地址属于 `.local`，且 return parameter 取址由
-checker 在所有 device parameter 上要求 PTX 2.0 / SM 20 baseline，并将 return parameter 的
-最低 PTX 提升至 6.0。function-local `.param` call-argument variable 与 formal parameter 分开绑定；
-direct `ld.param`/`st.param` 可取址，`mov` 仍拒绝取址。standalone resolution 只保留 spelling。bare function name 绑定为 `ResolvedFunctionRef`，保存
-同一稳定 `SymbolId` 与 `.func/.entry` 类别；kernel function 地址由 checker 要求 PTX 3.1 /
-SM 35，device-function 地址沿用 `mov` 的 PTX 1.0 baseline。
-词法绑定记录声明身份和元数据；已建模 form 的指令相关 state-space 与
-special-register/type 兼容由 Resolved IR resolution/checker 检查。剩余工作是尚未建模的
-指令/operand form，而非整体兼容检查阶段尚未实现。
-
-显式 name role 中的 instruction-keyword 拼写采用[上下文词法解释](lexer_design.md)，
-保留官方 `bar` object/function 示例。Binding 保留精确大小写和拼写；source name check
-与 AST-free owned check 针对 actual declaration/symbol name，不增加全局 keyword
-排除或 diagnostic-spelling history join。独立的 role、type、ABI 与先行声明检查仍为权威。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#symbol-binding-design--current-diagnostics-and-boundary)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/symbol_binding_design.md#current-diagnostics-and-boundary)。

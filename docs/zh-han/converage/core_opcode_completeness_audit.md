@@ -1,10 +1,7 @@
 # 核心 opcode 完整性审计
 
-## 当前阅读说明
+本文为**历史证据记录**；表格、缺口、计数与工具结果只描述其记录版本（含 `2bd78d6`），不定义当前 SDK 支持范围。当前语法、操作、类型、目标及保留限制统一见英文 [SDK 支持契约](../../sdk_support.md)。
 
-十一操作范围指本记录的历史 simulator 证据；选定当前模型表还列出 addc/subc root。全 ISA 当前 inventory 与已确认缺少形式
-见[当前覆盖范围](coverage_status.md)。LD/LDNC/ST 写出 `L2::cache_hint` 但省略 policy operand 的形式仍缺失；
-历史后续事项的归属不证明整个族完整。
 
 ## 范围与证据边界
 

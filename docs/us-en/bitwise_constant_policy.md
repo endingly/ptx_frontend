@@ -1,5 +1,7 @@
 # Bitwise constant-expression signedness
 
+Current source forms, type/target restrictions and retained limitations are maintained in the [SDK support contract](../sdk_support.md#bitwise-constant-policy). This page retains technical reference material and evidence.
+
 Binary `&`, `|`, and `^` use the usual arithmetic conversions: their result is
 signed when both inputs are signed, and unsigned otherwise. Unary `~` remains
 unsigned. This policy affects subsequent comparisons and right shifts; it does
@@ -7,38 +9,11 @@ not change the 64-bit payload produced by the bitwise operation itself.
 
 ## Specification conflict and decision
 
-[PTX ISA 9.3 section 4.5.5](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-constant-expression-evaluation)
-specifies usual arithmetic conversions for binary bitwise operators, whereas
-[the summary table in section 4.5.6](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#summary-of-constant-expression-evaluation-rules)
-lists unsigned operands/results. The frontend follows the detailed prose,
-supported by the offline assembler observations below, rather than the table.
-This is an explicit interpretation of inconsistent documentation, not a claim
-that NVIDIA has issued a specification correction.
+[SDK support: Specification conflict and decision](../sdk_support.md#bitwise-constant-policy--specification-conflict-and-decision).
 
 ## Evaluation and use conversion
 
-The evaluator retains both the 64-bit result and its signedness until the
-consumer applies its existing destination conversion. Mixed inputs follow the
-same rule in either operand order. For example, `(-4 & -1) >> 1` is signed and
-produces `fffffffffffffffe`, while `(-4U & -1) >> 1` is unsigned and produces
-`7ffffffffffffffe`. Unary `~0` is unsigned even though `(-1 | 0)` is signed;
-both have the same all-ones payload.
-
-`constantIntegerValue` and `numericConstantValue` expose this expression type
-before use conversion. Equal-width `.u64` storage and `mov.u64` can preserve the
-same bits from either signed or unsigned expressions. Storage words alone do
-not recover the expression type. The normalized immediate's `is_negative` and
-`integer_source_bits` describe the evaluated source sign and bits; they are not
-a complete expression-type cache. No destination type changes how an earlier
-binary expression is evaluated. Opcode `and`, `or`, and `xor` operand rules are
-independent of this constant-expression policy.
-
-The semantic regression asserts exact bits and type for all signedness pairs,
-comparison, arithmetic and right-shift observers, casts, and unary complement.
-The resolved regression compares evaluator, instruction and storage values,
-then validates copies, assignments and cloned instructions after the module
-source and AST have been destroyed. Existing source-sign rejection tests remain
-separate controls. These frontend tests do not require a new assembler run.
+[SDK support: Evaluation and use conversion](../sdk_support.md#bitwise-constant-policy--evaluation-and-use-conversion).
 
 ## Reproduction
 

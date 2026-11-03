@@ -5,24 +5,12 @@ It provides a lossless concrete syntax tree, a
 typed Syntax AST, lexical binding, declaration validation, and generated
 Resolved IR with target-aware checking for modelled instructions.
 
-It is a frontend, not an assembler, code generator, or GPU executor. It does
-not claim complete PTX ISA coverage; consult the coverage documents for the
-supported surface and its exclusions.
+The [SDK support contract](docs/sdk_support.md) is the single current authority
+for supported syntax and operations, exact type/target restrictions, validation
+boundaries and retained limitations. Both language reference trees defer to this
+English document.
 
-Ordinary `multimem.ld_reduce` and `multimem.st` accept optional
-`.cta/.cluster/.gpu/.sys` scope with omitted semantics or explicit `.weak`,
-preserving source omission in the public IR. See the
-[multimem contract](docs/us-en/converage/multimem_coverage.md)
-([简体中文](docs/zh-han/converage/multimem_coverage.md)) for ordering and target limits.
-
-General integer fields accept decimal, leading-zero octal, hexadecimal, and
-binary literals with optional `u`/`U`, including alignment, counts, launch
-resources, ABI preservation, and debug location metadata. Field-specific bounds
-still apply; `.address_size` keeps its enumerated `32`/`64` source form. See the
-[literal contract](docs/us-en/lexer_design.md#literals)
-([简体中文](docs/zh-han/lexer_design.md)) for the grammar boundaries.
-
-Technical guides, architecture, coverage boundaries, and contribution details
+Technical guides, architecture references, and contribution details
 live in the [GitHub Wiki](https://github.com/endingly/ptx_frontend/wiki).
 The Wiki links the detailed [English](docs/us-en/) and [简体中文](docs/zh-han/)
 reference documents maintained with the source.

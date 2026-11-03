@@ -1,5 +1,7 @@
 # PTX Lexer Design
 
+Current source forms, type/target restrictions and retained limitations are maintained in the [SDK support contract](../sdk_support.md#lexer-design). This page retains technical reference material and evidence.
+
 ## Overview
 
 The PTX lexer converts source text into a stream of tokens with owned text and
@@ -138,164 +140,31 @@ string interning or zero-copy token storage.
 
 ## Token Classification
 
+[SDK support: Token Classification](../sdk_support.md#lexer-design--token-classification).
+
 ### Punctuation
 
-Individual punctuation characters have dedicated token kinds, including:
-
-```text
-, . : ; @ ( ) [ ] { } < > <= >= << >> - + * / % & && ^ | || ! ~ ? = == !=
-```
-
-A leading sign is not part of a numeric token. For example, `-1` produces
-`Minus` followed by `Decimal`. Multi-character operators have dedicated token
-kinds so the declaration constant-expression parser can retain exact
-operators and precedence.
+[SDK support: Punctuation](../sdk_support.md#lexer-design--punctuation).
 
 ### Literals
 
-The lexer recognizes:
-
-- Decimal and leading-zero octal integers, with an optional `u` or `U` suffix.
-- Binary integers beginning with `0b` or `0B`, with an optional `u` or `U` suffix.
-- Hexadecimal integers beginning with `0x` or `0X`, with an optional unsigned
-  suffix.
-- PTX bit-pattern floating literals `0f` plus eight hex digits.
-- PTX bit-pattern double literals `0d` plus sixteen hex digits.
-- Decimal floating literals with a decimal point or exponent, including `1.` and
-  `1.e2`; a point must have digits on at least one side.
-- Double-quoted strings containing escaped characters.
-- The built-in spelling `WARP_SZ`.
-
-Literal tokens preserve their exact source spelling. Numeric conversion and
-string unescaping are intentionally outside the lexer.
-
-For compatibility, both decimal and octal integers use `TokenKind::Decimal`
-and lower to `AstImmediateKind::DecimalInteger`; these names do not determine
-the numeric radix. Integer decoding treats a leading zero as octal (`010` is
-8). An octal spelling containing `8` or `9`, such as `09U`, produces one
-`Error` token spanning the whole literal. Decimal floating spellings such as
-`09.0` and `09e1` remain floating tokens.
-
-Binary integers use `TokenKind::Binary` and `AstImmediateKind::BinaryInteger`,
-retaining their exact spelling and range. A malformed binary candidate such as
-`0b`, `0b102U`, or `0b1UU` produces one `Error` token through its identifier tail.
-Magnitude overflow is diagnosed during integer evaluation. Binary literals are
-available in general integer expressions, dimensions, operands, debug metadata,
-`.unified`, and `.language`. Bare integer fields also accept decimal, octal,
-hexadecimal, and binary spellings with optional unsigned suffixes: declaration
-and pointer alignments, parameterized counts, launch resources, ABI-preservation
-counts, compact branch-target counts, file timestamps/sizes, and source-location
-line/column values (including inline locations). Each field retains its existing
-range, positivity, alignment, version, and target checks; these slots do not
-accept signs, expressions, or `WARP_SZ`. Treating location line/column metadata
-as general integers follows PTX 9.3 §§4.5.1 and 11.5.4; no decimal-only restriction
-is stated there. `.address_size` retains its enumerated `32`/`64` source form,
-version components retain their decimal grammar, and initializer masks remain
-hex-only.
+[SDK support: Literals](../sdk_support.md#lexer-design--literals).
 
 ### Generic Identifiers
 
-Ordinary identifiers use the following shape:
-
-```text
-[A-Za-z_$%][A-Za-z0-9_$]*
-```
-
-They are emitted as `TokenKind::Ident`. This category includes instruction
-names, registers, special registers, labels, symbols, and target names such as
-`sm_80`.
-
-Percent is permitted only as the leading character of a percent-prefixed
-identifier; it is not an identifier continuation character. Thus an internal
-percent terminates the preceding identifier and begins a new leading-percent
-identifier when followed by a valid continuation. A standalone `%` remains the
-`TokenKind::Percent` remainder operator. The lexer also keeps `_` as an
-`Ident` token for the designated sink and call-prototype-placeholder contexts;
-those context-specific meanings are decided after lexing.
-
-Keeping instruction names generic avoids changing the lexer whenever PTX adds
-an instruction.
+[SDK support: Generic Identifiers](../sdk_support.md#lexer-design--generic-identifiers).
 
 ### Generic Dot Identifiers
 
-Most dot-prefixed spellings are emitted as `TokenKind::DotIdent`. The generic
-form supports atoms joined by `::` and comma-separated atoms:
-
-```text
-.sat
-.u32
-.shared::cluster
-.collector::b0::smem
-.scale::2,1
-```
-
-Numeric-leading shapes such as `.16x64b` are also accepted.
-
-Chained suffixes remain separate tokens. For example:
-
-```text
-add.sat.s32
-```
-
-is tokenized as:
-
-```text
-Ident("add") DotIdent(".sat") DotIdent(".s32")
-```
-
-Some PTX spellings contain an additional ordinary dot inside a single suffix.
-Known cases, such as `.async.global` and `.b8x16.b6x16_p32`, have explicit rules
-and remain a single `DotIdent` token.
+[SDK support: Generic Dot Identifiers](../sdk_support.md#lexer-design--generic-dot-identifiers).
 
 ### Dedicated Directive Tokens
 
-A small set of stable, structurally important PTX directives has dedicated
-token kinds. These include:
-
-- Module and debug directives such as `.version`, `.target`, and `.file`.
-- Visibility and linking directives such as `.visible` and `.extern`.
-- Function directives such as `.entry` and `.func`, plus the structurally
-  significant function-local `.callprototype`, `.calltargets`, and
-  `.branchtargets` metadata directives.
-- Kernel tuning directives such as `.maxnreg` and `.reqntid`.
-- Declaration directives such as `.reg`, `.global`, and `.param`.
-
-These rules appear before the generic `DOT_IDENT` rule. Flex selects the longest
-match and uses rule order to resolve equal-length matches, so a dedicated
-directive wins over the generic category.
-
-A dedicated spelling keeps its token kind in every lexical context. For
-example, `.global` is always `DotGlobal`, even when it appears in a sequence of
-dot-prefixed names. Consumers that accept both categories should use the token
-spelling where appropriate.
+[SDK support: Dedicated Directive Tokens](../sdk_support.md#lexer-design--dedicated-directive-tokens).
 
 ## Whitespace and Comments
 
-Spaces, horizontal tabs (`\t`), ASCII form feeds (`\f`, byte `0x0c`), and
-CR/LF line endings separate tokens and are retained as whitespace trivia. Form
-feed advances one byte column without starting a new line. Trailing whitespace
-is retained on the EOF token. Vertical tab (`0x0b`) and other unknown control
-bytes remain lexical errors outside strings and comments; this supported subset
-does not admit arbitrary ASCII controls. See the pinned
-[PTX 9.3 source format](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#source-format).
-
-Line comments begin with `//` and continue to, but do not consume, the line
-ending as part of the comment rule. The following whitespace rule consumes the
-line ending. A form feed inside a line comment does not terminate it; form
-feeds inside strings and either comment form retain their exact content.
-
-Block comments use an exclusive `BLOCK_COMMENT` scanner state:
-
-1. `/*` enters the state.
-2. All content is skipped until `*/`.
-3. `*/` returns to the initial state.
-4. End of input inside the state emits one `TokenKind::Error` and returns to
-   the initial state so the next read reaches `TokenKind::Eof`.
-
-Block comments are not nested.
-
-Skipped text still passes through `YY_USER_ACTION`, so whitespace and comments
-advance source positions even though they do not produce tokens.
+[SDK support: Whitespace and Comments](../sdk_support.md#lexer-design--whitespace-and-comments).
 
 ## Source Locations
 
@@ -324,21 +193,7 @@ comment retains the range from its opening `/*` through end of input.
 
 ## Error Behavior
 
-An unknown character is emitted as `TokenKind::Error` with the offending byte
-in `Token::text` and its normal source range.
-
-An unterminated block comment emits one `TokenKind::Error` containing its full
-text, source range, and preceding trivia. Subsequent reads return EOF with empty
-text and no repeated trivia. Repeated `peek()` calls can observe the same cached
-error until `consume()` advances past it.
-
-The lexer reports errors as tokens rather than throwing exceptions. A caller
-may stop at the first error or request additional tokens when recovery is
-appropriate. An ordinary invalid character does not force EOF: following valid
-tokens remain available. Module recovery relies on this progress contract.
-
-EOF is emitted as `TokenKind::Eof`, with empty text and a zero-width current
-position range.
+[SDK support: Error Behavior](../sdk_support.md#lexer-design--error-behavior).
 
 ## Build Integration
 
@@ -384,51 +239,8 @@ ctest --test-dir out/build/ci-linux-gcc-debug --output-on-failure
 
 ## Known Limitations
 
-- Token text is allocated separately for every emitted token.
-- The lexer accepts ASCII identifiers only.
-- Block comments cannot nest.
-- String tokens preserve escapes and quotes; they are not decoded.
-- Signs are separate from numeric literals.
-- The decimal floating grammar does not recognize every spelling that a C++
-  numeric conversion routine might accept.
-- `yy_scan_bytes` accepts an `int` length, while the public constructor accepts
-  `std::string_view::size_type`; extremely large inputs require an explicit size
-  check before the narrowing conversion.
-- The public object has no reset operation and cannot be moved.
-
-These limitations should be changed only together with focused lexer tests that
-define the new lexical contract.
+[SDK support: Known Limitations](../sdk_support.md#lexer-design--known-limitations).
 
 ## Contextual instruction keywords
 
-For the archived PTX ISA 9.3, the frontend adopts a contextual reading of
-instruction keywords. Section 4.3.2 calls instruction keywords reserved tokens,
-while section 4.4 gives the ordinary identifier character grammar without an
-explicit keyword exclusion. The concrete official examples declare
-`.global .u32 bar[] = { 2, 3, 5 };` and reference `generic(bar)` in
-[initializers](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#initializers).
-The [function example](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#function-declarations-and-definitions)
-also defines and directly calls a device function named `bar`.
-
-The adopted reconciliation recognizes instruction roots in opcode positions and
-applies the ordinary character grammar in explicit user-defined name positions.
-It does not impose a context-free instruction-keyword name ban or a special
-exception for `bar`. The reserved-token wording retains interpretive tension;
-this is not a claim that the manual supplies a complete lexer grammar or that
-every spelling fits every syntactic role. Existing type, state-space, ABI,
-visibility, predefined-name and contextual-sink rules still apply.
-
-PTX remains case-sensitive: `add` is an opcode in `add.u32`, while `add`, `Add`,
-`ADD`, `_add`, `$add`, `%add`, `add0`, `add_` and `add$` can be ordinary explicit
-names. No prefix stripping or case folding is used. `ADD.u32` does not become
-`add.u32`; a dot-containing mnemonic is not an ordinary identifier. Standalone
-`_`, `$`, `%`, empty names and invalid punctuation retain their existing role or
-character-grammar restrictions.
-
-Table 2 has 136 instruction roots. `fabric` is separately explicit in the
-[fabric instruction sections](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#fabric-instructions-submit),
-although absent from that table. The expanded packaged opcode set matches these
-137 roots; raw YAML is pre-expansion data and is not evidence of 40 missing roots.
-Neither count defines an additional identifier-ban catalogue. A variable or
-function named `fabric` does not bypass the independent syntax/version/target
-checks for `fabric` instructions.
+[SDK support: Contextual instruction keywords](../sdk_support.md#lexer-design--contextual-instruction-keywords).

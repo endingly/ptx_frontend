@@ -1,103 +1,21 @@
 # SETP Coverage
 
-This document records the complete PTX 9.3 `setp` contract modelled by the frontend. It supplements the [syntax coverage matrix](syntax_coverage.md); it does not claim simulator execution or physical-GPU behavior. The canonical machine-readable source is `python/src/ptx_frontend/spec/resources/ptx_spec/comparison_and_selection.yaml`.
+Current source forms, type/target restrictions and retained limitations are maintained in the [SDK support contract](../../sdk_support.md#setp-coverage). This page retains technical reference material and evidence.
 
-The normative sources are NVIDIA's PTX ISA 9.3 archive: [ordinary SETP §9.7.6.2](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#comparison-and-selection-instructions-setp) and [half/bfloat SETP §9.7.7.2](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-comparison-instructions-setp).
-
-Every row is modelled through syntax, Resolved IR, and target-aware checking. These are frontend contracts only; no row defines simulator semantics.
-
-| Forms | Minimum PTX / target | Comparison and Boolean modifiers | Destination and source contract |
-| --- | --- | --- | --- |
-| Ordinary bit `.b16/.b32/.b64` | 1.0 / all targets | `.eq/.ne`, with optional `.and/.or/.xor` | One predicate or a predicate pair; either ordinary destination position may be `_`, but a pair cannot discard both results. Sources are same-width register-or-immediate values. |
-| Ordinary signed `.s16/.s32/.s64` | 1.0 / all targets | `.eq/.ne/.lt/.le/.gt/.ge`, with optional Boolean form | The ordinary single/pair sink and source rules apply. |
-| Ordinary unsigned `.u16/.u32/.u64` | 1.0 / all targets | Signed-family comparisons plus `.lo/.ls/.hi/.hs`, with optional Boolean form | The ordinary single/pair sink and source rules apply. |
-| Ordinary `.f32` | 1.0 / all targets | `.eq/.ne/.lt/.le/.gt/.ge/.equ/.neu/.ltu/.leu/.gtu/.geu/.num/.nan`; optional Boolean form and `.ftz` | The ordinary single/pair sink and floating register-or-immediate source rules apply. |
-| Ordinary `.f64` | 1.0 / `sm_13` | The same floating comparison and optional Boolean form; `.ftz` is not legal | The ordinary single/pair sink and floating register-or-immediate source rules apply. |
-| `.f16` | 4.2 / `sm_53` | All floating comparisons, optional Boolean form, optional `.ftz` | Exactly one predicate result. Sources are `.f16` or same-width `.b16` registers, or numeric F16 floating constants; explicit raw B16 integer words are also accepted. `_` is not a destination. |
-| `.f16x2` | 4.2 / `sm_53` | All floating comparisons, optional Boolean form, optional `.ftz` | Exactly two predicate results; native `.f16x2` or `.b32` register sources. The prepared extension adds raw B32 and exact logical packed words below; sink destinations remain illegal. |
-| `.bf16` | 7.8 / `sm_90` | All floating comparisons and optional Boolean form; `.ftz` is not legal | Exactly one predicate result. Sources use actual `.b16` registers, numeric BF16 words or explicit raw B16 integer words; `_` is not a destination. |
-| `.bf16x2` | 7.8 / `sm_90` | All floating comparisons and optional Boolean form; `.ftz` is not legal | Exactly two predicate results and actual `.b32` registers. The prepared extension adds raw B32 and exact logical packed words below; sink destinations remain illegal. |
+[SDK support: SETP Coverage](../../sdk_support.md#setp-coverage--setp-coverage).
 
 ## Deliberate boundaries
 
-The ordinary syntax permits a single `_` destination or one `_` lane of a predicate pair. The frontend represents that explicitly, and checker revalidation rejects a public-IR pair edited to contain two sinks. Half and bfloat forms retain their required single or pair predicate destinations; native F16x2 register sources admit only `.f16x2` or `.b32`, while nonfundamental BF16x2 sources retain exact `.b32` containers. Arbitrary same-width types remain excluded.
-
-The optional Boolean operand is a predicate source, not a predicate-register-only field. It accepts a plain or complemented predicate register and PTX integer predicate constants. Constants are canonicalized with C truth rules: zero is false, nonzero is true, and a leading `!` complements that truth value. Predicate special registers are not admitted by `setp`, even though `mov.pred` admits them.
-
-The `.f32` and `.f64` forms are separate generated variants so `.ftz` remains legal only for `.f32`. This keeps the PTX modifier language disjoint without a separate capability registry. The expanded `ComparisonOperator` domain keeps the pre-existing `Eq`, `Lt`, and `Ge` numeric identities and appends the remaining normative suffixes.
-
-As corroborating compiler evidence, CUDA Toolkit 13.1 `ptxas` probes using PTX 8.0 and `sm_90` accepted Boolean integer constants (including complemented constants), while rejecting numeric immediates as `.f16`, `.f16x2`, `.bf16`, and `.bf16x2` comparison sources. Those forms predate PTX 8.0 and PTX 9.3 documents no immediate-source extension. This older evidence is historical corroboration, not a normative blanket scalar-half literal ban or a current PTX 9.3/GPU result; the explicit scalar support below supersedes that inference.
+[SDK support: Deliberate boundaries](../../sdk_support.md#setp-coverage--deliberate-boundaries).
 
 ## Verification sources
 
-[Dedicated C++ SETP tests](../../../submod/resolved_ir/test/test_setp_completeness.cpp) exercise every family through parsing, resolution, declared-operand checking, target minima, modifier/layout negatives, predicate-constant truth values, and mutated-IR sink validation. The [focused Python database test](../../../python/tests/spec/test_setp_completeness.py) verifies variants, comparison domains, availability, sink boundaries, predicate-source kinds, and packed containers. These sources define the frontend boundary; they do not verify simulator or hardware execution.
-
-Scalar F16 numeric floating sources retain RegOrImm and the common binary16 RNE converter. The implementation below supplies a separate explicit Bit16 integer arm for four F16 and four BF16 fields; it reuses the accepted logical BF16 converter and does not change Boolean/predicate or packed policies. Its current-parent model, Debug and installed-ABI checks have passed; independent final acceptance remains pending.
+[SDK support: Verification sources](../../sdk_support.md#setp-coverage--verification-sources).
 
 ## Explicit scalar Bit16 sources
 
-The implementation has passed full-model/default audits, normal generation, focused
-Debug checks and a matching installed public consumer. Independent final acceptance
-remains pending. The `integer_immediate_type` descriptor member is
-an optional trailing `ScalarType`, absent by default. Exactly eight existing
-scalar SETP source rows engage B16: src1/src2 on the plain and Boolean F16/BF16
-forms. Four BF16 source members migrate from register references to `RegOrImm`,
-with logical BF16 and SameWidth; the four F16 members keep their existing kind,
-logical type and width. The descriptor ABI requires rebuilding all consumers.
-
-The source is evaluated once. An integer result chooses the explicit raw B16 arm:
-`1` is word `0x0001`, and `0x10001` narrows to the same word while retaining its
-64-bit integer origin. A floating result uses the existing logical converter:
-`1.0` gives F16 `0x3c00` or BF16 `0x3f80`. Direct unsigned `0f` keeps its existing
-root route and lexical precision; no wrapper or trial conversion classifies it.
-Ordinary logical floating operands with absent policy still reject integer
-origin, including the packed formats. The scalar B16 support does not itself extend atomic, storage, call or other
-scalar permissions. The separate packed SETP extension is described below.
-
-Current immediates select their arm by their actual type. Both words fit 16 bits;
-numeric logical words have no integer origin or integer negative flag. B16
-origin is optional; if present its mask/sign consistency remains checked, and a
-cache-free word requires a false negative flag. Coherent word/arm edits do not
-authenticate erased source history. Changed supplied syntax still has its
-existing separate source association. Complete target context is required for
-instruction-check proof; AvailableContext deferral is not a legality certificate.
-Actual F16 carriers remain B16 or F16; BF16 carriers remain actual B16, with the
-existing intrinsic declaration/class guards. No Base compatibility rule changes.
-
+[SDK support: Explicit scalar Bit16 sources](../../sdk_support.md#setp-coverage--explicit-scalar-bit16-sources).
 
 ## Packed SETP raw and exact words
 
-The prepared extension uses the existing trailing optional
-`integer_immediate_type`; its finite pairs are F16/BF16 with B16 and
-F16x2/BF16x2 with B32. It adds no descriptor field or immediate payload.
-Exactly src1/src2 of plain and Boolean `SetpF16x2`/`SetpBf16x2` become
-`WithLocs<RegOrImm>` (eight public members). The four BF16x2 bindings use
-logical BF16x2 and SameWidth instead of physical B32 and Exact. F16x2 logical
-type and width, predicate-pair destinations, Boolean combine operands,
-comparison domains, FTZ rules and target minima remain unchanged.
-
-A source is evaluated once: an Integer result takes raw B32 under the existing
-narrowing/range policy and retains evaluated 64-bit source/sign facts. `1` is
-word `0x00000001`, and narrowing `0x100000001` yields the same low word.
-A bare unsigned direct `0f3fc03fc0` takes logical F16x2 or BF16x2 and preserves
-all 32 bits through the shared packed-word helper. It performs no numeric
-packing, splat, rounding or NaN quieting. Decimal/F64 numeric packed
-constructors have no adopted producer; signed, wrapped or arithmetic `0f`,
-`0h`, and F64 truncation do not gain one through this policy.
-
-The Integer-source B32 arm retains source64/sign facts consistent with its low32 word.
-This preparation does not classify a cache-free current Bit32 word by analogy
-with the separate scalar F16/Bit16 decision: its exact current flags and outcomes
-remain pending bounded actual-parent evidence. Genuine logical packed-word
-current edits use independent direct-word producers. Logical packed words have
-no integer-origin cache (even optional zero) or integer-negative flag. Coherent
-current typed-word edits do not authenticate erased source history; supplied
-source association remains independent. Actual register carriers are B32 or
-native F16x2 for F16x2, and B32 for BF16x2; declaration/class/whole-container
-checks remain in force. Missing-context deferral does not certify legality.
-The existing eight scalar B16 policies and all absent-policy sources are unchanged.
-
-Focused checks cover the finite source-policy pairs, source categories, current
-values, declaration references, generated views, and owning copy/clone behavior.
-Consumers must rebuild against matching generated headers and libraries. These
-frontend checks do not establish GPU execution behavior or full PTX coverage.
+[SDK support: Packed SETP raw and exact words](../../sdk_support.md#setp-coverage--packed-setp-raw-and-exact-words).

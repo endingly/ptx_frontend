@@ -1,6 +1,10 @@
 # CST and Syntax AST design
 
+Current source forms, type/target restrictions and retained limitations are maintained in the [SDK support contract](../sdk_support.md#syntax-ast-design). This page retains technical reference material and evidence.
+
 ## Handwritten parser implementation
+
+[SDK support: Handwritten parser implementation](../sdk_support.md#syntax-ast-design--handwritten-parser-implementation).
 
 `PtxCstParser` remains the single owner of lexer lookahead and the token buffer.
 Its member implementations are divided by grammar responsibility: token/root
@@ -9,18 +13,6 @@ forms, declarations and parameters, directives/functions/modules, and recovery.
 `CstFile` operations are separate from parsing. Leaf parsers return typed
 `std::expected` results; drivers select a form before parsing and append recovery
 nodes once. Optional forms that are absent consume no tokens.
-
-Private types distinguish full numeric expressions from address-base expressions
-that stop above additive precedence, remaining allowed tree height from actual
-constructed height, and lexical block depth. Tree budgets include the current
-root and are copied for siblings; named initializers and brace lists add one
-level, while scalar initializer wrappers add none. Expression/initializer height
-is limited to 128 and nested block depth to 256. Function and nested-block bodies
-share their item/recovery driver, preserving their distinct missing-brace messages.
-Operand helpers document opener/closer consumption and retain half-open ranges.
-Module dispatch and recovery share source-form classification, including `.alias`
-spelled as a dotted identifier; body synchronization keeps its separate policy.
-This classification describes source grammar and does not select ISA variants.
 
 ## Frontend layers
 
@@ -42,69 +34,24 @@ source -> lexer token buffer -> CST -> Syntax AST -> symbol binding -> Resolved 
 
 ## Instruction constant expressions
 
-Instruction numeric positions reuse the declaration constant-expression grammar:
-parentheses, precedence, integer unary/binary/conditional operators and
-`(.s64)`/`(.u64)` casts, and homogeneous f64 arithmetic/comparisons with an
-integer condition for floating ternaries. Single literal leaves retain their
-existing representation. `CstConstantOperand` and `AstConstantOperand` own the
-operation tree and full/subexpression ranges; copying either wrapper deep-copies
-its tree. Expression operands match the existing Immediate syntax descriptor.
-Call inputs, source tuples, predicate constants and address constant portions
-use this shared grammar; register-only positions retain their descriptor limits.
-Every expression entry shares the depth-128 budget and ordinary recovery rules.
-Symbol addresses and initializer-only operators retain their separate semantics.
-In bracketed addresses, top-level `+`/`-` still separate base and offset;
-parenthesize a base expression containing additive or lower-precedence operators.
-Exact `0f` single-precision bit patterns remain valid literal operands, but
-cannot participate in constant expressions.
+[SDK support: Instruction constant expressions](../sdk_support.md#syntax-ast-design--instruction-constant-expressions).
 
 ## Named array-address syntax
 
-`A[index]` is one unbracketed address expression, distinct from `[A+offset]`.
-The CST and AST own a separate named-index payload with bracket, index,
-operator and displacement ranges. The index is an integer constant expression,
-a bound scalar integer/bit register, or that register followed by `+`/`-` and
-an integer constant expression. Register names need not begin with `%`.
-`A[idx-1]`, `A[idx - 1]` and `A[idx+-1]` preserve their written operations;
-constant expression trees are deep-copied and included in source identity.
-Only one bracket pair is accepted: nested `[A[index]]`, repeated `A[i][j]`
-and dynamic arithmetic such as `A[i+j]` or `A[i*2]` are unsupported.
-Parsing this shape does not grant instruction-family admission or array binding.
+[SDK support: Named array-address syntax](../sdk_support.md#syntax-ast-design--named-array-address-syntax).
 
 ## Named memory-vector syntax
 
-Named data vectors use the existing identifier node, without synthesizing brace
-lanes or selectors in CST/AST. Only opted ordinary LD/ST, LDNC, LDU and explicit
-vector MOV slots admit
-this shape; declaration-bound resolution records the owned whole source and
-implicit lane origins described in [Resolved IR](resolved_ir_design.md#named-memory-vector-sources).
-Brace syntax and the separate named-array address grammar are unchanged.
+[SDK support: Named memory-vector syntax](../sdk_support.md#syntax-ast-design--named-memory-vector-syntax).
 
 ## CST ownership and representation
+
+[SDK support: CST ownership and representation](../sdk_support.md#syntax-ast-design--cst-ownership-and-representation).
 
 Public CST headers live under `submod/cst/include`. A `syntax_cst::CstFile`
 owns the complete `PtxToken` buffer. Its `CstRoot` distinguishes a standalone
 instruction fragment from a `CstModule`; nodes refer to the file buffer with
 `TokenId`, and composite nodes also store half-open `CstTokenRange` values.
-
-`CstModule`, `CstModuleDirective`, and `CstFunction` establish module-level
-ownership without duplicating token buffers. `parseModule()` currently parses
-`.version`, `.target`, and `.address_size`, plus `.entry` and `.func`
-definitions, `.func` prototypes, structured formal parameters, `.reg`
-and other variable declarations, and labels. Function bodies contain
-syntax supported by the instruction parser. Variable declarations structurally
-retain linkage qualifiers, state space, optional alignment and vector type,
-base type, comma-separated names, parameterized-name `<count>` syntax, and
-multi-dimensional array declarators, optional equals signs, and initializers.
-Array dimensions and scalar initializers use structured constant-expression
-trees; brace initializers recursively retain every brace level, element, and
-comma. Function qualifiers and the complete token sequence for the supported
-header grammar remain in the CST; the entry/function kind and name are also
-identified explicitly. Entry headers additionally retain typed `.maxnreg`,
-`.maxntid`, `.reqntid`, `.minnctapersm`, `.reqnctapercluster`,
-`.explicitcluster`, and `.maxclusterrank` constraints: CST retains directive,
-integer values, and commas, while AST retains kind, values, and ranges;
-`.explicitcluster` has no values.
 
 The tree retains comma, semicolon, bracket, brace, sign, predicate, and vector
 selector tokens explicitly. Each `PtxToken` retains its leading trivia, and the
@@ -120,78 +67,6 @@ auto cst = parser.parseInstruction();
 if (cst)
   assert(cst->sourceText() == source);
 ```
-
-`parseInstruction()` accepts exactly one complete instruction fragment, while
-`parseModule()` requires a module root. At outermost module scope, `.file`
-accepts exactly `file_index "filename"` or
-`file_index "filename", timestamp, file_size`; the optional numeric fields
-are a required pair and their absence retains PTX's default zero without
-inventing source locations. Function bodies may contain nested
-blocks; CST retains their braces, ordered body items, and source ranges, while
-Syntax AST retains their body items and whole source ranges. Module resolution
-binds lexical block scopes and recursively resolves their instructions
-into the enclosing function's source-ordered flat body; it does not introduce a
-`ResolvedBlock`. Function bodies (including nested blocks) also accept `.loc`
-with its basic `file line column` triple or its paired PTX 7.2
-`function_name label {+ integer}` / `inlined_at file line column` payload;
-CST preserves its punctuation and AST retains fields and ranges. Resolving
-`.file` indices and `.debug_str` section/typed-label identities is performed in a
-separate debug-metadata binding namespace, and `.loc` validates those
-references. Attaching source locations to instructions or labels remains
-deferred. At outermost scope, `.section name { ... }` retains matched braces,
-trivia and exact payload tokens in `CstSectionDirective.payload_tokens`. Its
-`payload` is the single token-indexed structural parse. The AST `payload`
-now contains owning `AstSectionEntry` values (label definitions or typed data),
-replacing the old flat `vector<AstSyntax>`. Integer leaves own an optional sign,
-original magnitude spelling and ranges; symbolic data distinguishes a single
-symbol, checked signed addend and same-section label difference. No expression
-AST or second raw semantic payload is retained. Section names are metadata,
-not ordinary declarations. `.loc` attachment and offset validation remain
-separate. `.pragma` preserves a nonempty
-comma-separated string list at module, entry-header, and function/nested-block
-statement scope. Pragma strings do not create bound names; the resolved module
-owns their advisory records with the actual bound placement scope. Entry-header
-pragmas may be interleaved with the four supported kernel-resource directives;
-their concrete order remains lossless in the CST header token sequence.
-`CstRecoveryNode` is the tagged CST-only recovery model: `Inserted`
-holds an expected `TokenKind` and a zero-width range without a token-buffer
-span; `Skipped` holds a nonempty span of real source tokens; and `Error` holds
-either such a span or an EOF zero-width range. It can occur as a module or
-function-body item, does not carry a diagnostic ID, and never creates a
-synthetic `PtxToken`. `parseModule()` appends ordered diagnostics and returns a
-recovered CST: it synchronizes malformed module/body items at `;`, `}`, EOF,
-the next function (including qualifiers), or a supported module-only directive.
-It preserves those anchors, inserts only missing `;`/`}` markers at zero width,
-and otherwise records real discarded spans. `parseInstruction()` remains
-fail-fast. Recovered CST lowers only its valid neighboring nodes: recovery
-markers remain CST-only, while `PtxSyntaxParser` returns the filtered AST with
-the original parser diagnostics once and in source order. Round-trip
-serialization uses the original token buffer rather than recovery markers. A
-nested block missing its required `}`
-retains its parsed body and an inserted marker, with no `right_brace` token.
-The opt-in Clang `PTX_FRONTEND_BUILD_FUZZERS` target fuzzes raw lexer and CST
-input; its entry point is also exercised by a small GTest seed smoke. It has no
-ASan/UBSan or CI matrix yet. From the source root, run
-`cmake -S . -B out/fuzz -DPTX_FRONTEND_BUILD_FUZZERS=ON -DBUILD_TESTING=OFF`,
-`cmake --build out/fuzz --target fuzz_lexer_cst`, then
-`out/fuzz/submod/cst/fuzz_lexer_cst submod/cst/fuzz/corpus`.
-The module grammar does not yet accept
-other kernel-tuning directives or a token-edit API. The parser validates initializer
-grammar shape and state-space/linkage constraints; the following declaration
-semantics pass validates types, array dimensions, and element counts.
-Unsupported constructs are not silently treated as instructions.
-
-Source constant-expression and initializer trees share a maximum depth of 128
-(`PtxCstParser::maxConstantTreeDepth`). A literal or symbol has depth 1; each
-unary, cast, parenthesized, call, binary, conditional, or brace-list node adds
-one to its deepest child. The scalar-initializer wrapper adds no level. This
-is a frontend resource limit, not a PTX language limit; shallow lists may have
-more than 128 elements. Recursive parsing checks the remaining depth before
-descending, and iterative binary/postfix construction checks tree height before
-adding a parent. Over-limit input produces a source-located parse diagnostic
-and follows normal lossless recovery, keeping partial-tree cleanup and later
-lowering, checking, and destruction bounded. This source-parser guarantee does
-not validate arbitrarily deep CST/AST trees manually constructed by callers.
 
 Public parser and lowering roots return `ResultWithDiagnostics<T, D>`: an
 optional value plus an ordered `DiagnosticCollection<D>`. This lets module
@@ -236,24 +111,10 @@ lists. Symbol identity is not written back into the AST; a separate
 
 ## Narrowed Syntax AST responsibility
 
-Syntax AST no longer stores trivia, punctuation tokens, or reconstructed text
-for composite operands. It retains only:
+[SDK support: Narrowed Syntax AST responsibility](../sdk_support.md#syntax-ast-design--narrowed-syntax-ast-responsibility).
 
-- opcode, modifier, identifier, literal, and selector spellings;
-- lexical immediate kind;
-- predicate negation;
-- address base, offset operation, and bracketed grammar form;
-- vector member and vector pack structure, including ordinary `.xyzw/.rgba` members in brace scalar lanes;
-- call return/input parameter groups, callees, and target-set/prototype symbols;
-- direct branch label targets;
-- function-local `.callprototype` labels, signature payloads, and PTX 9.3
-  suffix payloads;
-- function-local `.calltargets` labels and ordered target identifiers;
-- function-local `.branchtargets` labels and unexpanded compact target entries;
-- declaration array dimensions, constant expressions, and recursive
-  initializer structure;
-- source ranges for diagnostics;
-- operand grammar alternatives required by generated layout descriptors.
+Syntax AST stores normalized grammar values and ranges. Concrete punctuation
+and trivia remain in the CST/token buffer.
 
 This structure must not classify an identifier as a register, symbol, label,
 or function, decode a literal without its selected scalar type, select an
@@ -266,89 +127,16 @@ Syntax AST or Resolved IR.
 
 ## Remaining location work
 
-`SourceRange` currently stores line and column only. A future multi-file CST
-and robust edit system should extend locations with a source identity and byte
-offsets. This does not require widening the Syntax AST responsibility.
+[SDK support: Remaining location work](../sdk_support.md#syntax-ast-design--remaining-location-work).
 
 ## Arithmetic-negated register syntax
 
-`CstNegatedRegisterOperand` retains the minus token and a child limited to one identifier or vector member. `AstNegatedRegisterOperand` owns the minus range, child range and full range. The parser recognizes `-Ident[.selector]` before signed-numeric immediate parsing; it does not introduce recursive unary operands. The distinct `ArithmeticNegatedRegister` syntax shape is enabled only for approved `vmad` source slots. Binding, lowering, source identity and layout classification traverse this child explicitly. Predicate `!` negation remains separate, and `!-%r` is rejected.
-
-Function-header and local `.callprototype` arrays reuse `CstArrayDimension` and
-`AstArrayDimension` vectors in `array_dimensions`, preserving outer-to-inner
-brackets, optional expressions and ranges. These replace the singular CST
-bracket/size fields and AST `is_array/array_size`; an empty vector means scalar.
-Token round-trip is preserved. Dimension and AST expression trees remain move-only;
-the existing `AstConstantOperand` copy operation deep-clones its owned expression. See the exact
-[public member migration](parameter_declarations.md).
-
-`ptx_syntax_sections.hpp` exposes only the owning syntax leaf and section value records. Including the public module header keeps full instruction/module/expression AST types incomplete; `ptx_syntax_ast.hpp` remains the complete-AST entrypoint.
-
+[SDK support: Arithmetic-negated register syntax](../sdk_support.md#syntax-ast-design--arithmetic-negated-register-syntax).
 
 ### Legacy debug serialization
 
-The case-sensitive `@@DWARF` marker introduces one closed production at module,
-function-body or nested-block statement scope. It is supported for PTX ISA
-**[1.2, 2.0)** on every recognized source target. Function headers do not admit it.
-The forms are `.byte` unsigned hexadecimal lists (0..255), `.4byte` lists
-(0..UINT32_MAX) and `.quad` lists (0..UINT64_MAX). Lists are nonempty. The two wider
-forms also admit one ordinary or singly dotted symbolic label, retained unlinked;
-there is no ordinary PTX symbol-resolution requirement for that label.
-
-`0x`/`0X` with optional `U`/`u` follows existing PTX integer token inheritance;
-this suffix choice is derived rather than explicit wording of the legacy syntax.
-Signs, decimal/octal/binary values, mixed symbol/numeric lists, addends,
-differences, label definitions and arbitrary host assembly are outside this model.
-The published example's header is supported as `.section name, "", @progbits`.
-Generalizing its name to an ordinary or singly dotted identifier is derived from
-the example; flags remain exactly empty and the type remains exactly `progbits`.
-
-Whitespace, comments and newlines separate tokens without ending a record. One
-structurally complete payload and an optional semicolon end it. The next token is
-handled by ordinary PTX grammar; malformed records preserve following markers,
-blocks and functions through structural recovery. Lossless CST tokens retain
-comments and source text. Owning AST values retain exact marker/word/header
-spellings and within-record ranges, including separate `@` and `progbits` leaves.
-
-`ptx_syntax_legacy_dwarf.hpp` contains only small owning values. It does not expose
-module, instruction or expression AST definitions. One shared `AstLegacyDwarfRecord`
-is used in module/body variants, and `ResolvedModule::legacy_dwarf_records` is the
-sole ordered stream of `{value, scope_id}` wrappers. Actual declaration-occurrence
-and block scopes come from the module's symbol table; a canonical function's
-preferred owned scope does not replace its definition occurrence. Metadata creates
-no executable node, label slot or instruction-provenance index. Module and function
-source identities exclude it while ordinary program constructs remain relevant.
-
-Both current and supplied datasets validate their own typed words, ranges, scope
-ownership and format windows. Source-aware validation uses the supplied effective
-version for both datasets; AST-free validation uses current module context. Known
-out-of-window versions reject without a complete target. Missing version under
-`AvailableContext` defers only the format window; intrinsic checks continue and
-strict missing-context checks remain. Coherent current metadata edits and differing
-valid datasets do not require old source-byte equality. Cross-format replacement
-requires removal or reconstruction of current incompatible format data.
-
-For `.target debug`, definite absence means **zero modern sections AND zero legacy
-records**, independently in each dataset. An unknown linked label, a header or
-nonempty bytes only avoid this definite-absence result. They do not certify actual
-DWARF recognition, decoding, linked addresses or binary authenticity. A known full
-legacy context cannot combine the pre-2.0 format with the PTX-3.0 debug option;
-missing-version tests are partial-context controls only.
-
-References: [legacy debug marker](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-atatdwarf)
-and [legacy-format window](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives).
+[SDK support: Legacy debug serialization](../sdk_support.md#syntax-ast-design--legacy-debug-serialization).
 
 ### ASCII whitespace and physical positions
 
-Outside strings and comments, whitespace is exactly SP (`0x20`), HT (`0x09`),
-LF (`0x0a`), VT (`0x0b`), FF (`0x0c`), and CR (`0x0d`). This six-byte set is
-the frontend's adopted engineering interpretation of PTX's ASCII and equivalent
-whitespace rule, rather than a normative six-terminal enumeration or a Unicode
-whitespace policy.
-
-SP, HT, VT, and FF each advance one physical byte column. VT and FF do not
-start a source line; existing CR, LF, and CRLF handling is unchanged. Exact
-bytes and ranges remain in tokens, leading trivia, trailing EOF trivia, and
-`CstFile::sourceText()`. A physical VT inside a string or comment remains raw
-content under that token's existing rules; no backslash-v escape or source
-normalization is added. Logical/debug locations remain a separate contract.
+[SDK support: ASCII whitespace and physical positions](../sdk_support.md#syntax-ast-design--ascii-whitespace-and-physical-positions).

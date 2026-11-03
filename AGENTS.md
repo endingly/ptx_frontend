@@ -50,9 +50,9 @@ the host session.
 
 ## Documentation authority
 
-- [.agents/project_roadmap.v2.md](.agents/project_roadmap.v2.md) records frontend
-  scope, architecture boundaries, and branch-verifiable milestone status.
-  Read the relevant sections before changing a planned contract.
+- [docs/sdk_support.md](docs/sdk_support.md) is the sole maintained authority for
+  current SDK support and retained limitations. Read the relevant sections before
+  changing a supported frontend contract.
 - [README.md](README.md) and the design documents in [docs/us-en/](docs/us-en/)
   and [docs/zh-han/](docs/zh-han/) describe the public frontend and generator
   contracts. Keep corresponding language versions aligned when updating them.

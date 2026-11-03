@@ -1,24 +1,10 @@
 # CST 与 Syntax AST 设计
 
+当前支持范围、语法与操作接受条件、类型和目标限制以英文 [SDK 支持契约](../sdk_support.md#syntax-ast-design) 为唯一维护依据；本文保留技术参考与历史证据。
+
 ## 手写 parser 实现
 
-`PtxCstParser` 仍是 lexer lookahead 与 token buffer 的唯一所有者。
-成员实现按 grammar 职责拆分为 token/root、常量表达式与 initializer、
-operand 与 control-flow 源码形态、声明与参数、directive/function/module，
-以及 recovery；`CstFile` 操作与解析分离。叶子 parser 返回强类型
-`std::expected` 结果；driver 先预测形态再解析，并且只追加一次 recovery
-node。未出现的可选形态不消费 token。
-
-私有类型区分完整 numeric expression 与在 additive precedence 以上停止的
-address-base expression、包含当前根的剩余允许树高与实际已构造树高，
-以及 lexical block depth。兄弟节点按值共享相同 budget；named initializer
-和 brace list 各增加一层，scalar initializer wrapper 不增加层数。
-expression/initializer 树高上限为 128，nested block depth 上限为 256。
-function 与 nested-block body 共用 item/recovery driver，同时保留各自的
-缺失右花括号诊断。operand helper 说明 opener/closer 的消费边界，并保留
-半开 range。module dispatch 与 recovery 共享 source-form 分类，包括词法
-类型为 dotted identifier 的 `.alias`；body 同步继续采用独立策略。
-这些分类只描述源码 grammar，不选择 ISA variant。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#syntax-ast-design--handwritten-parser-implementation)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/syntax_ast_design.md#handwritten-parser-implementation)。
 
 ## 指令常量表达式
 
@@ -36,124 +22,19 @@ bit-pattern 仍可作为 literal operand，但不能参与常量表达式。
 
 ## 前端分层
 
-当前前端已经把具体源码表示与供 resolve 使用的语法模型分开：
-
-```text
-source -> lexer token buffer -> CST -> Syntax AST -> symbol binding -> Resolved IR
-```
-
-- CST 负责源码保真：token、标点、delimiter、注释、空白、原始拼写与 token range；
-- Syntax AST 负责 instruction matching 与 resolve 所需的规范化 grammar shape；
-- symbol binding 建立 module/function scope，并把 identifier reference 关联到声明；
-- Resolved IR 负责选中的 variant、带类型的 modifier/operand、语义值和目标检查元数据。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#syntax-ast-design--instruction-constant-expressions)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/syntax_ast_design.md#instruction-constant-expressions)。
 
 ## 具名数组地址语法
 
-`A[index]` 是单个无外层括号的地址表达式，与 `[A+offset]` 不同。
-CST/AST 单独拥有 named-index payload，保留括号、index、operator 与
-displacement range。index 可以是整数常量表达式、绑定的标量整数/bit register，
-或该 register 后接 `+`/`-` 和整数常量表达式。register 名不必以 `%` 开头。
-`A[idx-1]`、`A[idx - 1]` 与 `A[idx+-1]` 保留各自源码运算；常量表达式树
-深复制并参与 source identity。只支持一对括号：嵌套 `[A[index]]`、连续
-`A[i][j]` 和 `A[i+j]`、`A[i*2]` 等动态算术不受支持。
-解析出该 shape 并不意味着指令 family 接纳它或已完成数组绑定。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#syntax-ast-design--named-array-address-syntax)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/syntax_ast_design.md#named-array-address-syntax)。
 
 ## Named memory-vector 语法
 
-Named data vector 使用既有 identifier node，CST/AST 不合成 brace lane 或 selector。
-只有 opt-in 的普通 LD/ST、LDNC、LDU 与显式 vector MOV slot 接受该 shape；声明绑定后的 resolution
-记录 owned whole source 和 implicit lane origin，详见
-[Resolved IR](resolved_ir_design.md#named-memory-vector-source)。Brace 语法和独立
-named-array address grammar 不变。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#syntax-ast-design--named-memory-vector-syntax)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/syntax_ast_design.md#named-memory-vector-syntax)。
 
 ## CST 的所有权与表示
 
-公共 CST 头文件位于 `submod/cst/include`。`syntax_cst::CstFile` 持有完整
-`PtxToken` buffer；其 `CstRoot` 区分独立 instruction fragment 与 `CstModule`。节点通过
-`TokenId` 引用 file buffer，组合节点另外保存半开区间 `CstTokenRange`。
-
-`CstModule`、`CstModuleDirective` 与 `CstFunction` 已建立 module-level 所有权，且不会
-重复持有 token buffer。`parseModule()` 当前支持 `.version`、`.target`、
-`.address_size`，以及函数体由现有 instruction parser 可处理指令构成的 `.entry/.func`
-definition、`.func` prototype、结构化 formal parameter、通用 variable declaration 与
-label。function
-body 中的 instruction 由现有 instruction parser 处理。variable declaration 会结构化
-保留 linkage qualifier、state space、可选 alignment/vector type、base type、逗号分隔的
-名称、parameterized-name `<count>` 语法、多维 array declarator、可选等号与 initializer。
-array dimension 与 scalar initializer 使用结构化 constant-expression tree；brace
-initializer 则递归保留每一层花括号、元素和逗号。CST 同时保留受支持 function grammar
-的 qualifier 与完整 header token sequence，并显式标记 entry/function 类别和函数名。
-entry header 还会结构化保留 `.maxnreg`、`.maxntid`、`.reqntid`、
-`.minnctapersm`、`.reqnctapercluster`、`.explicitcluster` 与
-`.maxclusterrank`：CST 保留 directive、整数 value 与 comma，AST 保留 kind、value 与
-range；`.explicitcluster` 没有 value。
-
-CST 明确保留逗号、分号、方括号、花括号、正负号、predicate 与 vector selector
-token。每个 `PtxToken` 持有 leading trivia，EOF token 持有文件尾 trivia，因此
-`CstFile::sourceText()` 就是 token-buffer round-trip serializer：对未修改的 CST
-可逐字节还原已解析输入。它输出 token buffer 而不是 CST node，recovery marker 不会
-额外输出源码，改变 node 并不等于 pretty print；内部 EOF sentinel 的数量不是公开契约：
-
-```cpp
-PtxCstParser parser(source);
-auto cst = parser.parseInstruction();
-if (cst)
-  assert(cst->sourceText() == source);
-```
-
-`parseInstruction()` 只接受一条完整 instruction fragment，`parseModule()` 则要求
-module root。outermost module scope 的 `.file` 只接受
-`file_index "filename"` 或 `file_index "filename", timestamp, file_size`；
-两个 optional numeric field 必须成对，省略时保留 PTX 默认零而不伪造 source location。function body 现在可含 nested block；CST 保留其 brace、有序 body item 与
-完整 source range，Syntax AST 则保留有序 body item 与完整 source range。binding 会加入 lexical
-scope，并递归 resolve 其中 instruction 到所属 function 按源码顺序平铺的 body；不会引入
-`ResolvedBlock`。function body（含 nested block）也接受 `.loc`：basic
-`file line column` triple，或成对的 PTX 7.2 `function_name label {+ integer}` /
-`inlined_at file line column` payload；CST 保留标点，AST 保留 field 与 range。`.file`
-index 与 `.debug_str` section/typed-label identity 会在独立的 debug-metadata binding namespace
-中建立，`.loc` 也会验证这些 reference；向 instruction/label 附着 source location 仍留待后续处理。当前 module grammar
-也在 outermost scope 接受 `.section name { ... }`。匹配 brace、trivia 与原始 payload token
-由 `CstSectionDirective.payload_tokens` 保留，`payload` 是对同一 token 的一次结构化解析。
-AST 的 `payload` 改为拥有式 `AstSectionEntry`（label definition 或 typed data），替代原来的
-`vector<AstSyntax>`。整数 leaf 拥有可选 sign、原始 magnitude spelling 和 range；符号数据区分
-single symbol、checked signed addend 与同 section label difference。不保留 expression AST
-或第二份 raw semantic payload。section name 是 metadata，不是普通声明；`.loc` 附着与 offset
-验证仍是独立边界。除此之外，当前 module grammar
-会在 module、entry header 和 function/nested-block statement scope 保留 `.pragma` 的非空、
-comma-separated string list。Pragma string 不创建 bound name；resolved module 拥有
-带实际 bound placement scope 的 advisory record。entry header 中 pragma 可与四个
-已支持的 kernel-resource directive 交错，具体顺序仍由 CST header token sequence 无损保留。
-`CstRecoveryNode` 是当前带 tag 的纯 CST recovery 模型：`Inserted` 持有 expected
-`TokenKind` 和 zero-width range、没有 token-buffer span；`Skipped` 持有非空的真实 source-token
-span；`Error` 则持有这种 span 或 EOF 的 zero-width range。它可作为 module 或
-function-body item，不带 diagnostic ID，也绝不创建 synthetic `PtxToken`。`parseModule()` 会附加有序
-diagnostic 并返回 recovered CST：它在 `;`、`}`、EOF、下一 function（含 qualifier）或受支持的
-module-only directive 处同步，保留这些 anchor，只在 zero-width 处插入缺失的 `;`/`}` marker，其余被丢弃
-的真实 source span 均被记录。`parseInstruction()` 仍保持 fail-fast。recovered CST 只 lower 其合法相邻 node：
-recovery marker 保持 CST-only，`PtxSyntaxParser` 返回过滤后的 AST，并且只一次、按 source order 返回原 parser diagnostic。
-round-trip serialization 使用原始 token buffer 而非 recovery marker。缺少必需 `}` 的 nested block 会保留已解析 body 与 inserted marker，
-但没有 `right_brace` token。可选的 Clang `PTX_FRONTEND_BUILD_FUZZERS` target fuzz raw lexer/CST input；同一 entry point 也有小型
-GTest seed smoke。尚未加入 ASan/UBSan 或 CI matrix。它必须单独 configure：
-从 source root 运行
-`cmake -S . -B out/fuzz -DPTX_FRONTEND_BUILD_FUZZERS=ON -DBUILD_TESTING=OFF`，
-`cmake --build out/fuzz --target fuzz_lexer_cst`，再运行
-`out/fuzz/submod/cst/fuzz_lexer_cst submod/cst/fuzz/corpus`。当前仍不接受其他 kernel-tuning directive 或 token edit API。initializer
-的 grammar shape 和 state-space/linkage 约束在 parser 处理；类型、array 维度及元素数量
-由后续 declaration-semantics pass 校验。这些未实现部分不会被静默当成 instruction 解析。
-
-源码中的 constant-expression 与 initializer tree 共享 128 层的深度上限
-（`PtxCstParser::maxConstantTreeDepth`）。literal 或 symbol 深度为 1；unary、cast、
-括号、call、binary、conditional 或花括号列表节点的深度为最深子节点加 1，
-scalar-initializer 包装不另计一层。这是 frontend 资源限制，不是 PTX 语言限制；
-浅层列表可包含超过 128 个元素。递归解析在下降前检查剩余深度，循环构造的 binary
-和 postfix 节点在添加父节点前检查树高。超限输入产生带源码位置的 parse diagnostic，
-并按正常无损恢复流程处理，使部分树清理以及后续 lowering、检查和析构的深度有界。
-该源码 parser 保证不涵盖调用方手工构造的任意深度 CST/AST。
-
-公开 parser/lowering root 返回 `ResultWithDiagnostics<T, D>`：optional value 加有序
-`DiagnosticCollection<D>`。这样后续 recovery 可在不再改变 API 的情况下，同时返回 CST 与
-diagnostic。module recovery 可同时返回 value 与 diagnostic；standalone instruction fragment
-仍为 fail-fast，错误时没有 value。
+当前接受条件与限制见英文 [SDK 支持契约](../sdk_support.md#syntax-ast-design--cst-ownership-and-representation)；API、算法及证据见 [英文技术参考](../us-en/syntax_ast_design.md#cst-ownership-and-representation)。
 
 ## CST 到 Syntax AST lowering
 
@@ -184,98 +65,20 @@ range 的 PTX 9.3 `.noreturn` / ABI-preservation suffix；
 
 ## 收窄后的 Syntax AST 职责
 
-Syntax AST 不再保存 trivia、标点 token 或组合 operand 的重建文本，只保留：
-
-- opcode、modifier、identifier、literal 与 selector 的 spelling；
-- immediate 的词法类别；
-- predicate 是否取反；
-- address base、offset operation 与是否有括号这一 grammar form；
-- vector member/vector pack 结构，包括 brace scalar lane 中的普通 `.xyzw/.rgba` member；
-- call return/input parameter group、callee、target-set/prototype symbol；
-- direct branch label target；
-- function-local `.callprototype` label、signature payload 和 PTX 9.3 suffix payload；
-- function-local `.calltargets` label 和有序 target identifier；
-- function-local `.branchtargets` label 和未展开的 compact target entry；
-- declaration array dimension、constant expression 与递归 initializer 结构；
-- diagnostic 所需的 source range；
-- generated layout descriptor 需要的 operand grammar alternative。
-
-Syntax AST 不负责把 identifier 分类为 register/symbol/label/function，不应在选定 scalar
-type 之前解码 literal，也不负责选择 instruction variant 或检查 PTX/SM availability；
-这些仍属于 resolve/checker。
-
-formatter、源码保真 rewrite 与未来自动修复必须工作在 CST/token buffer 上，不能从
-Syntax AST 或 Resolved IR 反向恢复源码布局。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#syntax-ast-design--narrowed-syntax-ast-responsibility)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/syntax_ast_design.md#narrowed-syntax-ast-responsibility)。
 
 ## 尚待完善的位置模型
 
-`SourceRange` 目前只有行列信息。未来支持多文件 CST 与可靠 edit 时，应增加 source
-identity 与 byte offset；这不需要重新扩大 Syntax AST 的职责。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#syntax-ast-design--remaining-location-work)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/syntax_ast_design.md#remaining-location-work)。
 
 ## Arithmetic-negated register 语法
 
-`CstNegatedRegisterOperand` 保留 minus token，child 限定为一个 identifier 或 vector member。`AstNegatedRegisterOperand` 拥有 minus range、child range 及 full range。Parser 在带符号数字立即数解析前识别 `-Ident[.selector]`，不引入递归 unary operand。独立的 `ArithmeticNegatedRegister` syntax shape 仅在批准的 `vmad` source slot 开放。Binding、lowering、source identity 与 layout classification 显式遍历该 child。Predicate `!` 取反保持独立，拒绝 `!-%r`。
-
-Function header 与局部 `.callprototype` 数组在 `array_dimensions` 中复用
-`CstArrayDimension` / `AstArrayDimension` 向量，逐轴保留从外到内的 bracket、
-可选 expression 与 range。它们替换原 CST 单一 bracket/size 字段及 AST
-`is_array/array_size`；空向量表示 scalar。Token round-trip 保持不变；dimension 与 AST expression tree 仍为 move-only，
-既有 `AstConstantOperand` copy 操作深度 clone 自身拥有的 expression，详见[公共 member migration](parameter_declarations.md)。
-
-`ptx_syntax_sections.hpp` 仅公开 owning syntax leaf 与 section value record。公共 module header 仍保持 instruction/module/expression AST type 不完整；`ptx_syntax_ast.hpp` 仍是完整 AST 的入口。
-
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#syntax-ast-design--arithmetic-negated-register-syntax)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/syntax_ast_design.md#arithmetic-negated-register-syntax)。
 
 ### 历史调试序列化
 
-大小写敏感的 `@@DWARF` marker 在 module、function body 或 nested block statement
-位置引入一条闭合 production；支持所有已识别 source target 的 PTX ISA **[1.2, 2.0)**，
-不授予 function header 位置。`.byte` 为 unsigned hexadecimal list（0..255），
-`.4byte` 为 0..UINT32_MAX，`.quad` 为 0..UINT64_MAX；list 必须非空。后两者还支持
-单个普通或单前导点 symbolic label，保留为未链接值，不要求普通 PTX symbol binding。
-
-`0x`/`0X` 以及可选 `U`/`u` 后缀继承现有 PTX integer token；后缀是派生选择，并非
-历史语法的显式措辞。一元正负号、decimal/octal/binary 数值、symbol/numeric 混合 list、
-addend、difference、label definition 和任意 host assembly 不在模型中。支持公开例子
-的 `.section name, "", @progbits` header；将 name 泛化为普通或单前导点 identifier
-来自该例子，flags 仍须恰为空字符串，type 仍须恰为 `progbits`。
-
-空白、注释和换行分隔 token，不结束 record。一个结构完整的 payload 加可选分号
-结束 record，后续 token 返回普通 PTX grammar；错误恢复保留后续 marker、block
-和 function。Lossless CST 保存注释及 source text；owning AST value 保留精确
-marker、word/header spelling 和 record 内 range，`@`、`progbits` 是独立 leaf。
-
-`ptx_syntax_legacy_dwarf.hpp` 仅含小型 owning value，不引入 module、instruction
-或 expression AST 定义。Module/body variant 复用同一个 `AstLegacyDwarfRecord`；
-`ResolvedModule::legacy_dwarf_records` 是唯一有序 `{value, scope_id}` stream。
-Scope 来自模块 symbol table 的实际 declaration occurrence 和 block；canonical
-function 的 preferred owned scope 不能代替实际 definition occurrence。Metadata 不生成
-executable node、label slot 或 instruction provenance index；module/function source
-identity 忽略它，普通程序结构仍影响 identity。
-
-Current 和 supplied dataset 独立检查 typed word、range、scope ownership 及格式窗口。
-Source-aware 对两者采用 supplied effective version，AST-free 使用当前 module context。
-已知越界版本即使缺少完整 target 也拒绝；`AvailableContext` 缺少版本时仅延迟格式
-窗口，intrinsic 检查继续，Strict 缺失 context 仍拒绝。合法当前 metadata 修改和合法
-不同 dataset 无需旧 source byte equality；跨格式替换须移除或重建当前不兼容格式数据。
-
-`.target debug` 的确定缺失为每个 dataset 独立满足 **modern section 为零且 legacy
-record 为零**。未知 linked label、header 或非空 byte 仅避免确定缺失，不能认证实际
-DWARF recognition、解码、linked address 或 binary authenticity。已知完整 legacy
-context 无法同时满足 pre-2.0 格式及 PTX-3.0 debug option；缺版本测试仅是 partial
-context control。
-
-依据：[历史 debug marker](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-atatdwarf)
-及[历史格式窗口](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives)。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#syntax-ast-design--legacy-debug-serialization)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/syntax_ast_design.md#legacy-debug-serialization)。
 
 ### ASCII 空白与物理位置
 
-string 和 comment 之外的空白恰为 SP（`0x20`）、HT（`0x09`）、
-LF（`0x0a`）、VT（`0x0b`）、FF（`0x0c`）与 CR（`0x0d`）。这组六种
-byte 是 frontend 对 PTX ASCII 与等效空白规则采用的工程解释，不是规范中
-逐项列出的六种 terminal，也不是 Unicode 空白策略。
-
-SP、HT、VT、FF 各推进一个物理 byte column。VT 与 FF 不产生新 source line；
-既有 CR、LF、CRLF 处理不变。token、leading trivia、末尾 EOF trivia 与
-`CstFile::sourceText()` 保留精确 byte 和 range。string 或 comment 内的物理 VT
-继续按该 token 的既有规则保存为原始内容，不增加 backslash-v escape，也不做
-源码 normalization。logical/debug location 仍是独立契约。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#syntax-ast-design--ascii-whitespace-and-physical-positions)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/syntax_ast_design.md#ascii-whitespace-and-physical-positions)。

@@ -1,59 +1,13 @@
 # ST 覆盖情况
 
-普通 LD/ST、LDNC 与 LDU 在 brace 外接受 named v2/v4 data register（实际声明最多 128 bit）。现代 256-bit 和 async store form 仍只接受 brace；详见 [owned source contract](../resolved_ir_design.md#named-memory-vector-source)。
+当前支持范围、语法与操作接受条件、类型和目标限制以英文 [SDK 支持契约](../../sdk_support.md#st-coverage) 为唯一维护依据；本文保留技术参考与历史证据。
 
-本文记录 frontend 接受的 PTX 9.3 `st` form。machine-readable authority 是
-`python/src/ptx_frontend/spec/resources/ptx_spec/data_movement_and_conversion.yaml`；这里是
-frontend contract，不表示 simulator execution 或 GPU conformance。
-
-规范依据为 NVIDIA PTX ISA 9.3 的 [store instruction](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-st)。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../../sdk_support.md#st-coverage--st-coverage)；保留的实现、API 或证据说明见 [英文技术参考](../../us-en/converage/st_coverage.md#st-coverage)。
 
 ## Contract
 
-`st` 接受 generic 与显式 `.global`、`.local`、`.param`、`.shared` addressing，包含
-`.param::func` return-address direction/context check。scalar type 包括至 `.f64` 的
-integer、bit-size 与 floating form，以及 PTX 8.3 / SM 70 起的 `.b128`。`.b128` 搭配
-`.sys` scope 要求 PTX 8.4。source 保留 PTX 的 equal-or-wider register rule：checker
-验证所选 instruction width；PTX store 执行时使用 source 的 low bits。Checker 也保留已知 address alignment 和
-write-permission validation。
-
-限定 shared form `.shared::cta` 与 `.shared::cluster` 保留其 state-space identity。
-它们要求 PTX 7.8；`::cta` 要求 SM 30，`::cluster` 要求具 cluster capability 的 SM 90。
-未限定的 `.shared` form 保留 PTX 的 `::cta` default。
-
-Weak（含省略）、volatile、relaxed 与 release 是不同的 semantic alternative。
-Relaxed/release 必须带 scope，并允许已知 global/shared address；volatile 还会在 PTX 9.1
-允许 local address。MMIO 要求 global address 与 `.sys` scope。Descriptor 记录合法 MMIO
-semantic value 和 target availability，包括 PTX 9.3 / SM 75 的 release+MMIO form，因此通用
-checker 不会按 `st` 分支。Cache operator 与 cache-control hint 的 semantic 限制不同。
-
-Global cache form 覆盖文档规定的 cache operator、L1 eviction priority、L2 eviction
-priority，以及带 optional trailing `b64` cache-policy operand 的 `L2::cache_hint`。L1 eviction 要求
-PTX 7.4 / SM 70，cache policy 要求 PTX 7.4 / SM 80，L2 eviction priority 要求 PTX 8.8 /
-SM 100。Vector form 保留 legacy 128-bit layout 和 PTX 8.8 / SM 100 的 256-bit `.v8`
-32-bit、`.v4` 64-bit layout；只有 modern layout 允许 partial store sink。当 effective address
-space 已知时，modern vector/cache combination 仍保留 global-only requirement。
-这些 control 对 generic spelling 也只在 provenance 未知或已知为 global 时接受；已知
-local、shared、const 或 parameter address 会被拒绝。L1/L2 eviction 与 `L2::cache_hint`
-可搭配 weak、relaxed、release store semantic。`.wb`/`.cg`/`.cs`/`.wt` cache operator 是
-weak-only branch：可配合 cache hint，但不能配合 eviction control 或
-ordered/volatile/MMIO semantic。组合 eviction qualifier 使用 canonical L1-before-L2 顺序。
-
-PTX 9.3 并没有为普通 `st` 定义 `[address].unified` syntax。因此 frontend 会拒绝该拼写，
-而不会从 declaration attribute 虚构 store-side qualifier；它既不分配 unified memory，也不放宽
-原有 address-space 或 alignment diagnostic。已知 unified declaration 还是只读 store address，
-包括 AST-free revalidation 时也会拒绝。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../../sdk_support.md#st-coverage--contract)；保留的实现、API 或证据说明见 [英文技术参考](../../us-en/converage/st_coverage.md#contract)。
 
 ## Optional cache-policy operand
 
-LD、LDNC 和 ST 在带 `.L2::cache_hint` 时均接受提供或省略末尾 cache-policy operand，
-对应 [#281](https://github.com/endingly/ptx_frontend/issues/281) 的已实现支持。
-提供时必须是 64-bit register（operand 的 logical type 为 `b64`）；
-省略时保留 cache-hint form，不会创建 policy value。
-提供该 operand 仍须写出 qualifier；省略不会改变 memory-space、type、target 或
-vector-layout 限制。早期 CUDA 13.1、PTX 8.0 / SM 90 汇编器拒绝探针仅是历史编译器证据，
-不能覆盖固定 PTX 9.3 语法。
-
-这里仅处理 source acceptance 和 target-aware validation，不实现 memory ordering、cache
-behavior、unified allocation 或 store execution。专用 C++ ST test、Python model test 与
-installed consumer 覆盖 accepted/rejected public frontend contract。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../../sdk_support.md#st-coverage--optional-cache-policy-operand)；保留的实现、API 或证据说明见 [英文技术参考](../../us-en/converage/st_coverage.md#optional-cache-policy-operand)。

@@ -1,5 +1,7 @@
 # Python 生成器模型设计
 
+当前支持范围、语法与操作接受条件、类型和目标限制以英文 [SDK 支持契约](../sdk_support.md#python-generator-model) 为唯一维护依据；本文保留技术参考与历史证据。
+
 ## 目的
 
 Python 层是 YAML 与生成 C++ 之间的唯一建模层。它不应直接拼接 YAML 字典，也不应
@@ -359,4 +361,4 @@ generator 测试套件的验收范围内。C++ 测试则验证真实 parser、re
 
 ## Video topology 投影
 
-Frozen `VideoInstructionSpec` 与 `VideoOperandSpec` 保存 lane/operation、角色、selector、coercion 及书写取负义务。Normalization 在语法语言 overlap 检查前验证字段引用和 selector topology。Selection 与 overlap 验证共用 typed slot shape，使 scalar merge 和 secondary 形式保持区分。Backend projection 通过既有字段 alias map 重写 modifier 引用，包括 `.sat` → `saturate`；C++ policy 接收 typed enum 和稳定 field ID，不按 opcode 名或原始 suffix 分支。生成类及 checker descriptor 消费此 normalized 契约。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#python-generator-model--video-topology-projection)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/python_generator_model.md#video-topology-projection)。

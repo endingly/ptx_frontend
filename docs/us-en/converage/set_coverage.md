@@ -1,71 +1,17 @@
 # SET Coverage
 
-The frontend models ordinary scalar `set` in [PTX ISA 9.3 §9.7.6.1](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#comparison-and-selection-instructions-set) and half/bfloat `set` in [§9.7.7.1](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-comparison-instructions-set). The canonical contract is `python/src/ptx_frontend/spec/resources/ptx_spec/comparison_and_selection.yaml`. Resolution preserves typed comparison, optional Boolean operation, optional flush control, and result/source types. Checking validates their combinations and operands; the frontend does not evaluate the comparison or write the result value.
+Current source forms, type/target restrictions and retained limitations are maintained in the [SDK support contract](../../sdk_support.md#set-coverage). This page retains technical reference material and evidence.
+
+[SDK support: SET Coverage](../../sdk_support.md#set-coverage--set-coverage).
 
 ## Ordinary scalar forms
 
-`set.CmpOp{.BoolOp}{.ftz}.dtype.stype d, a, b{, c}` accepts result `.dtype` of `.u32/.s32/.f32`. The comparison sources `a` and `b` are register-or-immediate values of `.stype`; `d` is a register of `.dtype`. The optional Boolean source `c` is required exactly when `.BoolOp` is `.and/.or/.xor`; it accepts a plain or complemented predicate register or an integer predicate constant. Integer predicate constants follow the PTX C truth rule, including a leading `!`. Predicate special registers and floating constants are excluded.
-
-| Source `.stype` | Comparison suffixes | `.ftz` | Minimum target |
-| --- | --- | --- | --- |
-| `.b16/.b32/.b64` | `.eq/.ne` | No | PTX 1.0 |
-| `.s16/.s32/.s64` | `.eq/.ne/.lt/.le/.gt/.ge` | No | PTX 1.0 |
-| `.u16/.u32/.u64` | Signed-family suffixes plus `.lo/.ls/.hi/.hs` | No | PTX 1.0 |
-| `.f32` | Ordered suffixes, unordered `.equ/.neu/.ltu/.leu/.gtu/.geu`, `.num/.nan` | Optional | PTX 1.0 |
-| `.f64` | Same floating suffixes | No | PTX 1.0, `sm_13` |
-
-The selected `.stype`, rather than `.dtype`, determines the comparison domain and `.ftz` availability. Each source family has separate Boolean-absent and Boolean-required generated variants. The [ordinary C++ tests](../../../submod/resolved_ir/test/test_set_completeness.cpp) cover the families, modifier and operand negatives, target gate, and mutated typed IR.
+[SDK support: Ordinary scalar forms](../../sdk_support.md#set-coverage--ordinary-scalar-forms).
 
 ## Half and bfloat forms
 
-The half/bfloat forms use the same comparison and optional Boolean-source fields, but have distinct destination and source contracts. `set.CmpOp{.BoolOp}{.ftz}.dtype.stype d, a, b{, {!}c}` writes `.f16`, `.bf16`, `.f16x2`, `.bf16x2`, or an allowed integer result. The optional `c` uses the same predicate-source contract as ordinary `set`. The 30 generated alternatives partition 15 result/source cohorts by whether Boolean combination is present.
-
-| Result `.dtype` | Source `.stype` | Minimum PTX / SM | `.ftz` |
-| --- | --- | --- | --- |
-| `.f16` | `.b16/.b32/.b64`, integer 16/32/64, `.f16/.f32/.f64` | 4.2 / 53 | Optional for every listed source |
-| `.bf16` | Same source list | 7.8 / 90 | No |
-| `.u16/.s16/.u32/.s32` | `.f16` | 6.5 / 53 | Optional |
-| `.u16/.s16/.u32/.s32` | `.bf16` | 7.8 / 90 | No |
-| `.f16x2` | `.f16x2` | 4.2 / 53 | Optional |
-| `.u32/.s32` | `.f16x2` | 6.5 / 53 | Optional |
-| `.bf16x2/.u32/.s32` | `.bf16x2` | 7.8 / 90 | No |
-
-Bit-source comparison permits `.eq/.ne`; signed and unsigned integer sources permit `.eq/.ne/.lt/.le/.gt/.ge`; floating and packed sources permit those six plus `.equ/.neu/.ltu/.leu/.gtu/.geu/.num/.nan`. The ordinary unsigned aliases `.lo/.ls/.hi/.hs` do not apply here. The specific §9.7.7.1 F16-result syntax permits optional `.ftz` for the entire listed source domain, including Bit, integer and F64 sources. Ordinary §9.7.6.1 SET keeps its F32-source-only FTZ condition; BF16/BF16x2 productions still exclude FTZ. Earlier supplemental `ptxas` 13.3 samples rejected some of these F16-result forms; this is tool divergence, not the permission oracle. The frontend records the requested flag without evaluating comparisons or flushing values.
-
-For scalar `.f16` sources, the frontend accepts `.f16` or compatible `.b16` registers and numeric floating constants; scalar `.bf16` sources for integer results accept the existing `.b16` registers or numeric BF16 floating constants. Packed `.f16x2` sources accept `.f16x2` or compatible `.b32` registers, while `.bf16x2` sources require exact `.b32`. Native `.f16x2` results accept `.f16x2` or `.b32`; native `.bf16x2` results require `.b32`. Integer results use width-compatible bit or integer register containers. For packed-source integer results, the written logical `.dtype` remains `.u32` or `.s32`: both admit exactly `.b32/.s32/.u32` destination declarations, with a fixed 32-bit packed result width. `.f32`, native `.f16x2`, narrower/wider registers, predicates, and whole vectors cannot serve as that scalar integer-result destination. This contract is separate from native floating-result SET and from the source-format carrier requirements. Scalar F16 numeric floating immediates are supported; other half/bfloat producer boundaries remain separate; the ordinary bit, integer, `.f32`, and `.f64` source cohorts retain register-or-immediate operands where valid.
-
-The [half/bfloat C++ tests](../../../submod/resolved_ir/test/test_set_half_completeness.cpp) cover every generated alternative, target boundaries, invalid controls and containers, numeric immediates, owned IR, and mutated typed fields. The [Python spec test](../../../python/tests/spec/test_set_completeness.py) checks both ordinary and half/bfloat descriptor domains. The installed [consumer](../../../examples/conversion_consumer/main.cpp) exercises the public generated representation.
-
-The C++ package version 0.2.0 replaces the former generated `Set::EqU32U32` and `Set::LtAndF32S32` alternatives with the typed ordinary families `Bit`, `Signed`, `Unsigned`, `Float`, `FloatF64` and their `Boolean` counterparts. Consumers should select the new alternatives and read `dtype`/`stype` fields to determine the exact type. This is a source and binary API change; rebuild installed C++ consumers with the new headers and library.
-
-Scalar F16 source fields accept numeric floating constants converted to binary16 as well as their existing F16/B16 registers. Boolean predicate sources and all result carriers retain their contracts; scalar BF16 integer-result sources also accept numeric floating constants; packed conversion boundaries remain separate. Integer-origin constants are not numeric F16 sources.
-
-The six existing `SetHalfF16Bit`, `SetHalfF16BitBoolean`, `SetHalfF16Integer`, `SetHalfF16IntegerBoolean`, `SetHalfF16F64`, and `SetHalfF16F64Boolean` classes now expose an instance `WithLocs<bool> ftz` in the existing modifier position. Omission stores false with empty locations; written `.ftz` stores true with its token range. A true flag without locations or a false flag with token locations is inconsistent. Copies and clones own the flag and locations after AST destruction, and coherent current typed flag edits remain independent of retained lexical history. These six generated object layouts change source/binary ABI: rebuild consumers against matching headers and libraries. Operands, comparator/Boolean domains, modifier order and PTX4.2/SM53 minimum remain unchanged.
+[SDK support: Half and bfloat forms](../../sdk_support.md#set-coverage--half-and-bfloat-forms).
 
 ### Ordinary BF16 FMA/SET source members
 
-`FmaMixedF32Bf16`, `SetHalfIntegerBf16`, and
-`SetHalfIntegerBf16Boolean` expose `src1` and `src2` as
-`WithLocs<RegOrImm>`. Existing class names, identities and field order remain;
-C++ consumers must rebuild against matching headers and libraries and use
-`std::get_if<ResolvedRegisterRef>` or `std::get_if<ResolvedImmediate>` on `.value`.
-
-These six sources accept numeric Float literals and Float-result expressions.
-The existing logical BF16 converter maps `1.5`, `1.0+0.5`,
-`0d3ff8000000000000` and `0f3fc00000` to type BF16 and word `0x3fc0`.
-FMA uses its fixed `input_type` modifier; SET uses fixed logical BF16.
-Integer literals and Integer-result expressions remain excluded, including an
-optional integer-origin value of zero. This grant has no integer-immediate policy.
-The accepted actual register declaration remains the ordinary scalar `.b16`
-carrier; SameWidth does not admit `.f16/.u16/.s16`, special registers, whole
-vectors or standalone instruction-only `.bf16` declarations.
-
-Owned validation reads current logical type, low sixteen bits and flags. It
-requires no floating lexical history; coherent canonical current-word edits can
-validate after source/AST destruction, copying, assignment or cloning. Retained
-bad type, high bits, integer origin or negative metadata remain errors. Source
-association still checks the provided AST against retained syntax identity.
-This scalar numeric conversion adds no packed pair/splat or truncation rule;
-packed exact-word and constructor policies remain separate. Instruction rounding,
-saturation, comparison, predicate combination and execution are not evaluated.
-Targets, destinations, other sources and all packed SET forms keep their contracts.
+[SDK support: Ordinary BF16 FMA/SET source members](../../sdk_support.md#set-coverage--ordinary-bf16-fmaset-source-members).

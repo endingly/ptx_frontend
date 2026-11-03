@@ -1,5 +1,7 @@
 # PTX Lexer 设计
 
+当前支持范围、语法与操作接受条件、类型和目标限制以英文 [SDK 支持契约](../sdk_support.md#lexer-design) 为唯一维护依据；本文保留技术参考与历史证据。
+
 ## 概述
 
 PTX lexer 将源文本转换为带有文本和源码范围的 token 流。它使用可重入的
@@ -130,145 +132,31 @@ return Token{kind, std::string(sval.sv), sval.range};
 
 ## Token 分类
 
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#lexer-design--token-classification)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/lexer_design.md#token-classification)。
+
 ### 标点
 
-每个标点字符具有独立的 token kind，包括：
-
-```text
-, . : ; @ ( ) [ ] { } < > <= >= << >> - + * / % & && ^ | || ! ~ ? = == !=
-```
-
-正负号不属于数值 token。例如，`-1` 会产生一个 `Minus`，随后产生一个
-`Decimal`。多字符运算符拥有独立 token kind，供 declaration constant-expression
-parser 保留准确的运算符和优先级。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#lexer-design--punctuation)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/lexer_design.md#punctuation)。
 
 ### 字面量
 
-Lexer 可以识别：
-
-- 十进制整数和前导零八进制整数，以及可选的 `u` 或 `U` 后缀。
-- 以 `0b` 或 `0B` 开头的二进制整数，以及可选的 `u` 或 `U` 后缀。
-- 以 `0x` 或 `0X` 开头的十六进制整数，以及可选的无符号后缀。
-- 由 `0f` 和八个十六进制数字组成的 PTX 浮点 bit-pattern 字面量。
-- 由 `0d` 和十六个十六进制数字组成的 PTX 双精度 bit-pattern 字面量。
-- 带小数点或指数的十进制浮点字面量，包括 `1.` 和 `1.e2`；小数点至少一侧必须有数字。
-- 可以包含转义字符的双引号字符串。
-- 内建拼写 `WARP_SZ`。
-
-字面量 token 保留其准确的源码拼写。数值转换和字符串反转义不属于 lexer
-职责。
-
-为保持兼容，十进制和八进制整数均使用 `TokenKind::Decimal`，并降低为
-`AstImmediateKind::DecimalInteger`；这些名称不决定数值基数。整数解码将前导零
-解释为八进制（`010` 为 8）。含有 `8` 或 `9` 的八进制拼写（如 `09U`）产生
-覆盖整个字面量的单个 `Error` token。`09.0`、`09e1` 等十进制浮点拼写仍为
-浮点 token。
-
-二进制整数使用 `TokenKind::Binary` 与 `AstImmediateKind::BinaryInteger`，
-保留准确拼写与范围。`0b`、`0b102U`、`0b1UU` 等无效二进制候选项产生
-覆盖其标识符尾部的单个 `Error` token；数值溢出在整数求值阶段诊断。二进制
-字面量可用于一般整数表达式、维度、操作数、debug metadata、`.unified` 和 `.language`。
-裸整数字段也接受十进制、八进制、十六进制、二进制及可选无符号后缀：声明与 pointer
-alignment、参数化计数、launch resource、ABI-preservation 计数、compact branch-target
-计数、文件 timestamp/size，以及源码位置的 line/column（包括 inline 位置）。各字段保留
-现有范围、正值、对齐、版本与 target 检查；这些位置不接受符号、表达式或 `WARP_SZ`。
-将位置 line/column metadata 视为一般整数是对 PTX 9.3 §§4.5.1、11.5.4 的解释；
-这些章节未规定仅限十进制。`.address_size` 保留枚举的 `32`/`64` 源码形式，version
-分量保留十进制语法，initializer mask 仍仅允许十六进制。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#lexer-design--literals)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/lexer_design.md#literals)。
 
 ### 通用标识符
 
-普通标识符符合以下形式：
-
-```text
-[A-Za-z_$%][A-Za-z0-9_$]*
-```
-
-它们被输出为 `TokenKind::Ident`。该类别包括指令名、寄存器、特殊寄存器、
-label、symbol，以及 `sm_80` 这样的 target 名称。
-
-百分号只允许作为 percent-prefixed identifier 的首字符，不能作为 identifier 的
-后续字符。因此内部百分号会结束前一个 identifier；若其后接合法后续字符，则开始一个新的
-leading-percent identifier。独立的 `%` 仍是 `TokenKind::Percent` 余数运算符。
-lexer 同时保留 `_` 的 `Ident` token，以支持指定的 sink 与 call-prototype placeholder
-上下文；这些依赖上下文的含义在词法分析之后才决定。
-
-将指令名称保持为通用标识符，可以避免 PTX 每增加一条指令就修改 lexer。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#lexer-design--generic-identifiers)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/lexer_design.md#generic-identifiers)。
 
 ### 通用点号标识符
 
-大部分点号前缀拼写被输出为 `TokenKind::DotIdent`。通用形式支持使用 `::`
-连接的 atom，也支持逗号分隔的 atom：
-
-```text
-.sat
-.u32
-.shared::cluster
-.collector::b0::smem
-.scale::2,1
-```
-
-`.16x64b` 这类以数字开头的 shape 也可以被识别。
-
-连续后缀会保持为多个独立 token。例如：
-
-```text
-add.sat.s32
-```
-
-被切分为：
-
-```text
-Ident("add") DotIdent(".sat") DotIdent(".s32")
-```
-
-部分 PTX 拼写会在同一个后缀中包含额外的普通点号。已知形式，例如
-`.async.global` 和 `.b8x16.b6x16_p32`，具有显式规则，并保持为一个
-`DotIdent` token。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#lexer-design--generic-dot-identifiers)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/lexer_design.md#generic-dot-identifiers)。
 
 ### 专用 Directive Token
 
-少量稳定且具有重要结构意义的 PTX directive 使用专用 token kind，包括：
-
-- `.version`、`.target` 和 `.file` 等 module/debug directive。
-- `.visible` 和 `.extern` 等 visibility/linking directive。
-- `.entry`、`.func` 以及具有重要 function-local 结构意义的 `.callprototype`、
-  `.calltargets`、`.branchtargets` metadata directive。
-- `.maxnreg` 和 `.reqntid` 等 kernel tuning directive。
-- `.reg`、`.global` 和 `.param` 等 declaration directive。
-
-这些规则位于通用 `DOT_IDENT` 规则之前。Flex 首先选择最长匹配，并使用规则
-顺序解决等长匹配，因此专用 directive 会优先于通用类别。
-
-一个专用拼写在所有词法上下文中都保持其 token kind。例如，即使 `.global`
-出现在一组点号前缀名称中，它仍然会被识别为 `DotGlobal`。需要同时接受两类
-token 的调用方应当在适当场景下依据 token 拼写处理。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#lexer-design--dedicated-directive-tokens)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/lexer_design.md#dedicated-directive-tokens)。
 
 ## 空白和注释
 
-空格、水平制表符（`\t`）、ASCII 换页符（`\f`，字节 `0x0c`）以及
-CR/LF 换行分隔 token，并作为空白 trivia 保留。换页符只推进一个字节列，
-不产生新行。尾部空白保留在 EOF token 上。字符串和注释以外的垂直制表符
-（`0x0b`）及其他未知控制字节仍是词法错误；这个支持子集不接受任意 ASCII
-控制字符。参见固定的
-[PTX 9.3 源码格式](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#source-format)。
-
-行注释以 `//` 开头，并持续到行末，但注释规则本身不消费换行符。随后的空白
-规则负责消费换行符。行注释内的换页符不会终止注释；字符串以及两种注释中的换页符
-均保留原始内容。
-
-块注释使用独占的 `BLOCK_COMMENT` scanner 状态：
-
-1. `/*` 进入该状态。
-2. 跳过所有内容，直到遇到 `*/`。
-3. `*/` 返回初始状态。
-4. 如果在该状态中遇到输入结尾，则输出一次 `TokenKind::Error` 并返回初始状态，
-   使下一次读取到达 `TokenKind::Eof`。
-
-块注释不支持嵌套。
-
-被跳过的文本仍然会经过 `YY_USER_ACTION`，因此空白和注释即使不产生 token，
-也仍然会推进源码位置。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#lexer-design--whitespace-and-comments)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/lexer_design.md#whitespace-and-comments)。
 
 ## 源码位置
 
@@ -296,18 +184,7 @@ EOF 使用当前位置上的零宽范围。未终止块注释保留从开头 `/*
 
 ## 错误行为
 
-无法识别的字符会被输出为 `TokenKind::Error`。`Token::text` 包含该错误字节，
-`Token::range` 是其正常源码范围。
-
-未终止的块注释只输出一次 `TokenKind::Error`，保留完整注释文本、源码范围和前置
-trivia。后续读取返回 EOF，文本为空且不重复 trivia。在 `consume()` 消费错误前，
-重复调用 `peek()` 仍可观察同一个缓存中的错误。
-
-Lexer 使用 error token 报告错误，而不是抛出异常。调用方可以在第一个错误处
-停止，也可以在适合恢复的情况下继续请求 token。普通非法字符不会强制 EOF，后续
-合法 token 仍可读取。模块恢复依赖这一持续推进的约定。
-
-EOF 被输出为 `TokenKind::Eof`，文本为空，范围是当前位置上的零宽范围。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#lexer-design--error-behavior)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/lexer_design.md#error-behavior)。
 
 ## 构建集成
 
@@ -349,41 +226,8 @@ ctest --test-dir out/build/ci-linux-gcc-debug --output-on-failure
 
 ## 已知限制
 
-- 每个输出 token 的文本都会单独分配。
-- Lexer 只接受 ASCII 标识符。
-- 块注释不能嵌套。
-- 字符串 token 保留转义和引号，不进行解码。
-- 正负号与数值字面量分开输出。
-- 十进制浮点语法并不接受 C++ 数值转换函数可能接受的所有拼写。
-- `yy_scan_bytes` 接受 `int` 长度，而公开构造函数接受
-  `std::string_view::size_type`；对于极大的输入，需要在窄化转换前显式检查
-  长度。
-- 公开对象不提供 reset 操作，并且不可移动。
-
-修改这些限制时，应当同时增加有针对性的 lexer 测试，以明确新的词法契约。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#lexer-design--known-limitations)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/lexer_design.md#known-limitations)。
 
 ## 上下文中的 instruction keyword
 
-针对归档 PTX ISA 9.3，frontend 采用上下文解释：§4.3.2 将 instruction keyword 称为
-reserved token，§4.4 给出普通 identifier 的字符 grammar，但未明确排除 keyword。
-官方[initializer 示例](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#initializers)
-声明 `.global .u32 bar[] = { 2, 3, 5 };` 并通过 `generic(bar)` 引用它；
-[function 示例](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#function-declarations-and-definitions)
-还定义并直接调用名为 `bar` 的 device function。
-
-采用的协调解释是在 opcode 位置识别 instruction root，在显式 user-defined name
-位置应用普通字符 grammar；不设置无上下文的 instruction-keyword name ban，也不只为
-`bar` 添加例外。Reserved-token 措辞仍存在解释张力；这并不声称规范提供了完整 lexer
-文法，也不表示任意拼写在任意 role 都合法。既有 type、state space、ABI、visibility、
-predefined name 与 contextual sink 规则仍适用。
-
-PTX 区分大小写：`add.u32` 中的 `add` 是 opcode，而 `add`、`Add`、`ADD`、`_add`、
-`$add`、`%add`、`add0`、`add_`、`add$` 可作为普通显式名称。不剥离 prefix，也不折叠
-大小写；`ADD.u32` 不会变为 `add.u32`，带 dot 的 mnemonic 不是普通 identifier。
-单独 `_`、`$`、`%`、空名称及非法标点仍受既有 role 或字符 grammar 限制。
-
-Table 2 有136个 instruction root；另有规范明确的
-[`fabric` 指令](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#fabric-instructions-submit)，
-但该表未列入。展开后的 packaged opcode 集合与这137个 root 一致；raw YAML 是展开前
-数据，不能据此断言缺少40个 root。两种计数都不定义额外 identifier-ban catalogue。
-名为 `fabric` 的 variable/function 不会绕过独立的 fabric instruction syntax/version/target 检查。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#lexer-design--contextual-instruction-keywords)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/lexer_design.md#contextual-instruction-keywords)。

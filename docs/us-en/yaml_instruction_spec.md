@@ -1,5 +1,7 @@
 # YAML Instruction Spec: Structure and Principles
 
+Current source forms, type/target restrictions and retained limitations are maintained in the [SDK support contract](../sdk_support.md#yaml-instruction-spec). This page retains technical reference material and evidence.
+
 ## Purpose
 
 YAML files under `python/src/ptx_frontend/spec/resources/ptx_spec/` are the canonical
@@ -30,13 +32,11 @@ the corresponding contract.
 
 ## Extension boundary
 
+[SDK support: Extension boundary](../sdk_support.md#yaml-instruction-spec--extension-boundary).
+
 The canonical YAML/database is the only machine-readable source for an
 instruction form. Do not create a parallel handwritten opcode/variant registry
 or capability API.
-
-For the separate, measured cost of changing that canonical model, see the
-[generated-model build scalability baseline](build_scalability.md); it is not
-opcode acceptance or ISA-conformance evidence.
 
 A YAML-only addition is appropriate only when the form reuses implemented
 syntax and operand primitives, modifier domains, type expressions, and
@@ -45,15 +45,6 @@ normalizer/database checks, generated descriptors, resolver/checker coverage,
 and source/target availability facts. Reusing a `rule` name is not evidence
 that a new relation will be checked; confirm that its selected descriptor fields
 and constraints reach executable checker code.
-
-Adding a new operand primitive, modifier domain/value representation, or
-semantic constraint is a coordinated change: extend the schema only as needed,
-then the Python Syntax/Resolved model and normalization, C++ resolved payload
-and resolver, descriptor emission, checker implementation, and tests. Do not
-silently encode such a requirement in a string or an enum merely because YAML
-can parse it. The frontend contract is source acceptance, binding, resolved
-modeling, and target-aware validation; it neither supplies simulator execution
-nor establishes physical-hardware conformance.
 
 ## Predefined-data references
 
@@ -246,6 +237,8 @@ floating_point_default`, without synthesizing source modifier fields. See the
 
 ## Operands and operand patterns
 
+[SDK support: Operands and operand patterns](../sdk_support.md#yaml-instruction-spec--operands-and-operand-patterns).
+
 An operand has a stable `name`, syntax `kind`, semantic `role`, `access`, and
 optional `type`:
 
@@ -256,18 +249,6 @@ optional `type`:
   access: read
   type: {expr: modifier(type)}
 ```
-
-The full generated resolve path currently supports `reg`, `imm`, `reg_or_imm`,
-`pred`, `pred_or_not`, `addr`, and `reg_vector`. `pred_or_not` accepts `%pN`
-or `!%pN` and preserves the complement bit in resolved IR. The schema can
-describe many more PTX kinds. Adding a schema enum does not implement it:
-Python Syntax/Resolved models, the C++ resolver, and the checker must all be
-extended. `type` may reference a modifier (`modifier(type)`) or name a fixed
-scalar type such as `u32`. The only supported type-expression function today is
-`modifier(name)`, which reads an active `kind: type` modifier of the current
-variant. The schema retains `same_as(...)`, `one_of(...)`, and
-`same_size_as(...)` as future syntax, but the normalizer explicitly rejects
-them as unsupported.
 
 Every generated operand payload also needs an explicit module-reference policy.
 `code_gen.reference_policy` classifies each semantic payload in the public
@@ -352,15 +333,6 @@ return constraint requires that target in every context. Unknown identity is
 not assigned a direction, and a known non-`.param` symbol is handled only by
 the ordinary exact state-space mismatch.
 
-Alternatively, `parameter.entry_only: true` with `direction: input` may
-accompany a static state-space allowlist containing `param`. The checker applies
-this constraint to a known parameter address even without a state-space modifier,
-requiring both input direction and entry-function provenance. The Boolean
-defaults to false, preserving existing explicit `.param` consumers; non-Boolean
-values, return direction with entry-only, and detached static constraints are
-rejected. Suffix-free `prefetch.tensormap` uses this narrow contract. Unknown
-standalone or register address provenance remains unknown and accepted.
-
 A scalar string or list defines a static effective-address allowlist. List
 items may be plain state-space strings or `value`/`availability` objects:
 
@@ -377,103 +349,11 @@ items may be plain state-space strings or `value`/`availability` objects:
     - shared
 ```
 
-The scalar form is equivalent to a one-entry list without an additional target
-requirement. Static values and `expr: modifier(...)` are mutually exclusive.
-The resolved descriptor maps every static value to `MemoryStateSpace` and keeps
-its availability. The common checker rejects a known effective space outside
-the list and checks availability on the matching entry; an unknown register,
-immediate, or standalone address remains accepted. Current generic scalar/vector
-loads use the example policy above, while generic scalar/vector stores allow only
-`.global/.local/.shared`.
-
-The current scalar/vector `ld/st` variants reuse one type set containing
-`.b8/.b16/.b32/.b64`, `.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`, and `.f32`,
-then append `.f64` at the variant. Legacy loads additionally model
-`.ca/.cg/.cs/.lu/.cv`, legacy stores model `.wb/.cg/.cs/.wt`, and all explicit
-cache spellings attach PTX 2.0 / SM 20 availability while omission resolves to the
-non-spellable `unspecified` sentinel. PTX's effective hardware defaults still
-follow the ISA (`ld` behaves as `.ca`, `st` behaves as `.wb` when the modifier
-is omitted), but Resolved IR intentionally preserves `Unspecified` so source
-provenance and modifier-value availability stay distinguishable. Explicit `.f64` attaches SM 13
-availability; generic `.f64` does not duplicate it because the generic variant
-already requires SM 20. Data operands use `type: {expr: modifier(type)}`, so
-the runtime modifier and its location drive the common fundamental-type check.
-Legacy memory-vector payloads are capped at 128 bits: `.v2` accepts modeled
-types through 64 bits and `.v4` through 32 bits. A generated `memory_vector`
-constraint additionally permits only 256-bit `.v8` × 32-bit and `.v4` × 64-bit
-forms at PTX 8.8/SM 100, with global space when known.
-A register operand may also select an explicit width policy:
-
-```yaml
-- name: dst
-  kind: reg
-  role: dst
-  access: write
-  type: {expr: modifier(type)}
-  register_width: equal_or_wider
-```
-
-`register_width` defaults to `same_width`, which permits compatible fundamental
-types at the same width. `exact` instead requires identical declaration-type
-enums; reserve it for explicit format restrictions, not ordinary operands with
-a fixed width. See [register declaration compatibility](register_type_policy.md)
-for the normative source and regression boundary. The normalizer rejects the non-default
-`equal_or_wider` value on a non-register operand or an operand without a type
-expression, preventing a silent no-op. `reg_vector` operands may also use this
-policy, applying it to each vector element. The resolved operand descriptor
-stores the policy; no runtime Resolved IR field is generated. Current scalar
-`ld` destinations, scalar `st` sources, and legacy `.v2/.v4` memory vector
-elements use `equal_or_wider`: the declared register size must be at least the
-instruction size, after which either-side bit types and signed/unsigned integer
-pairs are compatible, floats require exact type/size, and integer/float pairs
-remain incompatible. Immediate checks stay same-width. Conversion-only `cvt_scalar_src` and
-`cvt_register_src` carriers admit scalar special registers and selected hardware
-components; the former also admits immediates. Their special-register checks
-apply the declared width policy. Ordinary `reg_or_imm` keeps its existing domain. The
-current scalar `ld/st` domains do include `.b128`, with modifier-value
-availability at PTX 8.3 / SM 70; `.sys` with `.b128` additionally requires PTX
-8.4. An exact `.b128` declaration therefore satisfies a selected `.b128` memory
-instruction. The `equal_or_wider` escape hatch still does not admit a wider
-actual `.b128` register for a narrower selected instruction. The focused
-[LD](converage/ld_coverage.md) and [ST](converage/st_coverage.md) documents state the supported
-memory forms and their remaining boundaries.
-
-`vector.allow_named` is a Boolean, default false, accepted only on element-policy
-`reg_vector` operands. It propagates to the binding and `OperandDescriptor::allow_named_vector`,
-adding identifier syntax only to the opted slot. Ordinary LD/LDNC/LDU destinations
-and ordinary ST sources opt in; async/bulk stores and other consumers do not.
-The named declaration remains limited to v2/v4 and 128 bits, independently of
-modern 256-bit brace support. See [owned provenance](resolved_ir_design.md#named-memory-vector-sources).
-
 A `reg_vector` operand must declare legal element counts through
 `vector.arity`. Static forms use an integer or list:
 
-```yaml
-vector: {arity: [2, 4], type_policy: aggregate, allow_sink: true}
-```
-For memory vectors, the generated cross rule permits partial sinks only for an
-exact 256-bit modern payload; legacy vectors and all-sink forms remain invalid.
-
 Legacy memory vectors instead link arity to the required runtime vector
 modifier:
-
-```yaml
-- name: dst
-  kind: reg_vector
-  role: dst
-  access: write
-  type: {expr: modifier(type)}
-  register_width: equal_or_wider
-  vector: {arity: {expr: modifier(vector)}, type_policy: element}
-```
-
-`type_policy: aggregate` checks a vector payload against the whole instruction
-bit width and is used by `mov` pack/unpack. `type_policy: element` checks each
-element against the instruction type and is used by legacy memory vectors.
-Those memory vectors retain their 128-bit legacy forms (`.v2` through 64-bit
-types and `.v4` through 32-bit types) and add only the PTX 8.8 256-bit forms
-described above.
-`VectorArity` is a required modifier domain; it has no optional/default form.
 
 Use semantic roles such as `dst`, `src1`, `barrier`, and `thread_count` rather
 than inventing `srcN` names merely for reuse. Role and access are carried into
@@ -617,16 +497,7 @@ layouts additionally require PTX 2.0 / sm_20.
 
 ## Availability, rules, and examples
 
-
-Plain availability and every `any_of` clause may include `ptx_before: "1.4"`:
-the PTX version must be strictly below that exclusive bound and at least `ptx`
-(default `"0.0"`). Omission means no upper bound. Both versions must be decimal
-`major.minor` strings with uint16 components; malformed, empty, equal, or reversed
-intervals are rejected. The generator carries the optional bound to
-`AvailabilityDescriptor::ptx_before` or `AvailabilityClause::ptx_before`.
-Existing minimum-only metadata keeps its behavior. Plain upper-bound failures
-report a located `UnsupportedPtxVersion` with the exclusive limit; DNF failures
-retain `UnsupportedAvailability`.
+[SDK support: Availability, rules, and examples](../sdk_support.md#yaml-instruction-spec--availability-rules-and-examples).
 
 Every variant must declare:
 
@@ -637,33 +508,6 @@ availability:
   family: sm_100f      # optional minimum family-specific source-feature target
 rule: integer_arith.add # optional but recommended
 ```
-
-Common checker logic interprets minimum PTX, SM, and `family` requirements.
-`family` is the minimum family-specific source-feature target: the checker
-looks only in the source target profile's `enabled_family_features`. The
-explicit catalog is: `sm_100` → none; `sm_100f`/`sm_100a` → `sm_100f`;
-`sm_103` → none; `sm_103f`/`sm_103a` → `sm_100f`, `sm_103f`; `sm_120` →
-none; `sm_110` → none; `sm_110f`/`sm_110a` → `sm_110f`;
-`sm_120f`/`sm_120a` → `sm_120f`; `sm_121` → none; and
-`sm_121f`/`sm_121a` → `sm_120f`, `sm_121f`. Do not infer this set from the
-SM number or target suffix. It is distinct from PTX-to-physical-GPU translation
-compatibility, which is not
-modelled. An `a` target is an exact identity, not a family spelling: use
-`any_of: [{target: sm_100a}]` when that exact target is required. Capability
-clauses, exact target, and `family` are independent constraints. `rule` is a
-closed semantic-rule ID for instruction-specific checking. Normalization rejects
-unknown or non-string rule spellings before IR construction; emitters dispatch
-on the typed identity, while checker descriptors retain the spelling only as
-inert metadata. `examples`, `doc`, and
-`description` document intent; they do not replace executable tests.
-
-An `any_of` clause may also contain `family`; it is an AND-term within that
-clause and uses the same `enabled_family_features` lookup, rather than requiring
-that exact target spelling. The schema, normalizer, and generated descriptor
-permit one through six clauses. `setmaxnreg` uses all six: exact `sm_90a`
-(PTX 8.0), exact `sm_100a` (8.6), exact `sm_120a` (8.7), enabled `sm_100f`
-and `sm_120f` families (8.8), and enabled `sm_110f` family (9.0). See
-[miscellaneous coverage](converage/miscellaneous_coverage.md) for the instruction contract.
 
 An `any_of` clause may use `targets: [sm_32, sm_35, sm_37]` for an exact
 architecture/flavor membership set. `targets` must be a nonempty list of unique
@@ -676,14 +520,6 @@ remains six clauses; the target list has no fixed descriptor capacity. Manual
 consumers supplying both singular and set fields must satisfy both. Scalar member
 ordering changed to retain descriptor size; consumers must rebuild together.
 
-The explicit generic catalog includes `sm_32`, `sm_35`, `sm_37`, `sm_53`, `sm_60`,
-`sm_61`, `sm_62`, `sm_86`, `sm_87`, and `sm_88`, with no enabled family features.
-The first three have no modeled capabilities; `sm_53` and `sm_60`–`sm_62` have
-`graph_exec`; `sm_86`–`sm_88` have `reserved_smem` and `graph_exec`. Suffix variants
-and unlisted architectures remain unsupported. This is the explicit
-[PTX 9.3 target table](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
-contract, independent of the module's PTX instruction-version checks.
-
 An `any_of` clause may require the source programmer option with
 `map_f64_to_f32: true`, for example
 `{ptx: "1.0", target: sm_10, map_f64_to_f32: true}`. This is an AND-term alongside
@@ -694,19 +530,6 @@ The emitter sets `checker::AvailabilityClause::requires_map_f64_to_f32`; common
 availability evaluation checks `checker::TargetInfo::map_f64_to_f32`, whose
 default is false. This source control is not a hardware capability and never
 changes the type or width of a resolved operand.
-
-The canonical `div_rn_f64`, `rcp_rn_f64`, and `sqrt_rn_f64` variants each use four
-clauses: the original PTX 1.4 / SM 13 minimum, plus exact generic `sm_10`, `sm_11`,
-and `sm_12` alternatives requiring this option and PTX 1.4. Their syntax identity,
-explicit `.rn`, f64 type, and 64-bit operands are unchanged. This option adds no
-alternative to other f64, directed-rounding, approximate reciprocal, or f32 forms.
-
-`operand_layouts[].availability` accumulates with variant availability; it
-does not override it, and only the selected layout contributes its constraint.
-When more than one layout matches the same syntax, the resolver accepts only a
-unique layout with strictly more specific operand shapes. Equal or incomparable
-candidates are a YAML modeling error; availability cannot resolve the syntax
-ambiguity.
 
 An operand with `kind: reg_vector` generates a `ResolvedRegisterVector` payload.
 Static `vector.arity` values are descriptor checks only; dynamic
@@ -719,18 +542,7 @@ runtime `vector` modifier.
 
 ## Current Add coverage
 
-The section-specific `add` definitions in `arithmetic.yaml` merge automatically.
-They cover the standard `.f32/.f32x2/.f64` forms,
-mixed-precision `.f32.{f16,bf16}`, and the half-precision
-`.f16/.f16x2/.bf16/.bf16x2` forms. Rounding resolves to `RoundingMode`, and
-value availability expresses the `sm_20` requirement of `.rm/.rp.f32`.
-Packed and half/bfloat forms accept register operands as required by PTX.
-
-The mixed variant has two named slots: `result_type` is fixed to `f32`, while
-`input_type` accepts `f16/bf16`. Structured operand type expressions refer to
-those slots directly, so neither resolver nor checker re-infers operand types
-from modifier position or text. The variant requires PTX 8.6 / sm_100 and
-supports optional rounding and `.sat`.
+[SDK support: Current Add coverage](../sdk_support.md#yaml-instruction-spec--current-add-coverage).
 
 ## Authoring principles
 
@@ -779,26 +591,12 @@ ctest --preset ci-linux-gcc-debug --output-on-failure
 
 ## Typed video contracts
 
-The `video` category owns 23 opcode variants and 39 operand layouts. A variant's closed `video` mapping carries `lanes: scalar|two|four`, `operation: arithmetic|shift|compare|mad`, and optional validated Boolean `sat_modifier`/`po_modifier` field references. Each `video_operand` has its own closed mapping: logical `position`, typed `selector` policy, optional `type_modifier` referring to a `video_type` field, and `allow_immediate`/`allow_negate` flags. The normalizer rejects contradictory roles, SIMD immediates, non-Mad negation, incorrect selector topology and missing field references.
-
-`type_use: bit_carrier` is restricted to Mad C and cannot coexist with `type_modifier`; it selects B32 immediate coercion. A type modifier infers `ModifierField` interpretation; omitted type use defaults to `Unsigned`, used by set D/C. The four closed modifier domains are `video_type`, `video_secondary_op`, `video_shift_mode`, and `video_scale`. Video semantics never become generic integer-operation aliases. Syntax shape derivation admits selected destinations only for scalar merge layouts and arithmetic-negated registers only in approved Mad source slots. See [video coverage](converage/video_coverage.md).
+[SDK support: Typed video contracts](../sdk_support.md#yaml-instruction-spec--typed-video-contracts).
 
 ## Exclusive numeric SM availability bound
 
-Plain availability and each `any_of` clause accept optional `sm_before: 70`. Together with `sm: 30` this means `30 <= SM < 70`; a missing lower bound means zero and an omitted upper bound means unbounded. The field must be a strict uint32 integer greater than the minimum; zero, booleans, floats, strings, explicit null, overflow and empty/reversed intervals are rejected by typed normalization and rendering. JSON Schema applies integer/range constraints; the typed boundary also rejects integral floating values. The existing maximum of six ordered alternatives and prohibition on mixing `any_of` with plain fields remain. No target intersection solver is introduced.
-
-`AvailabilityClause::sm_before` and `AvailabilityDescriptor::sm_before` append disengaged `std::optional<uint32_t>` members after `ptx_before`; rebuild public consumers for this aggregate layout change. The predicate compares concrete `TargetInfo::sm_version`, independently of profile spelling or flavor, while all existing exact-target, family, capability and mapping requirements remain conjunctive. Plain failures produce located `UnsupportedSmVersion` in variant, layout, modifier, operand-value, parameter-address and memory-vector paths; DNF failures retain `UnsupportedAvailability`.
-
-Legacy SHFL uses `any_of: [{ptx: "3.0", ptx_before: "6.4", sm: 30}, {ptx: "3.0", sm: 30, sm_before: 70}]`. Source modules still require recognized profiles and legal profile/version headers. Under `AvailableContext`, missing version or recognized target continues to defer whole-instruction availability, even if another known fact appears incompatible; such success is not full ISA certification. Strict validation reports `MissingValidationContext`; an explicit unknown profile remains `UnknownTarget`. No partial DNF evaluator or opcode-specific context rule is added.
+[SDK support: Exclusive numeric SM availability bound](../sdk_support.md#yaml-instruction-spec--exclusive-numeric-sm-availability-bound).
 
 ## Historical 101 source profiles and validation features
 
-`sm_101`/`compute_101` and their A forms begin at PTX8.6; F forms begin at PTX8.8. They remain admitted at PTX9.0/9.3, with no rename-imposed upper window. The corresponding 110 source profiles still begin at PTX9.0. `TargetIdentity` retains architecture101, flavor and exact written spelling. `same_target_identity` compares source architecture/flavor, so101A and110A remain distinct.
-
-The additive base function `target_feature_architecture(identity)` consults explicit private catalog data: the three101 keys project to feature architecture110; other keys retain their architecture. Uncataloged typed keys do not become recognized. Public `TargetProfile` and `TargetInfo` layouts are unchanged. Source/owned/semantic factories use this feature level for numeric SM, retain source identity, and pass the existing110 baseline capabilities `cluster`, `aggregate_smem`, `reserved_smem`, `graph_exec`. Generic101 has no family; 101A/F enable only canonical `sm_110f`, with no100f/103f inheritance or FP64 mapping option. This bounded correspondence follows the published rename and family relation; it is not a physical hardware/driver guarantee.
-
-Availability singular and span exact-target requirements compare validation-feature architecture plus exact flavor through that helper. This matching relation differs from source identity and stored-key equality. A manually supplied `TargetInfo::sm_version` remains the caller's concrete feature fact and is never overwritten by the checker. Source profile introductions, instruction/PTX floors, capabilities and shape constraints remain independent.
-
-Historical instruction data changes only the adopted231 parents:219 preserve existing100A clauses and add101A, with101F only where an original110F branch exists;12 block-selector parents append an8.8 historical101A/F clause. All854 original110 conditions and their floors remain, the DNF limit stays six, and the25 restricted cluster gather4/im2col-W parents remain unchanged. TCGEN closed rows retain kind, scaled-D and explicit scale-vector restrictions: written block16/32 historical gates require8.8, while100-only vector and scaled-D paths remain100-only. Generated operational queries first validate the exact source profile and its minimum version, then apply feature matching. Unknown words and addresses remain unresolved obligations, not facts inferred from live registers.
-
-Both module validators independently join current function `source_region`, `source_version` and exact `source_target` to the current owned region. A valid replacement AST cannot mask contradictory caches. Intrinsically coherent101/110 contexts may be retargeted through a supplied header when the current payload is legal under that effective context; retained availability is not a historical veto. Missing full instruction context still follows the existing `AvailableContext` deferral and strict `MissingValidationContext` policy.
+[SDK support: Historical 101 source profiles and validation features](../sdk_support.md#yaml-instruction-spec--historical-101-source-profiles-and-validation-features).

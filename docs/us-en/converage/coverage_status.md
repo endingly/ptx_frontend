@@ -1,12 +1,16 @@
 # Historical coverage baseline and evidence boundaries
 
+This is a **historical evidence record**, not a current SDK support authority.
+The inventory/model tables and missing-form statements below describe their
+recorded revisions (including `2bd78d6`), and the simulator column retains its
+separate pinned execution scope. Current accepted forms, restrictions and
+limitations are maintained only in the [SDK support contract](../../sdk_support.md).
+
 The technical entry point is the [GitHub Wiki](https://github.com/endingly/ptx_frontend/wiki).
 The [reference index](../index.md) preserves detailed design and instruction-family
 contracts alongside source. This page preserves the historical reconciliation at
 revision `2bd78d605f7fc545c11b77f42e9cd5bc7fe376a4`. The inventory counts and
-six-gap table below describe that snapshot. For the current implementation
-boundary, consult the detailed family references, public contracts and tests;
-documentation changes do not extend implementation coverage.
+six-gap table below describe that snapshot. For current implementation scope, use the [SDK support contract](../../sdk_support.md).
 
 ## Historical ISA inventory
 
@@ -29,7 +33,7 @@ references and tests for the exact accepted boundary.
 [Issue #280](https://github.com/endingly/ptx_frontend/issues/280) tracks the groups
 recorded below against the fixed manual. This historical table records legal ISA
 cases missing from the pinned snapshot; current support is defined by the
-detailed family contracts and tests, and issue merge status is separate.
+[SDK support contract](../../sdk_support.md), and issue merge status is separate.
 
 | Baseline gap | Boundary at the pinned revision | Tracking issue |
 | --- | --- | --- |
@@ -44,29 +48,13 @@ Assembler observations at older PTX versions do not override PTX 9.3 syntax.
 Optional cp.async bounds, WGMMA shape questions and WMMA f64 ambiguities are
 not promoted to confirmed missing-operation claims by this audit.
 
-## Validation and runtime limits
+## Current validation and runtime boundary
 
-The parse/resolve/check pipeline validates modeled source forms. Strict initial
-header order, target-item categories, scalar storage occurrence/layout
-consistency, and function signature/declaration ABI consistency are revalidated
-by both module validation overloads, including the owned path after AST release.
-See the [module validation contract](../resolved_ir_design.md),
-[storage metadata](../storage_declarations.md), and
-[parameter metadata](../parameter_declarations.md) for their precise boundaries.
-Complete source context is required by `resolveAndValidateModule`; this is not
-an assertion of exhaustive PTX validation.
-
-Caller-known descriptor, scale and sparsity facts are conditional assertions.
-TCGEN05 K96 scale-layout role rows retain open semantic obligations. The
-frontend does not prove live descriptor bytes, collector/protocol history,
-memory allocation, cross-thread ordering, numerical execution or GPU results.
-Historical simulator pins and build/ptxas measurements remain historical.
+See the [SDK support contract](../../sdk_support.md#validation-and-context).
+Historical inventory presence is separate from current source-form acceptance.
 
 ## Maintenance
 
-Update corresponding English/Chinese references with changed source contracts
-and focused tests. Keep the Wiki as a technical guide linking those references,
-and keep README limited to background, build/install, use and licensing. Do not
-recreate a handwritten opcode ledger or duplicate its counts as a support gate.
-Code and reproducible checks decide drift; issue status and roadmap checkboxes
-alone do not prove acceptance. Public APIs remain pre-1.0.
+Keep this pinned evidence record historical. Current support claims, syntax and
+operation restrictions, and retained limitations belong to the
+[SDK support contract](../../sdk_support.md).

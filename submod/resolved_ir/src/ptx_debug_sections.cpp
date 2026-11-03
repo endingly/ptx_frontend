@@ -10,6 +10,7 @@
 #include <string_view>
 #include <tuple>
 #include <unordered_map>
+#include <utility>
 
 namespace ptx_frontend::resolved_ir::detail {
 namespace {
@@ -54,6 +55,267 @@ std::optional<IntegerValue> integer_value(
   return IntegerValue{*magnitude,
                       leaf.sign && leaf.sign->text == "-" && *magnitude != 0};
 }
+
+/** Byte extent of one current typed data entry; invalid widths have no proved extent. */
+unsigned section_byte_width(syntax_ast::AstSectionWidth width) {
+  switch (width) {
+    case syntax_ast::AstSectionWidth::B8:
+      return 1;
+    case syntax_ast::AstSectionWidth::B16:
+      return 2;
+    case syntax_ast::AstSectionWidth::B32:
+      return 4;
+    case syntax_ast::AstSectionWidth::B64:
+      return 8;
+  }
+  return 0;
+}
+
+/** Compact current-data span; the payload pointer borrows this validation's sections. */
+struct StringDataSpan {
+  /** Logical byte start across ordered same-name fragments. */
+  uint64_t begin;
+  /** Checked byte count, without expanding typed payload into an image. */
+  uint64_t size;
+  /** Borrowed only until check_debug_section_references returns. */
+  const syntax_ast::AstSectionData* data;
+};
+
+/** Validation-local logical .debug_str positions, independent of source history. */
+struct StringSectionIndex {
+  /** Original entry order; unknown extents stop later absolute-position proofs. */
+  std::vector<StringDataSpan> spans;
+  /** Engaged positions are checked U64 byte offsets; absence is not zero. */
+  std::unordered_map<std::string, std::optional<uint64_t>> labels;
+  /** Known current logical end, absent after invalid/overflowing extent arithmetic. */
+  std::optional<uint64_t> end{0};
+};
+
+/** Index typed extents and labels; never materialize or guess linked bytes. */
+StringSectionIndex string_section_index(
+    std::span<const ResolvedDebugSection> sections) {
+  StringSectionIndex result;
+  for (const auto& section : sections) {
+    if (section.name.text != ".debug_str")
+      continue;
+    result.labels.try_emplace(".debug_str", 0);
+    for (const auto& entry : section.payload) {
+      if (const auto* label =
+              std::get_if<syntax_ast::AstSectionLabelDefinition>(&entry)) {
+        const auto [it, inserted] =
+            result.labels.try_emplace(label->name.text, result.end);
+        if (!inserted)
+          it->second
+              .reset();  // Separate intrinsic checks reject duplicate labels.
+        continue;
+      }
+      const auto& data = std::get<syntax_ast::AstSectionData>(entry);
+      const unsigned width = section_byte_width(data.width);
+      const auto* values =
+          std::get_if<std::vector<syntax_ast::AstSectionInteger>>(&data.value);
+      if (!result.end)
+        continue;
+      if (!width || (values && !std::in_range<uint64_t>(values->size()))) {
+        result.end.reset();
+        continue;
+      }
+      const uint64_t count = values ? static_cast<uint64_t>(values->size()) : 1;
+      if (count > std::numeric_limits<uint64_t>::max() / width) {
+        result.end.reset();
+        continue;
+      }
+      const uint64_t size = count * width;
+      if (size > std::numeric_limits<uint64_t>::max() - *result.end) {
+        result.end.reset();
+        continue;
+      }
+      result.spans.push_back({*result.end, size, &data});
+      *result.end += size;
+    }
+  }
+  return result;
+}
+
+/** Local proof result; NotProven is never a certificate of linked string validity. */
+enum class StringProof {
+  NotProven,
+  Terminated,
+  NonAscii,
+  Unterminated,
+  OutOfBounds,
+  InvalidContent
+};
+
+/** Byte-class counts in a range-valid fixed-width word, independent of serialization. */
+struct StringWordFacts {
+  /** Zero chunks which may terminate any still-active selected suffix. */
+  unsigned zeros = 0;
+  /** Nonzero chunks in the ASCII interval 1..127. */
+  unsigned ascii = 0;
+  /** Chunks in 128..255, invalid if reached before termination. */
+  unsigned high = 0;
+};
+
+/** Validate original sign/magnitude first, then summarize up to eight significance chunks. */
+std::optional<StringWordFacts> string_word_facts(
+    const syntax_ast::AstSectionInteger& leaf, unsigned width) {
+  if (width != 1 && width != 2 && width != 4 && width != 8)
+    return std::nullopt;
+  const auto value = integer_value(leaf);
+  if (!value)
+    return std::nullopt;
+  const unsigned bits = width * 8;
+  const uint64_t maximum = value->negative ? uint64_t{1} << (bits - 1)
+                           : width == 8 ? std::numeric_limits<uint64_t>::max()
+                                        : (uint64_t{1} << bits) - 1;
+  if (value->magnitude > maximum)
+    return std::nullopt;
+  uint64_t word =
+      value->negative ? uint64_t{0} - value->magnitude : value->magnitude;
+  if (width != 8)
+    word &= (uint64_t{1} << bits) - 1;
+  StringWordFacts facts;
+  for (unsigned chunk = 0; chunk < width; ++chunk) {
+    const auto byte = static_cast<uint8_t>((word >> (chunk * 8)) & 0xff);
+    if (byte == 0)
+      ++facts.zeros;
+    else if (byte <= 127)
+      ++facts.ascii;
+    else
+      ++facts.high;
+  }
+  return facts;
+}
+
+/** A possible prefix has consumed only nonzero ASCII and still needs a terminator. */
+constexpr unsigned kStringActive = 1;
+/** A possible serialization has already reached a valid explicit NUL. */
+constexpr unsigned kStringTerminated = 2;
+/** A possible serialization has already reached a high byte before any NUL. */
+constexpr unsigned kStringNonAscii = 4;
+
+/** All outcomes allowed by byte counts, without choosing a significance-to-offset order. */
+unsigned string_word_outcomes(const StringWordFacts& facts,
+                              unsigned remaining) {
+  unsigned outcomes = 0;
+  // A selected suffix can consist solely of nonzero ASCII exactly when enough
+  // such chunks exist to fill it; skipped chunks may contain every zero/high byte.
+  if (facts.ascii >= remaining)
+    outcomes |= kStringActive;
+  if (facts.zeros != 0)
+    outcomes |= kStringTerminated;
+  if (facts.high != 0)
+    outcomes |= kStringNonAscii;
+  return outcomes;
+}
+
+/** Collapse possible outcomes only when their content-validity conclusion agrees. */
+StringProof finish_string_proof(unsigned outcomes, bool known_end) {
+  if (outcomes & kStringTerminated)
+    return outcomes == kStringTerminated ? StringProof::Terminated
+                                         : StringProof::NotProven;
+  if (outcomes & kStringActive) {
+    if (!known_end)
+      return StringProof::NotProven;
+    return outcomes & kStringNonAscii ? StringProof::InvalidContent
+                                      : StringProof::Unterminated;
+  }
+  return outcomes & kStringNonAscii ? StringProof::NonAscii
+                                    : StringProof::NotProven;
+}
+
+/** Compose selected suffix/word/list/fragment facts without expanding a byte image. */
+StringProof string_proof(const StringSectionIndex& index, uint64_t label,
+                         uint64_t offset) {
+  if (offset > std::numeric_limits<uint64_t>::max() - label)
+    return index.end ? StringProof::OutOfBounds : StringProof::NotProven;
+  const uint64_t start = label + offset;
+  if (index.end && start >= *index.end)
+    return StringProof::OutOfBounds;
+  unsigned outcomes = kStringActive;
+  for (const auto& span : index.spans) {
+    if (start >= span.begin + span.size)
+      continue;
+    const auto* values =
+        std::get_if<std::vector<syntax_ast::AstSectionInteger>>(
+            &span.data->value);
+    if (!values)
+      return StringProof::
+          NotProven;  // Linked symbolic bytes are a real barrier.
+    const unsigned width = section_byte_width(span.data->width);
+    if (span.data->type.text != ".b" + std::to_string(width * 8))
+      return StringProof::NotProven;
+    const uint64_t relative = start > span.begin ? start - span.begin : 0;
+    size_t element = static_cast<size_t>(relative / width);
+    unsigned skipped = static_cast<unsigned>(relative % width);
+    for (; element < values->size(); ++element, skipped = 0) {
+      const auto facts = string_word_facts((*values)[element], width);
+      if (!facts)
+        return StringProof::
+            NotProven;  // Intrinsic range checks own invalid leaves.
+      outcomes = (outcomes & ~kStringActive) |
+                 string_word_outcomes(*facts, width - skipped);
+      if (!(outcomes & kStringActive))
+        return finish_string_proof(outcomes, false);
+    }
+  }
+  return finish_string_proof(outcomes, index.end.has_value());
+}
+
+/** Recheck current location leaves against current ordered section data before context gates. */
+void check_string_contents(const StringSectionIndex& index,
+                           const binding::SymbolTable& symbols,
+                           checker::CheckDiagnostics& diagnostics) {
+  for (const auto& location : symbols.debugLocations()) {
+    if (!location.inline_context)
+      continue;
+    const auto& context = *location.inline_context;
+    const auto label = index.labels.find(context.function_name_label.text);
+    if (label == index.labels.end() || !label->second)
+      continue;
+    uint64_t offset = 0;
+    SourceRange range = context.function_name_label.range;
+    if (context.function_name_offset) {
+      const auto value =
+          base::parseIntegerMagnitude(context.function_name_offset->text);
+      if (!value)
+        continue;  // Existing location-leaf checks own malformed numeric tokens.
+      offset = *value;
+      range = context.function_name_offset->range;
+    }
+    std::string message;
+    switch (string_proof(index, *label->second, offset)) {
+      case StringProof::NonAscii:
+        message =
+            "Debug function-name has a known non-ASCII byte before its NUL "
+            "terminator.";
+        break;
+      case StringProof::Unterminated:
+        message =
+            "Debug function-name reaches the known .debug_str end without a "
+            "NUL terminator.";
+        break;
+      case StringProof::InvalidContent:
+        message =
+            "Debug function-name cannot be ASCII and NUL-terminated: every "
+            "possible byte ordering has a high byte before NUL or reaches the "
+            "known end without NUL.";
+        break;
+      case StringProof::OutOfBounds:
+        message =
+            "Debug function-name starts outside the known .debug_str byte "
+            "bounds.";
+        break;
+      case StringProof::Terminated:
+      case StringProof::NotProven:
+        continue;
+    }
+    diagnostics.push_back({.kind = checker::CheckDiagnosticKind::RuleViolation,
+                           .range = range,
+                           .message = std::move(message)});
+  }
+}
+
 }  // namespace
 
 std::vector<ResolvedDebugSection> debug_sections(
@@ -294,6 +556,7 @@ checker::CheckDiagnostics check_debug_section_references(
            .message = "Debug function-name reference has no current typed "
                       ".debug_str label."});
   }
+  check_string_contents(string_section_index(sections), symbols, diagnostics);
   return diagnostics;
 }
 }  // namespace ptx_frontend::resolved_ir::detail

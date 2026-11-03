@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <ptx_frontend/cst/ptx_cst_parser.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <string>
 #include <string_view>
+#include <tuple>
 
 #include "test_syntax_parse_helpers.hpp"
 
@@ -485,5 +487,441 @@ TEST(DebugSectionPayload,
       .name.text = "gone";
   section_lifetime(*labelled, false);
 }
+
+/** Build complete source with independent prior .loc and typed section data. */
+std::string function_name_source(std::string_view sections,
+                                 std::string_view reference = "name") {
+  return ".version 9.3\n.target sm_90\n.file 1 \"a.cu\"\n" +
+         std::string(sections) +
+         "\n.entry kernel(){.loc 1 2 0\n"
+         ".loc 1 1 0, function_name " +
+         std::string(reference) + ", inlined_at 1 2 0\nret;}";
+}
+
+/** Identify the intrinsic known-byte reason, independently of context diagnostics. */
+bool has_string_error(
+    const checker::CheckDiagnostics& errors, std::string_view reason = "",
+    std::optional<SourceRange> expected_range = std::nullopt) {
+  return std::any_of(errors.begin(), errors.end(), [&](const auto& error) {
+    return error.kind == checker::CheckDiagnosticKind::RuleViolation &&
+           error.message.starts_with("Debug function-name") &&
+           error.message.find(reason) != std::string::npos &&
+           error.range != SourceRange{} &&
+           (!expected_range || error.range == *expected_range);
+  });
+}
+
+/** Select the actual inline label or byte-offset range from this dataset's own table. */
+std::optional<SourceRange> function_name_range(
+    const binding::SymbolTable& symbols) {
+  for (const auto& location : symbols.debugLocations()) {
+    if (!location.inline_context)
+      continue;
+    const auto& context = *location.inline_context;
+    return context.function_name_offset ? context.function_name_offset->range
+                                        : context.function_name_label.range;
+  }
+  return std::nullopt;
+}
+
+/** Locate a current numeric leaf in an actual owner, without replaying its old syntax. */
+syntax_ast::AstSectionInteger& function_name_leaf(ResolvedModule& module,
+                                                  size_t index) {
+  auto& data =
+      std::get<syntax_ast::AstSectionData>(module.sections.front().payload[1]);
+  return std::get<std::vector<syntax_ast::AstSectionInteger>>(data.value)
+      .at(index);
+}
+
+/** The immutable original has no owner after its intended known termination failure. */
+TEST(DebugSectionPayload, RejectsOriginalKnownNonterminatedFunctionName) {
+  const std::string original = R"ptx(.version 9.3
+.target sm_80
+.file 1 "x.cu"
+.section .debug_str {name:.b8 65}
+.entry k(){.loc 1 2 0
+.loc 1 1 0, function_name name, inlined_at 1 2 0
+ret;}
+)ptx";
+  const auto ast = test_helpers::parseModule(original);
+  ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+  const auto bound = binding::bindSymbols(*ast);
+  ASSERT_EQ(bound.table.debugLocations().size(), 2u);
+  const auto range = bound.table.debugLocations()
+                         .back()
+                         .inline_context->function_name_label.range;
+  const auto draft = resolveModuleOnly(*ast);
+  ASSERT_FALSE(draft);
+  EXPECT_TRUE(std::any_of(
+      draft.error().begin(), draft.error().end(), [&](const auto& error) {
+        return error.checker_kind ==
+                   checker::CheckDiagnosticKind::RuleViolation &&
+               error.range == range &&
+               error.message.find("without a NUL") != std::string::npos;
+      }));
+  EXPECT_FALSE(resolveAndValidateModule(*ast));
+  // No source/owned/copy/clone/lifetime success is claimed for an absent owner.
+  auto matched = section_owned(
+      function_name_source(".section .debug_str {name:.b8 65,0;}"));
+  ASSERT_TRUE(matched);
+  section_lifetime(*matched);
+}
+
+/** ASCII bytes through the first explicit NUL are the complete local proof boundary. */
+TEST(DebugSectionPayload, ChecksReferencedAsciiPrefixAndExplicitNul) {
+  for (const auto& [payload, accepted] : {std::pair{"65,0", true},
+                                          {"0", true},
+                                          {"127,0", true},
+                                          {"128,0", false},
+                                          {"-1,0", false},
+                                          {"0,255", true},
+                                          {"65", false},
+                                          {"65,66", false}}) {
+    SCOPED_TRACE(payload);
+    const auto source = function_name_source(".section .debug_str {name:.b8 " +
+                                             std::string(payload) + ";}");
+    const auto ast = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    auto result = resolveModuleOnly(*ast);
+    ASSERT_EQ(bool(result), accepted);
+    EXPECT_EQ(bool(resolveAndValidateModule(*ast)), accepted);
+    if (result) {
+      EXPECT_TRUE(validateModule(*ast, *result));
+      section_lifetime(*result);
+    } else {
+      EXPECT_TRUE(std::any_of(
+          result.error().begin(), result.error().end(), [](const auto& error) {
+            return error.checker_kind ==
+                       checker::CheckDiagnosticKind::RuleViolation &&
+                   error.message.starts_with("Debug function-name");
+          }));
+    }
+  }
+}
+
+/** Offsets select bytes within the full logical section, not a label-bounded object. */
+TEST(DebugSectionPayload, ChecksFunctionNameOffsetsAcrossOrderedFragments) {
+  for (const auto& [sections, reference, accepted] :
+       {std::tuple{".section .debug_str {name:.b8 65,0;}", "name + 0", true},
+        {".section .debug_str {name:.b8 65,0;}", "name + 1", true},
+        {".section .debug_str {name:.b8 65,0;}", ".debug_str + 1", true},
+        {".section .debug_str {name:.b8 65,0;}", "name + 2", false},
+        {".section .debug_str {name:.b8 65,66,0;}", "name + 1", true},
+        {".section .debug_str {.b8 65; name:.b8 0;}",
+         "name + 18446744073709551615U", false},
+        {".section .debug_str {name:}", "name + 0", false},
+        {".section .debug_str {name:.b8 65,0;}", "name + 18446744073709551615U",
+         false},
+        {".section .debug_str {name:.b8 0,65;}", "name + 1", false},
+        {".section .debug_str {name:.b8 65;} .section .debug_str {.b8 0;}",
+         "name", true},
+        {".section .debug_str {name:.b8 65;} .section .debug_str {next:.b8 "
+         "66;}",
+         "name", false},
+        {".section .debug_str {.b8 0;} .section .debug_str {name:.b8 65;}",
+         "name", false},
+        {".section .debug_str {name:.b8 65;} .section .debug_info {.b8 0;}",
+         "name", false},
+        {".section .debug_str {name:.b8 65; next:.b8 66,0;}", "name", true}}) {
+    SCOPED_TRACE(std::string(sections) + reference);
+    const auto ast =
+        test_helpers::parseModule(function_name_source(sections, reference));
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    const auto result = resolveModuleOnly(*ast);
+    EXPECT_EQ(bool(result), accepted);
+    if (result) {
+      EXPECT_TRUE(validateModule(*result));
+      EXPECT_TRUE(validateModule(*ast, *result));
+    } else {
+      EXPECT_TRUE(std::any_of(
+          result.error().begin(), result.error().end(), [](const auto& error) {
+            return error.checker_kind ==
+                       checker::CheckDiagnosticKind::RuleViolation &&
+                   error.message.starts_with("Debug function-name");
+          }));
+    }
+  }
+}
+
+/** Known B16 ASCII-plus-zero needs no ordering; symbolic bytes retain qualification. */
+TEST(DebugSectionPayload, DoesNotGuessRelocationOrMultibyteStringContents) {
+  for (const auto sections :
+       {".section .debug_str {name:.b16 65;}",
+        ".section .debug_str {name:.b32 .debug_str;}",
+        ".section .debug_str {name:.b32 .debug_str; .b8 255;}",
+        ".section .debug_str {name:.b8 0; .b32 .debug_str;}"}) {
+    const auto ast = test_helpers::parseModule(function_name_source(sections));
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    auto result = resolveModuleOnly(*ast);
+    ASSERT_TRUE(result) << result.error().front().message;
+    EXPECT_TRUE(validateModule(*result));
+    EXPECT_TRUE(validateModule(*ast, *result));
+    // Success for opaque bytes is not a linked-content or whole-DWARF certificate.
+  }
+  const auto ast = test_helpers::parseModule(function_name_source(
+      ".section .debug_str {name:.b32 .debug_str;}", "name + 4"));
+  ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+  EXPECT_FALSE(resolveModuleOnly(*ast));
+}
+
+/** Current and rebound sections are checked independently after real source/AST death. */
+TEST(DebugSectionPayload,
+     RechecksFunctionNameCurrentAndSuppliedDatasetsWithoutContext) {
+  const auto good_source =
+      function_name_source(".section .debug_str {name:.b8 65,0;}");
+  auto owner = section_owned(good_source);
+  ASSERT_TRUE(owner);
+  ASSERT_FALSE(owner->sections.empty());
+  ASSERT_FALSE(owner->symbols.debugLocations().empty());
+  const auto current_range = function_name_range(owner->symbols);
+  ASSERT_TRUE(current_range);
+  const auto good_ast = test_helpers::parseModule(good_source);
+  ASSERT_MODULE_PARSE_SUCCEEDS(good_ast);
+  function_name_leaf(*owner, 0).magnitude.text = "66";
+  EXPECT_TRUE(validateModule(*owner));
+  EXPECT_TRUE(validateModule(*good_ast, *owner));
+  auto different = test_helpers::parseModule(
+      function_name_source(".section .debug_str {name:.b8 67,0;}"));
+  ASSERT_MODULE_PARSE_SUCCEEDS(different);
+  EXPECT_TRUE(validateModule(*different, *owner));
+  function_name_leaf(*owner, 1).magnitude.text = "65";
+  const auto current = validateModule(*owner);
+  ASSERT_FALSE(current);
+  EXPECT_TRUE(
+      has_string_error(current.error(), "without a NUL", *current_range));
+  const auto current_with_source = validateModule(*good_ast, *owner);
+  ASSERT_FALSE(current_with_source);
+  EXPECT_TRUE(has_string_error(current_with_source.error(), "without a NUL",
+                               *current_range));
+  section_lifetime(*owner, false);
+  function_name_leaf(*owner, 1).magnitude.text = "0";
+  auto bad_ast = test_helpers::parseModule(
+      function_name_source(".section .debug_str {name:.b8 65;}"));
+  ASSERT_MODULE_PARSE_SUCCEEDS(bad_ast);
+  const auto supplied_bound = binding::bindSymbols(*bad_ast);
+  const auto supplied_range = function_name_range(supplied_bound.table);
+  ASSERT_TRUE(supplied_range);
+  const auto supplied = validateModule(*bad_ast, *owner);
+  ASSERT_FALSE(supplied);
+  EXPECT_TRUE(
+      has_string_error(supplied.error(), "without a NUL", *supplied_range));
+  EXPECT_TRUE(validateModule(*owner));
+  const auto sections = owner->sections;
+  owner->sections.clear();
+  EXPECT_FALSE(validateModule(*good_ast, *owner));
+  owner->sections = sections;
+  auto no_sections = test_helpers::parseModule(function_name_source(""));
+  ASSERT_MODULE_PARSE_SUCCEEDS(no_sections);
+  EXPECT_FALSE(validateModule(*no_sections, *owner));
+  for (const auto policy : {ModuleValidationPolicy::RequireCompleteContext,
+                            ModuleValidationPolicy::AvailableContext}) {
+    auto incomplete = *owner;
+    for (auto& region : incomplete.header.regions) {
+      region.version.reset();
+      region.target_options.clear();
+    }
+    for (auto& function : incomplete.functions) {
+      function.source_version.reset();
+      function.source_target.reset();
+    }
+    function_name_leaf(incomplete, 1).magnitude.text = "65";
+    const auto incomplete_range = function_name_range(incomplete.symbols);
+    ASSERT_TRUE(incomplete_range);
+    const auto errors = validateModule(incomplete, policy);
+    ASSERT_FALSE(errors);
+    EXPECT_TRUE(
+        has_string_error(errors.error(), "without a NUL", *incomplete_range));
+    const auto source_errors = validateModule(*good_ast, incomplete, policy);
+    ASSERT_FALSE(source_errors);
+    EXPECT_TRUE(has_string_error(source_errors.error(), "without a NUL",
+                                 *incomplete_range));
+  }
+}
+
+/** General byte-count facts decide whole words and all provable selected suffixes. */
+TEST(DebugSectionPayload, UsesOrderIndependentWiderWordFacts) {
+  /** Typed source extent and proof expectation; no host byte-order oracle is used. */
+  struct WordCase {
+    /** Original width-valid data production. */
+    std::string_view payload;
+    /** Byte offset inside the same typed word/list. */
+    uint64_t offset;
+    /** Public validation result; qualified cases are not validity certificates. */
+    bool accepted;
+    /** Required known failure reason, empty for accepted/qualified controls. */
+    std::string_view reason;
+  };
+  constexpr std::array cases{
+      WordCase{".b16 0x4141", 0, false, "without a NUL"},
+      WordCase{".b16 0x4141", 1, false, "without a NUL"},
+      WordCase{".b16 0x4142", 0, false, "without a NUL"},
+      WordCase{".b16 0x4142", 1, false, "without a NUL"},
+      WordCase{".b32 0x41414141", 0, false, "without a NUL"},
+      WordCase{".b32 0x41414141", 3, false, "without a NUL"},
+      WordCase{".b32 0x41424344", 3, false, "without a NUL"},
+      WordCase{".b64 0x4141414141414141", 0, false, "without a NUL"},
+      WordCase{".b64 0x4141414141414141", 7, false, "without a NUL"},
+      WordCase{".b16 0", 0, true, ""},
+      WordCase{".b16 -0", 1, true, ""},
+      WordCase{".b32 +0", 0, true, ""},
+      WordCase{".b32 0", 3, true, ""},
+      WordCase{".b64 0", 0, true, ""},
+      WordCase{".b64 0", 7, true, ""},
+      WordCase{".b16 0x0041", 0, true, ""},
+      WordCase{".b32 0x00000041", 1, true, ""},
+      WordCase{".b16 -1", 0, false, "non-ASCII"},
+      WordCase{".b16 -1", 1, false, "non-ASCII"},
+      WordCase{".b32 -1", 0, false, "non-ASCII"},
+      WordCase{".b32 -1", 3, false, "non-ASCII"},
+      WordCase{".b64 -1", 0, false, "non-ASCII"},
+      WordCase{".b64 -1", 7, false, "non-ASCII"},
+      WordCase{".b64 18446744073709551615", 0, false, "non-ASCII"},
+      WordCase{".b32 0x80804141", 1, false, "non-ASCII"},
+      WordCase{".b16 0x8041", 0, false, "non-ASCII"},
+      WordCase{".b16 0x8041", 1, false, "every possible byte ordering"},
+      WordCase{".b16 0x4141,0", 0, true, ""},
+      WordCase{".b16 0x4141,0", 1, true, ""},
+      WordCase{".b16 0x4141,0", 2, true, ""},
+      WordCase{".b16 0x4141,0", 3, true, ""},
+      WordCase{".b16 0x4141,0", 4, false, "byte bounds"},
+      WordCase{".b16 0x0041", 1, true, ""},
+      WordCase{".b32 0x41420000", 2, true, ""},
+      WordCase{".b16 0x0080", 0, true, ""},
+      WordCase{".b64 -9223372036854775808", 0, true, ""}};
+  for (const auto& item : cases) {
+    SCOPED_TRACE(std::string(item.payload) + "/" + std::to_string(item.offset));
+    const auto source = function_name_source(
+        ".section .debug_str {name:" + std::string(item.payload) + ";}",
+        "name + " + std::to_string(item.offset));
+    const auto ast = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    const auto bound = binding::bindSymbols(*ast);
+    const auto range = bound.table.debugLocations()
+                           .back()
+                           .inline_context->function_name_offset->range;
+    const auto result = resolveModuleOnly(*ast);
+    EXPECT_EQ(bool(result), item.accepted);
+    EXPECT_EQ(bool(resolveAndValidateModule(*ast)), item.accepted);
+    if (result) {
+      EXPECT_TRUE(validateModule(*ast, *result));
+      section_lifetime(*result);
+    } else {
+      EXPECT_TRUE(std::any_of(
+          result.error().begin(), result.error().end(), [&](const auto& error) {
+            return error.checker_kind ==
+                       checker::CheckDiagnosticKind::RuleViolation &&
+                   error.range == range &&
+                   error.message.find(item.reason) != std::string::npos;
+          }));
+    }
+  }
+  // Mixed zero/high bytes and arbitrary zero-containing suffixes above remain
+  // qualified; accepted results do not select an exact serialized string.
+}
+
+/** Possible ASCII continuations compose with later known words and ordered fragments. */
+TEST(DebugSectionPayload,
+     ComposesWiderSuffixFactsWithoutChoosingSerialization) {
+  for (const auto& [sections, reference, accepted] :
+       {std::tuple{".section .debug_str {name:.b16 0x4142;} .section "
+                   ".debug_str {.b8 0;}",
+                   "name", true},
+        {".section .debug_str {name:.b16 0x4142;} .section .debug_str "
+         "{next:.b8 66;}",
+         "name + 1", false},
+        {".section .debug_str {name:.b16 0x0041; .b8 0;}", "name + 1", true},
+        {".section .debug_str {name:.b32 0x41420000;} .section .debug_str {.b8 "
+         "0;}",
+         "name + 2", true},
+        {".section .debug_str {name:.b16 0x4141;} .section .debug_info {.b8 "
+         "0;}",
+         "name", false},
+        {".section .debug_str {name:.b16 -1; .b8 0;}", "name", false},
+        {".section .debug_str {name:.b8 0; .b16 -1; .b32 .debug_str;}", "name",
+         true},
+        {".section .debug_str {name:.b32 .debug_str; .b64 0;}", "name", true},
+        {".section .debug_str {name:.b32 .debug_str; .b64 0;}", "name + 4",
+         true},
+        {".section .debug_str {name:.b16 0x8041; .b8 0;}", "name + 1", true}}) {
+    SCOPED_TRACE(std::string(sections) + reference);
+    const auto ast =
+        test_helpers::parseModule(function_name_source(sections, reference));
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    const auto result = resolveModuleOnly(*ast);
+    EXPECT_EQ(bool(result), accepted);
+    if (result) {
+      EXPECT_TRUE(validateModule(*result));
+      EXPECT_TRUE(validateModule(*ast, *result));
+    }
+  }
+  // The symbolic-prefix-at-zero and high-byte suffix controls are not-proven, unlike the ASCII-only
+  // ambiguous suffix followed by a known zero, whose active alternatives all terminate.
+}
+
+/** Wider current words are recomputed independently of healthy or bad supplied datasets. */
+TEST(DebugSectionPayload, RechecksWiderCurrentDatasetsAfterSourceDeath) {
+  const auto good_source =
+      function_name_source(".section .debug_str {name:.b16 0x4141,0;}");
+  auto owner = section_owned(good_source);
+  ASSERT_TRUE(owner);
+  ASSERT_FALSE(owner->sections.empty());
+  ASSERT_FALSE(owner->symbols.debugLocations().empty());
+  const auto current_range = function_name_range(owner->symbols);
+  ASSERT_TRUE(current_range);
+  const auto healthy = test_helpers::parseModule(good_source);
+  ASSERT_MODULE_PARSE_SUCCEEDS(healthy);
+  function_name_leaf(*owner, 0).magnitude.text = "0x4243";
+  EXPECT_TRUE(validateModule(*owner));
+  EXPECT_TRUE(validateModule(*healthy, *owner));
+  const auto different = test_helpers::parseModule(
+      function_name_source(".section .debug_str {name:.b16 0x4445,0;}"));
+  ASSERT_MODULE_PARSE_SUCCEEDS(different);
+  EXPECT_TRUE(validateModule(*different, *owner));
+  function_name_leaf(*owner, 1).magnitude.text = "0x4242";
+  auto bad = validateModule(*owner);
+  ASSERT_FALSE(bad);
+  EXPECT_TRUE(has_string_error(bad.error(), "without a NUL", *current_range));
+  auto supplied = validateModule(*healthy, *owner);
+  ASSERT_FALSE(supplied);
+  EXPECT_TRUE(
+      has_string_error(supplied.error(), "without a NUL", *current_range));
+  section_lifetime(*owner, false);
+  function_name_leaf(*owner, 1).magnitude.text = "0";
+  const auto bad_source = test_helpers::parseModule(
+      function_name_source(".section .debug_str {name:.b16 0x4546,0x4748;}"));
+  ASSERT_MODULE_PARSE_SUCCEEDS(bad_source);
+  const auto supplied_bound = binding::bindSymbols(*bad_source);
+  const auto supplied_range = function_name_range(supplied_bound.table);
+  ASSERT_TRUE(supplied_range);
+  auto rejected = validateModule(*bad_source, *owner);
+  ASSERT_FALSE(rejected);
+  EXPECT_TRUE(
+      has_string_error(rejected.error(), "without a NUL", *supplied_range));
+  EXPECT_TRUE(validateModule(*owner));
+  for (const auto policy : {ModuleValidationPolicy::RequireCompleteContext,
+                            ModuleValidationPolicy::AvailableContext}) {
+    auto incomplete = *owner;
+    for (auto& region : incomplete.header.regions) {
+      region.version.reset();
+      region.target_options.clear();
+    }
+    for (auto& function : incomplete.functions) {
+      function.source_version.reset();
+      function.source_target.reset();
+    }
+    function_name_leaf(incomplete, 1).magnitude.text = "0x4242";
+    const auto incomplete_range = function_name_range(incomplete.symbols);
+    ASSERT_TRUE(incomplete_range);
+    const auto current = validateModule(incomplete, policy);
+    ASSERT_FALSE(current);
+    EXPECT_TRUE(
+        has_string_error(current.error(), "without a NUL", *incomplete_range));
+    const auto with_source = validateModule(*healthy, incomplete, policy);
+    ASSERT_FALSE(with_source);
+    EXPECT_TRUE(has_string_error(with_source.error(), "without a NUL",
+                                 *incomplete_range));
+  }
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

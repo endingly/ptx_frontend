@@ -3,12 +3,14 @@
 #include <algorithm>
 #include <array>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <vector>
 
+#include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
@@ -156,6 +158,35 @@ TEST(LocInlinePrecedence, PreservesFullWidthNumericLeaves) {
       if ((field == 0 || field == 3) && value != "1")
         source.insert(source.find(".section"),
                       ".file " + value + " \"other.cu\"\n");
+      if (field == 6 && value != "0") {
+        PtxSyntaxParser parser(source);
+        const auto ast = parser.parseModule();
+        ASSERT_TRUE(ast && ast.diagnostics.empty());
+        const auto bound = binding::bindSymbols(*ast);
+        ASSERT_EQ(bound.table.debugLocations().size(), 2u);
+        const auto& offset = *bound.table.debugLocations()
+                                  .back()
+                                  .inline_context->function_name_offset;
+        EXPECT_EQ(offset.text, value);
+        const auto decoded = base::parseIntegerMagnitude(offset.text);
+        ASSERT_TRUE(decoded);
+        EXPECT_EQ(*decoded, value == "4294967296"
+                                ? uint64_t{1} << 32
+                                : std::numeric_limits<uint64_t>::max());
+        const auto rejected = resolveModuleOnly(*ast);
+        ASSERT_FALSE(rejected);
+        EXPECT_TRUE(std::any_of(
+            rejected.error().begin(), rejected.error().end(),
+            [&](const auto& error) {
+              return error.checker_kind ==
+                         checker::CheckDiagnosticKind::RuleViolation &&
+                     error.range == offset.range &&
+                     error.message.find("byte bounds") != std::string::npos;
+            }));
+        EXPECT_FALSE(resolveAndValidateModule(*ast));
+        // Full U64 leaves remain valid; the selected finite section byte is absent.
+        continue;
+      }
       auto module = locationDraft(source);
       ASSERT_TRUE(module);
       ASSERT_EQ(module->symbols.debugLocations().size(), 2u);

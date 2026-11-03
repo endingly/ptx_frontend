@@ -1580,6 +1580,16 @@ Exact-word 契约仅覆盖既有 literal helper 的 F16x2、BF16x2、E4M3x4 与 
 
 该私有 helper 契约不向九个 multimem vector 字段、六个相邻 scalar packed 字段或 atomic 字段授予 literal 权限。既有 scalar alternate RNE/NaN 策略与 integer-origin 区分仍独立。公共结构、metadata 与生成字段不变；记录 delivery 完成前仍需 current Debug、installed-only consumer 检查及独立 actual-diff 验收。
 
+### 所引用 debug function-name 字节
+
+Function-name reference 契约增加对当前 typed `.debug_str` payload 的有限检查，不依赖 target/version availability。同名 fragment 按保留顺序连接；label 仅标记 byte position，不隐含 terminator。Label 或 section base 加上经过检查的 unsigned64 offset 选择首 byte。已知 B8 integer leaf 先通过原始有符号／无符号范围检查，再解释为 byte。所选已知 ASCII prefix 必须在已知 logical-section 末尾之前遇到显式零；允许空名称。零之前的已知128..255 byte、到已知末尾仍无零的 nonzero sequence，或位于已知末尾及之外的起点，均在 label 或选址 offset range 产生 RuleViolation。遇到零即完成该 reference 的证明，之后无关 byte 不影响此项检查。
+
+原始范围合法的 B16/B32/B64 numeric word 可从精确的 width-bounded bit pattern 提供与顺序无关的事实。Byte-count summary 区分零、非零 ASCII 与 high-bit chunk，不选择 serialization。非零 ASCII word 继续检查后续数据；全零的所选 suffix 或含零的完整 ASCII word 可证明终止；无零且含 high-bit 的完整 word 为非法。若 zero chunk 数量大于 skipped byte 数量，suffix 必然保留 terminator。可能已终止、也可能继续的纯 ASCII suffix 保留两种结果，之后已知 NUL 可完成所有仍 active 的选择。若所有剩余顺序均非法但原因不同，diagnostic 使用合并的 ASCII/NUL 内容错误。
+
+真正依赖顺序的 zero/high-bit word，以及可能跳过所有零的 suffix 仍为 not-proven。Symbolic/relocated byte value 也保持 unknown，经过检查的 extent 仍可证明 bounds。前端不猜 endianness、不把 unknown 替换为零、不分配 dense image，也不解码 DWARF。Unknown content 不构成合法 linked string 证书，不能豁免此前的确定错误；已证明的 NUL 使该 reference 之后的数据无关。Label 与 fragment boundary 不补 NUL，不能假定另一 section 或外部 object 补全名称。
+
+Current-owned sections/table 与 supplied replacement sections/rebound table 分别独立检查。一致的当前 byte 修改及各自合法但不同的 debug dataset 无需重放原始内容，仍可有效。缺少上下文不能遮蔽已知内容错误。完整 unsigned64 location leaf 仍可 parse 与 bind；超出已知有限 section 的 offset 是更强的 byte-bounds 错误，不是 numeric overflow。原始 source 若在 ownership 前被拒绝，不得声称 owned/copy/clone/lifetime 成功；这些检查来自另行合法的 terminated source。公共结构、source identity、location precedence、section locality/range/version 与生成 metadata 不变。Source 接受与当前校验经由同一个私有 reference check 应用此谓词。
+
 ### 浮点 value-vector source 契约
 
 恰有九个既有 `src` 字段采用 `WithLocs<ResolvedValueVector>`：v2/v4/v8 的 weak、ordered 浮点 store 与浮点 add reduction。Class、selector/layout identity、element type domain、arity、default、availability 和 address 均保持不变。公共 field/factory/observer payload 从 `ResolvedRegisterVector` 迁移，consumer 必须使用匹配的生成头与库重建。每个既有 register lane 包装为 `RegOrImm`，保留 location 与 `ResolvedVectorSource`，并用 `std::get_if` 区分 alternative。原有 null register element 不是 immediate，也不会获得 sink 权限。

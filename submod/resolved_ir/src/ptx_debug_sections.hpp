@@ -15,7 +15,10 @@ std::vector<ResolvedDebugSection> debug_sections(
 checker::CheckDiagnostics check_debug_sections(
     std::span<const ResolvedDebugSection> sections,
     std::optional<checker::PtxVersion> version, SourceRange module_range);
-/** Rejoin current metadata-only function-name references to current typed labels. */
+/** Rejoin current function-name references and prove known ASCII/NUL byte prefixes.
+ * Numeric words contribute order-independent byte facts; ambiguous ordering or linked
+ * symbolic bytes remain not-proven. No serialization or dense byte image is guessed.
+ */
 checker::CheckDiagnostics check_debug_section_references(
     std::span<const ResolvedDebugSection> sections,
     const binding::SymbolTable& symbols);

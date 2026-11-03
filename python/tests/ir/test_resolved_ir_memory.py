@@ -106,6 +106,23 @@ from ptx_frontend.ir.resolved_ir import (
 from .test_resolved_ir import BACKEND, ResolvedIrFixture
 
 
+def _static_array_bodies(source: str, element_type: str) -> dict[str, str]:
+    """Map generated named ``std::array`` declarations to their initializer bodies."""
+
+    pattern = re.compile(
+        rf"static constexpr std::array<{re.escape(element_type)},\s*\d+>\s+"
+        r"(?P<name>[A-Za-z_]\w*)\s*=\s*\{(?P<body>.*?)^\s*\};",
+        re.MULTILINE | re.DOTALL,
+    )
+    arrays: dict[str, str] = {}
+    for match in pattern.finditer(source):
+        name = match.group("name")
+        if name in arrays:
+            raise AssertionError(f"generated array name {name!r} is not unique")
+        arrays[name] = match.group("body")
+    return arrays
+
+
 def field_cpp_constant_expr(field):
     """Use this module's explicit repository backend for C++ field spelling."""
 
@@ -1071,7 +1088,11 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
         )
         expected_availability = {"any_of": [
             {"ptx": "8.0", "sm": 90, "target": "sm_90a"},
-            {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+            {
+                "ptx": "8.6",
+                "sm": 100,
+                "targets": ["sm_100a", "sm_101a", "sm_101f"],
+            },
             {"ptx": "8.7", "sm": 120, "target": "sm_120a"},
             {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
             {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
@@ -1296,20 +1317,45 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                 "QueryCancelGetFirstCtaidZ",
             ],
         )
-        self.assertEqual(
-            dict(variants[0].availability),
-            {"any_of": [{"ptx": "8.6", "sm": 100, "capabilities": ["cluster"]}]},
-        )
-        self.assertEqual(
-            dict(variants[2].availability),
-            {"any_of": [
-                {"ptx": "8.6", "sm": 100, "target": "sm_100a", "capabilities": ["cluster"]},
-                {"ptx": "8.6", "sm": 120, "target": "sm_120a", "capabilities": ["cluster"]},
-                {"ptx": "8.8", "sm": 100, "family": "sm_100f", "capabilities": ["cluster"]},
-                {"ptx": "8.8", "sm": 120, "family": "sm_120f", "capabilities": ["cluster"]},
-                {"ptx": "9.0", "sm": 110, "family": "sm_110f", "capabilities": ["cluster"]},
-            ]},
-        )
+        ordinary_availability = {
+            "any_of": [{"ptx": "8.6", "sm": 100, "capabilities": ["cluster"]}]
+        }
+        for variant in variants[:2]:
+            self.assertEqual(dict(variant.availability), ordinary_availability)
+        multicast_availability = {"any_of": [
+            {
+                "ptx": "8.6",
+                "sm": 100,
+                "targets": ["sm_100a", "sm_101a", "sm_101f"],
+                "capabilities": ["cluster"],
+            },
+            {
+                "ptx": "8.6",
+                "sm": 120,
+                "target": "sm_120a",
+                "capabilities": ["cluster"],
+            },
+            {
+                "ptx": "8.8",
+                "sm": 100,
+                "family": "sm_100f",
+                "capabilities": ["cluster"],
+            },
+            {
+                "ptx": "8.8",
+                "sm": 120,
+                "family": "sm_120f",
+                "capabilities": ["cluster"],
+            },
+            {
+                "ptx": "9.0",
+                "sm": 110,
+                "family": "sm_110f",
+                "capabilities": ["cluster"],
+            },
+        ]}
+        for variant in variants[2:4]:
+            self.assertEqual(dict(variant.availability), multicast_availability)
         self.assertEqual(
             [(field.name, field_cpp_type(field)) for field in variants[0].fields],
             [
@@ -2229,12 +2275,14 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
             ))
 
     def test_vector_atomic_register_domain_codegen(self) -> None:
-        """Emit lane-type domains and family policy only for opted-in vectors."""
+        """Check logical address roles and lane-type domains in emitted descriptors."""
+        category = "parallel_synchronization_and_communication"
+        context = build_test_generation_context(self.database)
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "atomic_descriptor.cpp"
             generate_resolved_descriptor_source(
-                build_test_generation_context(self.database),
-                category="parallel_synchronization_and_communication",
+                context,
+                category=category,
                 output_path=output,
             )
             generated = output.read_text()
@@ -2242,22 +2290,189 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                       generated)
         self.assertIn(".allowed_register_types =", generated)
         self.assertIn(".require_uniform_register_family = true", generated)
-        binding_arrays = dict(re.findall(
-            r"static constexpr std::array<check_end::ResolvedOperandBindingDescriptor, \d+>"
-            r"\s+(\w+) = \{(.*?)\n      \};", generated, re.DOTALL,
-        ))
-        red_layouts = re.search(
-            r"\bred_async_shared_add_u32_operand_layouts = \{(.*?)\n      \};",
-            generated, re.DOTALL,
+
+        expected_register_keys = [
+            ("red", "red_async_shared_inc_u32", "default", "address"),
+            ("red", "red_async_shared_dec_u32", "default", "address"),
+            ("red", "red_async_shared_min_u32", "default", "address"),
+            ("red", "red_async_shared_min_s32", "default", "address"),
+            ("red", "red_async_shared_max_u32", "default", "address"),
+            ("red", "red_async_shared_max_s32", "default", "address"),
+            ("red", "red_async_shared_and_b32", "default", "address"),
+            ("red", "red_async_shared_or_b32", "default", "address"),
+            ("red", "red_async_shared_xor_b32", "default", "address"),
+            ("red", "red_async_shared_add_u32", "default", "address"),
+            ("red", "red_async_shared_add_s32", "default", "address"),
+            ("red", "red_async_shared_add_u64", "default", "address"),
+            ("red", "red_async_release_add_u32", "default", "address"),
+            ("red", "red_async_release_add_s32", "default", "address"),
+            ("red", "red_async_release_add_u64", "default", "address"),
+            ("red", "red_async_release_add_s64", "default", "address"),
+        ]
+        canonical_register_keys = [
+            (instruction.opcode, variant.name, layout.name, operand.name)
+            for instruction in self.database.instructions
+            if instruction.codegen_category == category
+            for variant in instruction.variants
+            for layout in variant.operand_layouts
+            for operand in layout.operands
+            if operand.address_base_policy is OperandAddressBasePolicy.REGISTER
+        ]
+        resolved_register_keys = [
+            (
+                entry.specification.opcode,
+                variant.variant_id,
+                layout.layout_id,
+                binding.target_field_id,
+            )
+            for entry in context.entries
+            if entry.specification.codegen_category == category
+            for variant in entry.resolved.variants
+            for layout in variant.operand_layouts
+            for binding in layout.bindings
+            if binding.address_base_policy is OperandAddressBasePolicy.REGISTER
+        ]
+        self.assertCountEqual(canonical_register_keys, expected_register_keys)
+        self.assertCountEqual(resolved_register_keys, expected_register_keys)
+
+        binding_arrays = _static_array_bodies(
+            generated, "check_end::ResolvedOperandBindingDescriptor"
         )
-        self.assertIsNotNone(red_layouts)
-        assert red_layouts is not None
-        red_binding_names = re.findall(r"\.bindings = (\w+),", red_layouts.group(1))
-        self.assertEqual(len(red_binding_names), 1)
-        red_address_binding = binding_arrays[red_binding_names[0]].split(
-            "check_end::ResolvedOperandBindingDescriptor{"
-        )[1]
-        self.assertIn('.target_field_id = "address"', red_address_binding)
+        layout_arrays = _static_array_bodies(
+            generated, "check_end::ResolvedOperandLayoutDescriptor"
+        )
+        storage_blocks = re.findall(
+            r"(?ms)^struct\s+[A-Za-z_]\w*ResolvedDescriptorStorage\s*\{(.*?)^\};",
+            generated,
+        )
+        variant_layout_refs = []
+        for storage_body in storage_blocks:
+            opcode_name = re.search(r'\.opcode_name = "([^"]+)"', storage_body)
+            self.assertIsNotNone(opcode_name)
+            assert opcode_name is not None
+            variant_cpp_names = re.findall(
+                r'\.variant_name = "([^"]+)"', storage_body
+            )
+            layout_table_names = re.findall(
+                r"\.operand_layouts = (\w+),", storage_body
+            )
+            self.assertEqual(len(variant_cpp_names), len(layout_table_names))
+            variant_layout_refs.extend(
+                (opcode_name.group(1), variant_cpp_name, table_name)
+                for variant_cpp_name, table_name in zip(
+                    variant_cpp_names, layout_table_names, strict=True
+                )
+            )
+
+        resolved_variants = {
+            (entry.specification.opcode, variant.cpp_name): (entry, variant)
+            for entry in context.entries
+            if entry.specification.codegen_category == category
+            for variant in entry.resolved.variants
+        }
+        expected_variant_keys = list(resolved_variants)
+        rendered_variant_keys = [
+            (opcode, variant_cpp_name)
+            for opcode, variant_cpp_name, _ in variant_layout_refs
+        ]
+        rendered_variant_counts = {}
+        for key in rendered_variant_keys:
+            rendered_variant_counts[key] = rendered_variant_counts.get(key, 0) + 1
+        expected_variant_counts = {}
+        for key in expected_variant_keys:
+            expected_variant_counts[key] = expected_variant_counts.get(key, 0) + 1
+        missing_variant_counts = [
+            (key, count - rendered_variant_counts.get(key, 0))
+            for key, count in expected_variant_counts.items()
+            if rendered_variant_counts.get(key, 0) != count
+        ]
+        unexpected_variant_counts = [
+            (key, count - expected_variant_counts.get(key, 0))
+            for key, count in rendered_variant_counts.items()
+            if expected_variant_counts.get(key, 0) != count
+        ]
+        self.assertEqual(
+            (
+                len(variant_layout_refs),
+                missing_variant_counts[:8],
+                unexpected_variant_counts[:8],
+            ),
+            (len(expected_variant_keys), [], []),
+        )
+        self.assertEqual(
+            {table_name for _, _, table_name in variant_layout_refs},
+            set(layout_arrays),
+        )
+
+        rendered_register_keys = []
+        referenced_binding_arrays = set()
+        rendered_binding_rows = {}
+        for opcode, variant_cpp_name, layout_table_name in variant_layout_refs:
+            self.assertIn(layout_table_name, layout_arrays)
+            entry, variant = resolved_variants[(opcode, variant_cpp_name)]
+            layout_rows = re.findall(
+                r'check_end::ResolvedOperandLayoutDescriptor\{\s*'
+                r'\.layout_id = "([^"]+)",\s*'
+                r"\.fields = [A-Za-z_]\w*,\s*"
+                r"\.bindings = ([A-Za-z_]\w*),\s*\}",
+                layout_arrays[layout_table_name],
+                re.DOTALL,
+            )
+            self.assertEqual(
+                [layout_id for layout_id, _ in layout_rows],
+                [layout.layout_id for layout in variant.operand_layouts],
+            )
+            for (layout_id, binding_array_name), layout in zip(
+                layout_rows, variant.operand_layouts, strict=True
+            ):
+                self.assertIn(binding_array_name, binding_arrays)
+                referenced_binding_arrays.add(binding_array_name)
+                binding_body = binding_arrays[binding_array_name]
+                binding_starts = list(re.finditer(
+                    r'check_end::ResolvedOperandBindingDescriptor\{\s*'
+                    r'\.target_field_id = "([^"]+)",',
+                    binding_body,
+                ))
+                self.assertEqual(len(binding_starts), len(layout.bindings))
+                self.assertEqual(
+                    [match.group(1) for match in binding_starts],
+                    [binding.target_field_id for binding in layout.bindings],
+                )
+                for index, (start, binding) in enumerate(
+                    zip(binding_starts, layout.bindings, strict=True)
+                ):
+                    end = (
+                        binding_starts[index + 1].start()
+                        if index + 1 < len(binding_starts)
+                        else len(binding_body)
+                    )
+                    binding_row = binding_body[start.start():end]
+                    key = (
+                        entry.specification.opcode,
+                        variant.variant_id,
+                        layout_id,
+                        binding.target_field_id,
+                    )
+                    self.assertNotIn(key, rendered_binding_rows)
+                    rendered_binding_rows[key] = binding_row
+                    has_register_policy = (
+                        ".address_base_policy = checker::AddressBasePolicy::Register,"
+                        in binding_row
+                    )
+                    self.assertEqual(
+                        has_register_policy,
+                        binding.address_base_policy is OperandAddressBasePolicy.REGISTER,
+                    )
+                    if has_register_policy:
+                        rendered_register_keys.append(key)
+
+        self.assertEqual(referenced_binding_arrays, set(binding_arrays))
+        self.assertCountEqual(rendered_register_keys, expected_register_keys)
+
+        red_add_key = (
+            "red", "red_async_shared_add_u32", "default", "address"
+        )
+        red_address_binding = rendered_binding_rows[red_add_key]
         address_domains = re.findall(
             r"\.allowed_address_state_spaces = (\w+),", red_address_binding
         )
@@ -2267,12 +2482,6 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
             r"static constexpr std::array<checker::AddressStateSpaceDescriptor, \d+>"
             rf"\s+{re.escape(address_domains[0])} = \{{",
         )
-        self.assertEqual(sum(
-            binding_arrays[name].count(
-                ".address_base_policy = checker::AddressBasePolicy::Register"
-            )
-            for name in re.findall(r"\.bindings = (\w+),", generated)
-        ), 28)
         self.assertIn(
             ".address_offset_domain = checker::AddressOffsetDomain::Signed32",
             generated,
@@ -2548,17 +2757,79 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
         self.assertIn("ptx_instruction_catalogue.gen.hpp", umbrella_source)
         self.assertIn("std::unique_ptr<Instruction> clone() const", source)
         self.assertIn("void visit_references(detail::IReferenceObserver&)", source)
-        unsharded_forms = sum(
-            len(entry.resolved.variants)
-            for entry in context.entries if not form_shards(entry)
+
+        canonical_database = get_packaged_spec_database()
+        canonical_form_keys = tuple(
+            (instruction.opcode, variant.name)
+            for instruction in canonical_database.instructions
+            for variant in instruction.variants
         )
-        self.assertEqual(source.count(" final : public Instruction"), unsharded_forms)
+        resolved_form_keys = tuple(
+            (entry.specification.opcode, variant.variant_id)
+            for entry in context.entries
+            for variant in entry.resolved.variants
+        )
+        self.assertEqual(len(canonical_database.instructions), 137)
+        self.assertEqual(len(canonical_form_keys), 5453)
+        self.assertEqual(len(set(canonical_form_keys)), 5453)
+        self.assertEqual(resolved_form_keys, canonical_form_keys)
+        self.assertEqual(len(resolved_form_keys), 5453)
+
+        expected_cpp_form_names = tuple(
+            entry.cpp_name + variant.cpp_name
+            for entry in context.entries
+            for variant in entry.resolved.variants
+        )
+        self.assertEqual(len(expected_cpp_form_names), 5453)
+        self.assertEqual(len(set(expected_cpp_form_names)), 5453)
+        instruction_kind = re.search(
+            r"enum class InstructionKind\s*:\s*std::uint32_t\s*\{"
+            r"(?P<body>.*?)^\s*\};",
+            catalogue_source,
+            re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(instruction_kind)
+        assert instruction_kind is not None
+        catalogue_form_names = tuple(re.findall(
+            r"(?m)^\s*([A-Za-z_]\w*)\s*=\s*static_cast<std::uint32_t>\(",
+            instruction_kind.group("body"),
+        ))
+        self.assertEqual(catalogue_form_names, expected_cpp_form_names)
+
+        unsharded_form_names = []
+        sharded_form_names = []
+        for entry in context.entries:
+            shards = form_shards(entry)
+            if not shards:
+                unsharded_form_names.extend(
+                    entry.cpp_name + variant.cpp_name
+                    for variant in entry.resolved.variants
+                )
+                continue
+            shard_indices = [index for shard in shards for index in shard]
+            self.assertEqual(
+                sorted(shard_indices), list(range(len(entry.resolved.variants)))
+            )
+            self.assertEqual(len(shard_indices), len(set(shard_indices)))
+            sharded_form_names.extend(
+                entry.cpp_name + entry.resolved.variants[index].cpp_name
+                for index in shard_indices
+            )
         self.assertEqual(
-            unsharded_forms + sum(
-                len(indices) for entry in context.entries
-                for indices in form_shards(entry)
-            ),
-            5452,
+            len(unsharded_form_names) + len(sharded_form_names), 5453
+        )
+        self.assertTrue(set(sharded_form_names).issubset(catalogue_form_names))
+        self.assertEqual(set(unsharded_form_names) & set(sharded_form_names), set())
+        unsharded_forms = len(unsharded_form_names)
+        self.assertEqual(source.count(" final : public Instruction"), unsharded_forms)
+        emitted_unsharded_names = re.findall(
+            r"(?m)^\s*class\s+([A-Za-z_]\w*)\s+final\s+:\s*public\s+Instruction\b",
+            source,
+        )
+        self.assertCountEqual(emitted_unsharded_names, unsharded_form_names)
+        self.assertEqual(
+            len(unsharded_form_names) + len(sharded_form_names),
+            5453,
         )
         self.assertEqual(umbrella_source.count("/model/"), len(context.entries))
         for name in ("AddIntegerNoSat", "AtomGlobalAddU32", "BraDirect",
@@ -2735,7 +3006,25 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
         self.assertIn("std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>", add)
         self.assertIn("resolveAdd(", add)
         self.assertIn("detail::resolve_selected_fields(", add)
-        self.assertIn("select_form(ast)", add)
+        select_form_signature = re.compile(
+            r"std::expected<SelectedForm,\s*ResolveDiagnostic>\s+select_form\(\s*"
+            r"const syntax_ast::AstInstruction& ast,\s*"
+            r"const ResolveContext\* context\s*\)"
+        )
+        private_selection_blocks = re.findall(
+            r"namespace\s*\{(.*?)\}\s*// namespace", add, re.DOTALL
+        )
+        self.assertTrue(any(
+            select_form_signature.search(block)
+            and re.search(
+                r"select_indexed_variant\(\s*ast,\s*syntax,\s*candidate_plan,\s*"
+                r"candidates,\s*&resolved,\s*context\s*\)",
+                block,
+            )
+            for block in private_selection_blocks
+        ))
+        self.assertRegex(add, r"\bselect_form\(\s*ast,\s*context\s*\)")
+        self.assertNotRegex(add, r"\bselect_form\(\s*ast\s*\)")
         self.assertIn("fields->execution_predicate", add)
         self.assertIn("selected.dst.value.declared_type", add)
         for class_name in ("AddIntegerNoSat", "AddSat", "AddPackedOptionalSat"):

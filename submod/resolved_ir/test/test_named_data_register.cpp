@@ -80,8 +80,7 @@ struct NamedDataCapture final : detail::IReferenceObserver {
   }
 };
 /** Return source provenance directly from either borrowed vector payload. */
-const ResolvedVectorSource* named_data_source(
-    const NamedDataCapture& capture) {
+const ResolvedVectorSource* named_data_source(const NamedDataCapture& capture) {
   if (const auto* vector =
           std::get_if<const ResolvedRegisterVector*>(&capture.data);
       vector != nullptr && *vector != nullptr)
@@ -106,7 +105,7 @@ std::size_t named_data_lane_count(const NamedDataCapture& capture) {
 }
 /** Return the real register reference stored in either vector's selected lane. */
 const ResolvedRegisterRef* named_data_lane(const NamedDataCapture& capture,
-                                          std::size_t index) {
+                                           std::size_t index) {
   if (const auto* vector =
           std::get_if<const ResolvedRegisterVector*>(&capture.data);
       vector != nullptr && *vector != nullptr) {
@@ -125,8 +124,7 @@ const ResolvedRegisterRef* named_data_lane(const NamedDataCapture& capture,
 }
 /** Swap two actual lane payloads while preserving the observed carrier type. */
 bool named_data_swap_first_lanes(NamedDataCapture& capture) {
-  if (auto* vector =
-          std::get_if<const ResolvedRegisterVector*>(&capture.data);
+  if (auto* vector = std::get_if<const ResolvedRegisterVector*>(&capture.data);
       vector != nullptr && *vector != nullptr &&
       (*vector)->elements.size() >= 2) {
     auto& actual = const_cast<ResolvedRegisterVector&>(**vector);
@@ -205,8 +203,8 @@ TEST(NamedDataRegister, OwnsWholeBaseAndCanonicalLanesAfterSourceDeath) {
     NamedDataCapture capture;
     assigned.functions.front().body.front()->visit_references(capture);
     ASSERT_EQ(capture.callback_count, 1u);
-    const bool is_register_vector = std::holds_alternative<
-        const ResolvedRegisterVector*>(capture.data);
+    const bool is_register_vector =
+        std::holds_alternative<const ResolvedRegisterVector*>(capture.data);
     const bool is_value_vector =
         std::holds_alternative<const ResolvedValueVector*>(capture.data);
     ASSERT_NE(is_register_vector, is_value_vector);
@@ -252,8 +250,8 @@ TEST(NamedDataRegister, OwnsWholeBaseAndCanonicalLanesAfterSourceDeath) {
     changed_source.whole_base->value.register_ref.parameterized_index = 0;
     changed_source.whole_base->value.register_ref.spelling = "V0";
     for (size_t index = 0; index < item.arity; ++index) {
-      auto* lane = const_cast<ResolvedRegisterRef*>(
-          named_data_lane(capture, index));
+      auto* lane =
+          const_cast<ResolvedRegisterRef*>(named_data_lane(capture, index));
       ASSERT_NE(lane, nullptr);
       ASSERT_TRUE(lane->component);
       lane->parameterized_index = 0;
@@ -343,8 +341,8 @@ TEST(NamedDataRegister, RejectsIncompleteOrIncoherentOwnedProjection) {
       NamedDataCapture capture;
       changed.functions.front().body.front()->visit_references(capture);
       ASSERT_EQ(capture.callback_count, 1u);
-      const bool is_register_vector = std::holds_alternative<
-          const ResolvedRegisterVector*>(capture.data);
+      const bool is_register_vector =
+          std::holds_alternative<const ResolvedRegisterVector*>(capture.data);
       const bool is_value_vector =
           std::holds_alternative<const ResolvedValueVector*>(capture.data);
       ASSERT_NE(is_register_vector, is_value_vector);
@@ -363,8 +361,8 @@ TEST(NamedDataRegister, RejectsIncompleteOrIncoherentOwnedProjection) {
       ASSERT_TRUE(observed_source->whole_base);
       ASSERT_EQ(named_data_lane_count(capture), item.arity);
       auto& source = const_cast<ResolvedVectorSource&>(*observed_source);
-      auto* lane = const_cast<ResolvedRegisterRef*>(
-          named_data_lane(capture, 0));
+      auto* lane =
+          const_cast<ResolvedRegisterRef*>(named_data_lane(capture, 0));
       ASSERT_NE(lane, nullptr);
       ASSERT_TRUE(lane->component);
       switch (mutation) {

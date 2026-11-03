@@ -910,7 +910,8 @@ TEST(CallComponents, PartialContextKeepsKnownOwnerFacts) {
         validateModule(*owned, ModuleValidationPolicy::AvailableContext));
     EXPECT_TRUE(
         validateModule(*ast, *owned, ModuleValidationPolicy::AvailableContext));
-    EXPECT_FALSE(validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+    EXPECT_FALSE(
+        validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
     auto& value = selected_call_actual(*owned, returns);
     value.declared_type.reset();
     EXPECT_FALSE(

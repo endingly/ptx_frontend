@@ -1831,19 +1831,16 @@ TEST(AlternateScalarImmediates, PreservesIndependentTypeAndContextBoundaries) {
       ASSERT_NE(literal_offset, std::string::npos);
       ASSERT_EQ(source.find("1.5", literal_offset + 3), std::string::npos);
       const auto previous_newline = source.rfind('\n', literal_offset);
-      const auto line_start = previous_newline == std::string::npos
-                                  ? 0
-                                  : previous_newline + 1;
+      const auto line_start =
+          previous_newline == std::string::npos ? 0 : previous_newline + 1;
       const auto line = static_cast<int32_t>(
           std::ranges::count(std::string_view(source).substr(0, literal_offset),
                              '\n') +
           1);
-      const auto column =
-          static_cast<int32_t>(literal_offset - line_start + 1);
-      expected_literal_range =
-          SourceRange{{line, column}, {line, column + 3}};
-      const auto* parsed_immediate =
-          std::get_if<syntax_ast::AstImmediate>(&parsed_instruction->operands[1]);
+      const auto column = static_cast<int32_t>(literal_offset - line_start + 1);
+      expected_literal_range = SourceRange{{line, column}, {line, column + 3}};
+      const auto* parsed_immediate = std::get_if<syntax_ast::AstImmediate>(
+          &parsed_instruction->operands[1]);
       ASSERT_NE(parsed_immediate, nullptr);
       EXPECT_EQ(parsed_immediate->syntax.range, *expected_literal_range);
       EXPECT_EQ(syntax_ast::sourceRange(parsed_instruction->operands[1]),
@@ -1855,24 +1852,22 @@ TEST(AlternateScalarImmediates, PreservesIndependentTypeAndContextBoundaries) {
 
     auto module_only = resolveModuleOnly(*ast);
     ASSERT_TRUE(module_only);
-    EXPECT_TRUE(validateModule(
-        *module_only, ModuleValidationPolicy::RequireCompleteContext));
+    EXPECT_TRUE(validateModule(*module_only,
+                               ModuleValidationPolicy::RequireCompleteContext));
     EXPECT_TRUE(validateModule(*ast, *module_only,
                                ModuleValidationPolicy::RequireCompleteContext));
     auto fully_validated = resolveAndValidateModule(*ast);
     ASSERT_TRUE(fully_validated);
-    EXPECT_TRUE(validateModule(
-        *fully_validated, ModuleValidationPolicy::RequireCompleteContext));
-    EXPECT_TRUE(validateModule(
-        *ast, *fully_validated,
-        ModuleValidationPolicy::RequireCompleteContext));
+    EXPECT_TRUE(validateModule(*fully_validated,
+                               ModuleValidationPolicy::RequireCompleteContext));
+    EXPECT_TRUE(validateModule(*ast, *fully_validated,
+                               ModuleValidationPolicy::RequireCompleteContext));
 
     for (const auto* owner : {&*module_only, &*fully_validated}) {
       ASSERT_EQ(owner->functions.size(), 1u);
       const auto& function = owner->functions[0];
       ASSERT_EQ(function.body.size(), 1u);
-      const auto* setp =
-          dynamic_cast<const SetpBf16*>(function.body[0].get());
+      const auto* setp = dynamic_cast<const SetpBf16*>(function.body[0].get());
       ASSERT_NE(setp, nullptr);
 
       const auto* source_register =

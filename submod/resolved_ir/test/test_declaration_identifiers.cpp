@@ -416,7 +416,8 @@ TEST(DeclarationIdentifiers, RevalidatesOwnedAndReplacementNames) {
             "Invalid declaration identifier '" + std::string(name) + "'.",
             &checker::CheckDiagnostic::message);
         ASSERT_NE(identifier, validation.error().end());
-        EXPECT_EQ(identifier->kind, checker::CheckDiagnosticKind::RuleViolation);
+        EXPECT_EQ(identifier->kind,
+                  checker::CheckDiagnosticKind::RuleViolation);
         EXPECT_EQ(identifier->range, expected);
       }
       const auto validation = validateModule(*module);

@@ -561,8 +561,7 @@ TEST(MultimemValueVector, PreservesArityRangesAndIndependentSourceIdentity) {
 .target sm_100a
 .address_size 64
 .global .align 16 .b8 mm[256]; .entry k(){)ptx" +
-                                 std::string(prefix) + dtype +
-                                 " [mm],1.5;}";
+                                 std::string(prefix) + dtype + " [mm],1.5;}";
       EXPECT_FALSE(valueOwned(source));
     }
   }

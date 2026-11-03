@@ -41,19 +41,18 @@ TEST(AddSubAudit, AcceptsAuditedLiteralPositions) {
  * an unrelated missing module binding obscuring the rejection.
  */
 TEST(AddSubAudit, RejectsLiteralsOutsideAuditedPositions) {
-  for (
-      const auto source : {
-          // Destinations are registers for every cohort.
-          "add.f32 1.0, %f1, %f2;",
-          "add.f32.bf16 1.0, %b1, %f2;",
-          // Narrow floating sources reject the integer category.
-          "add.f32.f16 %f0, 1, %f2;",
-          "sub.f32.bf16 %f0, 1, %f2;",
-          // The mixed addend and subtrahend admit floating literals only.
-          "add.f32.f16 %f0, %h1, 1;",
-          "sub.f32.f16 %f0, %h1, 1;",
-          "add.f32.bf16 %f0, %b1, 1;",
-      }) {
+  for (const auto source : {
+           // Destinations are registers for every cohort.
+           "add.f32 1.0, %f1, %f2;",
+           "add.f32.bf16 1.0, %b1, %f2;",
+           // Narrow floating sources reject the integer category.
+           "add.f32.f16 %f0, 1, %f2;",
+           "sub.f32.bf16 %f0, 1, %f2;",
+           // The mixed addend and subtrahend admit floating literals only.
+           "add.f32.f16 %f0, %h1, 1;",
+           "sub.f32.f16 %f0, %h1, 1;",
+           "add.f32.bf16 %f0, %b1, 1;",
+       }) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
@@ -74,8 +73,8 @@ TEST(AddSubAudit, OwnsMixedBfloatNumericSource) {
     ASSERT_TRUE(validateModule(*parsed, *resolved));
     owned.emplace(std::move(*resolved));
   }
-  ASSERT_TRUE(validateModule(*owned,
-                             ModuleValidationPolicy::RequireCompleteContext));
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
   const auto& sub =
       dynamic_cast<const SubMixedF32&>(*owned->functions.front().body.front());
   const auto* immediate = std::get_if<ResolvedImmediate>(&sub.src.value);

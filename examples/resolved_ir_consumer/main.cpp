@@ -1,10 +1,7 @@
-#include <cstdint>
-#include <algorithm>
-#include <type_traits>
-#include <vector>
 #include <algorithm>
 #include <array>
 #include <concepts>
+#include <cstdint>
 #include <iostream>
 #include <optional>
 #include <ranges>
@@ -14,10 +11,11 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include <ptx_frontend/base/ptx_integer.hpp>
-#include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/base/ptx_target.hpp>
+#include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/cst/ptx_cst_parser.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>
@@ -29,45 +27,81 @@
 #ifdef PTX_PACKED_ATOMIC_CAPTURE_GENERATED_VIEWS
 namespace ptx_frontend::resolved_ir::packed_atomic_projection {
 /** Actual member borrowed only during the immediately enclosed generated check call. */
-const WithLocs<RegOrImm>* expected=nullptr;
+const WithLocs<RegOrImm>* expected = nullptr;
 /** Logical format selected by that actual instruction, independent of current payload mutations. */
-ScalarType logical=ScalarType::Invalid;
+ScalarType logical = ScalarType::Invalid;
 /** Count actual generated src views, never a hand-built or visitor projection. */
-unsigned observed=0;
+unsigned observed = 0;
 /** Accumulate exact pointer/value/location/descriptor mirror checks. */
-bool mirrors=true;
-#define PACKED_ATOMIC_OPERAND_PARAMETERS std::span<const checker::OperandDescriptor> descriptors, std::span<const checker::FieldView> fields, std::span<const checker::OperandView> views, std::span<const checker::OperandTypeCompatibilityDescriptor> compatibility, const checker::Context& context, const MatrixInstructionDescriptor* matrix
+bool mirrors = true;
+#define PACKED_ATOMIC_OPERAND_PARAMETERS                           \
+  std::span<const checker::OperandDescriptor> descriptors,         \
+      std::span<const checker::FieldView> fields,                  \
+      std::span<const checker::OperandView> views,                 \
+      std::span<const checker::OperandTypeCompatibilityDescriptor> \
+          compatibility, const checker::Context &context,          \
+      const MatrixInstructionDescriptor *matrix
 /** Call the matching library checker after the test-only link wrapper observes its arguments. */
-extern "C" checker::CheckResult original_operands(PACKED_ATOMIC_OPERAND_PARAMETERS) asm("__real__ZN12ptx_frontend11resolved_ir7checker14check_operandsESt4spanIKNS1_17OperandDescriptorELm18446744073709551615EES2_IKNS1_9FieldViewELm18446744073709551615EES2_IKNS1_11OperandViewELm18446744073709551615EES2_IKNS1_34OperandTypeCompatibilityDescriptorELm18446744073709551615EERKNS1_7ContextEPKNS0_27MatrixInstructionDescriptorE");
+extern "C" checker::CheckResult
+    original_operands(PACKED_ATOMIC_OPERAND_PARAMETERS) asm(
+        "__real__ZN12ptx_frontend11resolved_ir7checker14check_"
+        "operandsESt4spanIKNS1_17OperandDescriptorELm18446744073709551615EES2_"
+        "IKNS1_9FieldViewELm18446744073709551615EES2_IKNS1_"
+        "11OperandViewELm18446744073709551615EES2_IKNS1_"
+        "34OperandTypeCompatibilityDescriptorELm18446744073709551615EERKNS1_"
+        "7ContextEPKNS0_27MatrixInstructionDescriptorE");
 /** Intercept only the real generated checker call; production code and API remain untouched. */
-extern "C" checker::CheckResult generated_operands(PACKED_ATOMIC_OPERAND_PARAMETERS) asm("__wrap__ZN12ptx_frontend11resolved_ir7checker14check_operandsESt4spanIKNS1_17OperandDescriptorELm18446744073709551615EES2_IKNS1_9FieldViewELm18446744073709551615EES2_IKNS1_11OperandViewELm18446744073709551615EES2_IKNS1_34OperandTypeCompatibilityDescriptorELm18446744073709551615EERKNS1_7ContextEPKNS0_27MatrixInstructionDescriptorE");
+extern "C" checker::CheckResult
+    generated_operands(PACKED_ATOMIC_OPERAND_PARAMETERS) asm(
+        "__wrap__ZN12ptx_frontend11resolved_ir7checker14check_"
+        "operandsESt4spanIKNS1_17OperandDescriptorELm18446744073709551615EES2_"
+        "IKNS1_9FieldViewELm18446744073709551615EES2_IKNS1_"
+        "11OperandViewELm18446744073709551615EES2_IKNS1_"
+        "34OperandTypeCompatibilityDescriptorELm18446744073709551615EERKNS1_"
+        "7ContextEPKNS0_27MatrixInstructionDescriptorE");
 /** Consume borrowed views synchronously, then forward the real checker result unchanged. */
 checker::CheckResult generated_operands(PACKED_ATOMIC_OPERAND_PARAMETERS) {
-  if (expected) for (const auto& view:views) if (view.field_id=="src") {
-    ++observed;
-    const auto descriptor=std::ranges::find(descriptors,std::string_view("src"),&checker::OperandDescriptor::target_field_id);
-    bool valid=descriptor!=descriptors.end() &&
-        descriptor->type_expression.fixed_scalar_type==logical &&
-        descriptor->register_width_policy==base::ScalarTypeSizePolicy::SameWidth &&
-        view.locations.data()==expected->locs.data() &&
-        std::ranges::equal(view.locations,expected->locs);
-    if (const auto* reg=std::get_if<ResolvedRegisterRef>(&expected->value))
-      valid=valid && view.actual_shape==checker::OperandShape::Register &&
-          view.register_ref==reg && view.register_type==reg->declared_type &&
-          view.register_symbol_id==reg->symbol_id && view.register_class==reg->register_class &&
-          view.register_vector_width==reg->vector_width && !view.immediate_type &&
-          !view.immediate_bits && !view.integer_source_bits;
-    else if (const auto* word=std::get_if<ResolvedImmediate>(&expected->value))
-      valid=valid && view.actual_shape==checker::OperandShape::Immediate &&
-          !view.register_ref && !view.register_type && !view.register_symbol_id &&
-          !view.register_class && !view.register_vector_width &&
-          view.immediate_type==word->type && view.immediate_bits==word->bits &&
-          view.immediate_is_negative==word->is_negative &&
-          view.integer_source_bits==word->integer_source_bits;
-    else valid=false;
-    mirrors=mirrors && valid;
-  }
-  return original_operands(descriptors,fields,views,compatibility,context,matrix);
+  if (expected)
+    for (const auto& view : views)
+      if (view.field_id == "src") {
+        ++observed;
+        const auto descriptor =
+            std::ranges::find(descriptors, std::string_view("src"),
+                              &checker::OperandDescriptor::target_field_id);
+        bool valid = descriptor != descriptors.end() &&
+                     descriptor->type_expression.fixed_scalar_type == logical &&
+                     descriptor->register_width_policy ==
+                         base::ScalarTypeSizePolicy::SameWidth &&
+                     view.locations.data() == expected->locs.data() &&
+                     std::ranges::equal(view.locations, expected->locs);
+        if (const auto* reg =
+                std::get_if<ResolvedRegisterRef>(&expected->value))
+          valid = valid &&
+                  view.actual_shape == checker::OperandShape::Register &&
+                  view.register_ref == reg &&
+                  view.register_type == reg->declared_type &&
+                  view.register_symbol_id == reg->symbol_id &&
+                  view.register_class == reg->register_class &&
+                  view.register_vector_width == reg->vector_width &&
+                  !view.immediate_type && !view.immediate_bits &&
+                  !view.integer_source_bits;
+        else if (const auto* word =
+                     std::get_if<ResolvedImmediate>(&expected->value))
+          valid = valid &&
+                  view.actual_shape == checker::OperandShape::Immediate &&
+                  !view.register_ref && !view.register_type &&
+                  !view.register_symbol_id && !view.register_class &&
+                  !view.register_vector_width &&
+                  view.immediate_type == word->type &&
+                  view.immediate_bits == word->bits &&
+                  view.immediate_is_negative == word->is_negative &&
+                  view.integer_source_bits == word->integer_source_bits;
+        else
+          valid = false;
+        mirrors = mirrors && valid;
+      }
+  return original_operands(descriptors, fields, views, compatibility, context,
+                           matrix);
 }
 #undef PACKED_ATOMIC_OPERAND_PARAMETERS
 }  // namespace ptx_frontend::resolved_ir::packed_atomic_projection
@@ -1860,7 +1894,8 @@ bool checkInstalledDebugLocations() {
         ".section .debug_str { name: .b8 0; }\n.entry loc_kernel() {\n"
         ".loc 18446744073709551615U 4294967296 0\n"
         ".loc 18446744073709551615U 1 0, function_name name + " +
-        std::string(offset) + ", "
+        std::string(offset) +
+        ", "
         "inlined_at 18446744073709551615U 4294967296 0\nret;\n}\n";
     ptx_frontend::PtxSyntaxParser parser(source);
     const auto ast = parser.parseModule();
@@ -1873,7 +1908,8 @@ bool checkInstalledDebugLocations() {
           !locations[1].inline_context->function_name_offset)
         return false;
       const auto& leaf = *locations[1].inline_context->function_name_offset;
-      const auto magnitude = ptx_frontend::base::parseIntegerMagnitude(leaf.text);
+      const auto magnitude =
+          ptx_frontend::base::parseIntegerMagnitude(leaf.text);
       if (leaf.text != offset || !magnitude || *magnitude != ~std::uint64_t{0})
         return false;
       full_width_offset = leaf.text;
@@ -1898,7 +1934,8 @@ bool checkInstalledDebugLocations() {
     bool located_bounds_rejection = false;
     for (const auto& error : *errors)
       if (error.stage() == ir::ResolveDiagnosticStage::Checking &&
-          error.checker_kind == ir::checker::CheckDiagnosticKind::RuleViolation &&
+          error.checker_kind ==
+              ir::checker::CheckDiagnosticKind::RuleViolation &&
           error.range == full_width_offset_range &&
           error.message.find("byte bounds") != std::string::npos)
         located_bounds_rejection = true;
@@ -2169,31 +2206,42 @@ bool checkInstalledExplicitBit16Setp() {
 }
 
 /** Borrow both changed members from an actual installed exact-class object. */
-std::array<const ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>*, 2>
-installedOrdinaryBf16Sources(const ptx_frontend::resolved_ir::Instruction& instruction) {
+std::array<const ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>*,
+           2>
+installedOrdinaryBf16Sources(
+    const ptx_frontend::resolved_ir::Instruction& instruction) {
   namespace ir = ptx_frontend::resolved_ir;
   if (const auto* form = dynamic_cast<const ir::FmaMixedF32Bf16*>(&instruction))
     return {&form->src1, &form->src2};
-  if (const auto* form = dynamic_cast<const ir::SetHalfIntegerBf16*>(&instruction))
+  if (const auto* form =
+          dynamic_cast<const ir::SetHalfIntegerBf16*>(&instruction))
     return {&form->src1, &form->src2};
-  const auto& form = dynamic_cast<const ir::SetHalfIntegerBf16Boolean&>(instruction);
+  const auto& form =
+      dynamic_cast<const ir::SetHalfIntegerBf16Boolean&>(instruction);
   return {&form.src1, &form.src2};
 }
 
 /** Compare actual installed callback addresses only during synchronous traversal. */
-struct InstalledOrdinaryBf16Observer final : ptx_frontend::resolved_ir::detail::IReferenceObserver {
+struct InstalledOrdinaryBf16Observer final
+    : ptx_frontend::resolved_ir::detail::IReferenceObserver {
   /** Borrowed fields; the inspected instruction outlives the traversal. */
-  std::array<const ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>*, 2> expected;
+  std::array<const ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>*,
+             2>
+      expected;
   /** One synchronous callback for each exact source member. */
   std::array<bool, 2> seen{};
   /** Bind fields owned by the instruction being visited. */
-  explicit InstalledOrdinaryBf16Observer(decltype(expected) fields) : expected(fields) {}
+  explicit InstalledOrdinaryBf16Observer(decltype(expected) fields)
+      : expected(fields) {}
   /** Check real member and range addresses without retaining callback arguments. */
-  void reg_or_imm(const ptx_frontend::resolved_ir::RegOrImm& value,
-                 std::span<const ptx_frontend::SourceRange> ranges,
-                 ptx_frontend::resolved_ir::checker::AddressSymbolResolutionPolicy) override {
+  void reg_or_imm(
+      const ptx_frontend::resolved_ir::RegOrImm& value,
+      std::span<const ptx_frontend::SourceRange> ranges,
+      ptx_frontend::resolved_ir::checker::AddressSymbolResolutionPolicy)
+      override {
     for (size_t index = 0; index < 2; ++index)
-      if (&value == &expected[index]->value && ranges.size() == expected[index]->locs.size()) {
+      if (&value == &expected[index]->value &&
+          ranges.size() == expected[index]->locs.size()) {
         bool equal = true;
         for (size_t lane = 0; lane < ranges.size(); ++lane)
           equal = equal && ranges[lane] == expected[index]->locs[lane];
@@ -2205,13 +2253,22 @@ struct InstalledOrdinaryBf16Observer final : ptx_frontend::resolved_ir::detail::
 /** Exercise all six migrated members through the existing installed resolver/class API. */
 bool checkInstalledOrdinaryBf16FmaSet() {
   namespace ir = ptx_frontend::resolved_ir;
-  static_assert(std::same_as<decltype(ir::FmaMixedF32Bf16{}.src1.value), ir::RegOrImm>);
-  static_assert(std::same_as<decltype(ir::FmaMixedF32Bf16{}.src2.value), ir::RegOrImm>);
-  static_assert(std::same_as<decltype(ir::SetHalfIntegerBf16{}.src1.value), ir::RegOrImm>);
-  static_assert(std::same_as<decltype(ir::SetHalfIntegerBf16{}.src2.value), ir::RegOrImm>);
-  static_assert(std::same_as<decltype(ir::SetHalfIntegerBf16Boolean{}.src1.value), ir::RegOrImm>);
-  static_assert(std::same_as<decltype(ir::SetHalfIntegerBf16Boolean{}.src2.value), ir::RegOrImm>);
-  static_assert(ir::FmaMixedF32Bf16::is_instruction && ir::SetHalfIntegerBf16::is_instruction &&
+  static_assert(
+      std::same_as<decltype(ir::FmaMixedF32Bf16{}.src1.value), ir::RegOrImm>);
+  static_assert(
+      std::same_as<decltype(ir::FmaMixedF32Bf16{}.src2.value), ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::SetHalfIntegerBf16{}.src1.value),
+                             ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::SetHalfIntegerBf16{}.src2.value),
+                             ir::RegOrImm>);
+  static_assert(
+      std::same_as<decltype(ir::SetHalfIntegerBf16Boolean{}.src1.value),
+                   ir::RegOrImm>);
+  static_assert(
+      std::same_as<decltype(ir::SetHalfIntegerBf16Boolean{}.src2.value),
+                   ir::RegOrImm>);
+  static_assert(ir::FmaMixedF32Bf16::is_instruction &&
+                ir::SetHalfIntegerBf16::is_instruction &&
                 ir::SetHalfIntegerBf16Boolean::is_instruction);
   static_assert(ir::FmaMixedF32Bf16::input_type == ir::ScalarType::BF16);
   std::optional<ir::ResolvedModule> owned;
@@ -2231,23 +2288,31 @@ bool checkInstalledOrdinaryBf16FmaSet() {
 )ptx";
     ptx_frontend::PtxSyntaxParser parser(source);
     const auto ast = parser.parseModule();
-    if (!ast || !ast.diagnostics.empty()) return false;
+    if (!ast || !ast.diagnostics.empty())
+      return false;
     auto result = ir::resolveAndValidateModule(*ast);
-    if (!result || !ir::validateModule(*ast, *result)) return false;
+    if (!result || !ir::validateModule(*ast, *result))
+      return false;
     owned.emplace(std::move(*result));
   }
-  if (owned->functions.front().body.size() != 6) return false;
+  if (owned->functions.front().body.size() != 6)
+    return false;
   for (size_t index = 0; index < 6; ++index) {
     const auto& instruction = *owned->functions.front().body[index];
     const auto fields = installedOrdinaryBf16Sources(instruction);
     InstalledOrdinaryBf16Observer observer(fields);
     instruction.visit_references(observer);
-    if (!observer.seen[0] || !observer.seen[1]) return false;
-    const auto* immediate = std::get_if<ir::ResolvedImmediate>(&fields[index % 2]->value);
-    const auto* reg = std::get_if<ir::ResolvedRegisterRef>(&fields[1 - index % 2]->value);
-    if (!immediate || immediate->type != ir::ScalarType::BF16 || immediate->bits != 0x3fc0 ||
-        immediate->integer_source_bits || immediate->is_negative || !reg || !reg->symbol_id ||
-        reg->declared_type != ir::ScalarType::B16 || fields[0]->locs.empty() || fields[1]->locs.empty())
+    if (!observer.seen[0] || !observer.seen[1])
+      return false;
+    const auto* immediate =
+        std::get_if<ir::ResolvedImmediate>(&fields[index % 2]->value);
+    const auto* reg =
+        std::get_if<ir::ResolvedRegisterRef>(&fields[1 - index % 2]->value);
+    if (!immediate || immediate->type != ir::ScalarType::BF16 ||
+        immediate->bits != 0x3fc0 || immediate->integer_source_bits ||
+        immediate->is_negative || !reg || !reg->symbol_id ||
+        reg->declared_type != ir::ScalarType::B16 || fields[0]->locs.empty() ||
+        fields[1]->locs.empty())
       return false;
     const auto clone = instruction.clone();
     if (clone->instruction_kind() != instruction.instruction_kind() ||
@@ -2258,7 +2323,8 @@ bool checkInstalledOrdinaryBf16FmaSet() {
   ir::ResolvedModule assigned;
   assigned = copied;
   owned.reset();
-  return ir::validateModule(copied).has_value() && ir::validateModule(assigned).has_value();
+  return ir::validateModule(copied).has_value() &&
+         ir::validateModule(assigned).has_value();
 }
 
 #if defined(PTX_FRONTEND_OBSERVE_ATOMIC_F16_VIEWS)
@@ -2560,9 +2626,11 @@ bool checkInstalledScalarAtomicF16Sources() {
 
 /** Borrow the installed src member only while its actual instruction owner remains alive. */
 const ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>&
-installedAtomicBf16Source(const ptx_frontend::resolved_ir::Instruction& instruction) {
+installedAtomicBf16Source(
+    const ptx_frontend::resolved_ir::Instruction& instruction) {
   namespace ir = ptx_frontend::resolved_ir;
-  if (const auto* atom = dynamic_cast<const ir::AtomGlobalAddNoftzBf16*>(&instruction))
+  if (const auto* atom =
+          dynamic_cast<const ir::AtomGlobalAddNoftzBf16*>(&instruction))
     return atom->src;
   return dynamic_cast<const ir::RedGlobalAddNoftzBf16&>(instruction).src;
 }
@@ -2570,8 +2638,10 @@ installedAtomicBf16Source(const ptx_frontend::resolved_ir::Instruction& instruct
 /** Check both installed exact classes/layouts with register and converted immediate sources. */
 bool checkInstalledScalarAtomicBf16() {
   namespace ir = ptx_frontend::resolved_ir;
-  static_assert(std::same_as<decltype(ir::AtomGlobalAddNoftzBf16{}.src.value), ir::RegOrImm>);
-  static_assert(std::same_as<decltype(ir::RedGlobalAddNoftzBf16{}.src.value), ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::AtomGlobalAddNoftzBf16{}.src.value),
+                             ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::RedGlobalAddNoftzBf16{}.src.value),
+                             ir::RegOrImm>);
   static_assert(std::derived_from<ir::AtomGlobalAddNoftzBf16, ir::Instruction>);
   static_assert(std::derived_from<ir::RedGlobalAddNoftzBf16, ir::Instruction>);
   static_assert(std::is_copy_constructible_v<ir::AtomGlobalAddNoftzBf16> &&
@@ -2580,7 +2650,8 @@ bool checkInstalledScalarAtomicBf16() {
                 std::is_copy_assignable_v<ir::RedGlobalAddNoftzBf16>);
   /** Emit a precise contract label when a future installed fixture fails. */
   const auto require = [](bool condition, std::string_view contract) {
-    if (!condition) std::cerr << "atomic BF16 consumer: " << contract << '\n';
+    if (!condition)
+      std::cerr << "atomic BF16 consumer: " << contract << '\n';
     return condition;
   };
   const std::array<std::string_view, 4> numbered{
@@ -2594,22 +2665,31 @@ bool checkInstalledScalarAtomicBf16() {
       operation.replace(operation.find('$'), 1, value);
       ptx_frontend::PtxSyntaxParser parser(operation);
       const auto ast = parser.parseInstruction();
-      if (!require(ast && ast.diagnostics.empty(), "standalone numbered factory source parses")) return false;
+      if (!require(ast && ast.diagnostics.empty(),
+                   "standalone numbered factory source parses"))
+        return false;
       auto instruction = ir::resolveInstruction(*ast);
       const auto kind = layout < 2 ? ir::AtomGlobalAddNoftzBf16::kind
                                    : ir::RedGlobalAddNoftzBf16::kind;
-      if (!require(instruction && *instruction && (*instruction)->instruction_kind() == kind,
-                   "existing generic factory selects exact atomic class")) return false;
+      if (!require(instruction && *instruction &&
+                       (*instruction)->instruction_kind() == kind,
+                   "existing generic factory selects exact atomic class"))
+        return false;
       const auto clone = (*instruction)->clone();
-      if (!require(clone && clone->instruction_kind() == kind, "standalone exact factory clone")) return false;
+      if (!require(clone && clone->instruction_kind() == kind,
+                   "standalone exact factory clone"))
+        return false;
       const auto& field = installedAtomicBf16Source(*clone);
       if (std::string_view(value) == "1.5") {
         const auto* word = std::get_if<ir::ResolvedImmediate>(&field.value);
-        if (!require(word && word->type == ir::ScalarType::BF16 && word->bits == 0x3fc0 &&
-                     !word->integer_source_bits && !word->is_negative,
-                     "standalone factory uses existing BF16 converter")) return false;
+        if (!require(word && word->type == ir::ScalarType::BF16 &&
+                         word->bits == 0x3fc0 && !word->integer_source_bits &&
+                         !word->is_negative,
+                     "standalone factory uses existing BF16 converter"))
+          return false;
       } else if (!require(std::get_if<ir::ResolvedRegisterRef>(&field.value),
-                          "standalone factory retains register alternative")) return false;
+                          "standalone factory retains register alternative"))
+        return false;
       // Standalone construction has no bound declaration or target legality claim.
     }
   std::optional<ir::ResolvedModule> owned;
@@ -2633,14 +2713,22 @@ bool checkInstalledScalarAtomicBf16() {
     ptx_frontend::PtxSyntaxParser parser(source);
     const auto ast = parser.parseModule();
     if (!require(ast.has_value(), "complete aligned source parses") ||
-        !require(ast.diagnostics.empty(), "parser diagnostics are empty")) return false;
+        !require(ast.diagnostics.empty(), "parser diagnostics are empty"))
+      return false;
     auto result = ir::resolveAndValidateModule(*ast);
-    if (!require(result.has_value(), "both classes/layouts resolve and strictly validate")) return false;
-    if (!require(ir::validateModule(*ast, *result).has_value(), "provided AST association validates")) return false;
+    if (!require(result.has_value(),
+                 "both classes/layouts resolve and strictly validate"))
+      return false;
+    if (!require(ir::validateModule(*ast, *result).has_value(),
+                 "provided AST association validates"))
+      return false;
     owned.emplace(std::move(*result));
   }
-  if (!require(owned && owned->functions.size() == 1, "one owned function survives AST death") ||
-      !require(owned->functions.front().body.size() == 8, "all eight independent source controls are owned")) return false;
+  if (!require(owned && owned->functions.size() == 1,
+               "one owned function survives AST death") ||
+      !require(owned->functions.front().body.size() == 8,
+               "all eight independent source controls are owned"))
+    return false;
   /** Observe actual members synchronously; no callback payload/range pointer escapes. */
   struct Observer final : ir::detail::IReferenceObserver {
     /** Borrowed actual source, valid only through visit_references. */
@@ -2648,54 +2736,81 @@ bool checkInstalledScalarAtomicBf16() {
     /** True after the callback matches the owner address and all source ranges. */
     bool seen = false;
     /** Borrow one live owner for synchronous inspection. */
-    explicit Observer(const ptx_frontend::WithLocs<ir::RegOrImm>& source) : expected(source) {}
+    explicit Observer(const ptx_frontend::WithLocs<ir::RegOrImm>& source)
+        : expected(source) {}
     /** Inspect the real member without constructing a surrogate callback value. */
-    void reg_or_imm(const ir::RegOrImm& value, std::span<const ptx_frontend::SourceRange> ranges,
-                   ir::checker::AddressSymbolResolutionPolicy) override {
-      if (&value != &expected.value || ranges.size() != expected.locs.size()) return;
+    void reg_or_imm(const ir::RegOrImm& value,
+                    std::span<const ptx_frontend::SourceRange> ranges,
+                    ir::checker::AddressSymbolResolutionPolicy) override {
+      if (&value != &expected.value || ranges.size() != expected.locs.size())
+        return;
       seen = true;
       for (size_t index = 0; index < ranges.size(); ++index)
         seen = seen && ranges[index] == expected.locs[index];
     }
   };
   for (size_t index = 0; index < 8; ++index) {
-    if (!require(owned->functions.front().body[index] != nullptr, "owned instruction exists")) return false;
+    if (!require(owned->functions.front().body[index] != nullptr,
+                 "owned instruction exists"))
+      return false;
     const auto& instruction = *owned->functions.front().body[index];
     const auto expected_kind = index < 4 ? ir::AtomGlobalAddNoftzBf16::kind
-                                       : ir::RedGlobalAddNoftzBf16::kind;
-    if (!require(instruction.instruction_kind() == expected_kind, "exact installed final class selected")) return false;
+                                         : ir::RedGlobalAddNoftzBf16::kind;
+    if (!require(instruction.instruction_kind() == expected_kind,
+                 "exact installed final class selected"))
+      return false;
     const auto& source = installedAtomicBf16Source(instruction);
     const bool hinted = index % 4 >= 2;
-    if (!require(!source.locs.empty(), "source range retained")) return false;
+    if (!require(!source.locs.empty(), "source range retained"))
+      return false;
     if (index % 2 == 1) {
       const auto* immediate = std::get_if<ir::ResolvedImmediate>(&source.value);
       if (!require(immediate && immediate->type == ir::ScalarType::BF16 &&
-                       immediate->bits == 0x3fc0 && !immediate->integer_source_bits &&
-                       !immediate->is_negative, "logical BF16 immediate word/flags")) return false;
+                       immediate->bits == 0x3fc0 &&
+                       !immediate->integer_source_bits &&
+                       !immediate->is_negative,
+                   "logical BF16 immediate word/flags"))
+        return false;
     } else {
       const auto* reg = std::get_if<ir::ResolvedRegisterRef>(&source.value);
-      if (!require(reg && reg->symbol_id && reg->declared_type == ir::ScalarType::B16,
-                   "existing actual B16 register carrier and SymbolId")) return false;
+      if (!require(reg && reg->symbol_id &&
+                       reg->declared_type == ir::ScalarType::B16,
+                   "existing actual B16 register carrier and SymbolId"))
+        return false;
     }
-    const auto& policy = index < 4
-        ? dynamic_cast<const ir::AtomGlobalAddNoftzBf16&>(instruction).cache_policy
-        : dynamic_cast<const ir::RedGlobalAddNoftzBf16&>(instruction).cache_policy;
-    if (!require(policy.has_value() == hinted, "cache-policy optional presence matches layout")) return false;
+    const auto& policy =
+        index < 4 ? dynamic_cast<const ir::AtomGlobalAddNoftzBf16&>(instruction)
+                        .cache_policy
+                  : dynamic_cast<const ir::RedGlobalAddNoftzBf16&>(instruction)
+                        .cache_policy;
+    if (!require(policy.has_value() == hinted,
+                 "cache-policy optional presence matches layout"))
+      return false;
     if (hinted && !require(policy->value.declared_type == ir::ScalarType::B64,
-                           "policy remains a B64 register")) return false;
+                           "policy remains a B64 register"))
+      return false;
     if (index < 4) {
-      const auto& atom = dynamic_cast<const ir::AtomGlobalAddNoftzBf16&>(instruction);
-      if (!require(atom.dst.value.register_ref.has_value(), "atomic destination exists") ||
-          !require(atom.dst.value.register_ref->declared_type == ir::ScalarType::B16,
-                   "atomic destination keeps exact B16 carrier")) return false;
+      const auto& atom =
+          dynamic_cast<const ir::AtomGlobalAddNoftzBf16&>(instruction);
+      if (!require(atom.dst.value.register_ref.has_value(),
+                   "atomic destination exists") ||
+          !require(
+              atom.dst.value.register_ref->declared_type == ir::ScalarType::B16,
+              "atomic destination keeps exact B16 carrier"))
+        return false;
     }
     Observer observer(source);
     instruction.visit_references(observer);
-    if (!require(observer.seen, "observer receives actual owned source and ranges")) return false;
+    if (!require(observer.seen,
+                 "observer receives actual owned source and ranges"))
+      return false;
     const auto clone = instruction.clone();
-    if (!require(clone && clone->instruction_kind() == instruction.instruction_kind() &&
-                     installedAtomicBf16Source(*clone) == source,
-                 "existing exact-class clone preserves migrated payload")) return false;
+    if (!require(
+            clone &&
+                clone->instruction_kind() == instruction.instruction_kind() &&
+                installedAtomicBf16Source(*clone) == source,
+            "existing exact-class clone preserves migrated payload"))
+      return false;
   }
   auto copied = *owned;
   ir::ResolvedModule assigned;
@@ -2713,10 +2828,14 @@ bool checkInstalledScalarAtomicBf16() {
       const auto& field = installedAtomicBf16Source(*instruction);
       Observer observer(field);
       instruction->visit_references(observer);
-      if (!require(observer.seen && !field.locs.empty(), "reacquired copied/cloned callback and locations")) return false;
+      if (!require(observer.seen && !field.locs.empty(),
+                   "reacquired copied/cloned callback and locations"))
+        return false;
     }
-  return require(ir::validateModule(copied).has_value(), "copied owner validates after producer death") &&
-         require(ir::validateModule(assigned).has_value(), "assigned owner validates after producer death");
+  return require(ir::validateModule(copied).has_value(),
+                 "copied owner validates after producer death") &&
+         require(ir::validateModule(assigned).has_value(),
+                 "assigned owner validates after producer death");
 }
 
 /** Exercise installed packed SETP fields with real source-dead nonempty payloads. */
@@ -3991,29 +4110,41 @@ bool checkInstalledAtomicValueVectors() {
 /** Exercise exact-form and module resolution from the installed component. */
 /** Borrow one of the four migrated sources while its actual instruction owner survives. */
 ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>*
-installedPackedAtomicMember(ptx_frontend::resolved_ir::Instruction& instruction) {
+installedPackedAtomicMember(
+    ptx_frontend::resolved_ir::Instruction& instruction) {
   namespace ir = ptx_frontend::resolved_ir;
-  if (auto* p = dynamic_cast<ir::AtomGlobalAddNoftzF16x2*>(&instruction)) return &p->src;
-  if (auto* p = dynamic_cast<ir::AtomGlobalAddNoftzBf16x2*>(&instruction)) return &p->src;
-  if (auto* p = dynamic_cast<ir::RedGlobalAddNoftzF16x2*>(&instruction)) return &p->src;
-  if (auto* p = dynamic_cast<ir::RedGlobalAddNoftzBf16x2*>(&instruction)) return &p->src;
+  if (auto* p = dynamic_cast<ir::AtomGlobalAddNoftzF16x2*>(&instruction))
+    return &p->src;
+  if (auto* p = dynamic_cast<ir::AtomGlobalAddNoftzBf16x2*>(&instruction))
+    return &p->src;
+  if (auto* p = dynamic_cast<ir::RedGlobalAddNoftzF16x2*>(&instruction))
+    return &p->src;
+  if (auto* p = dynamic_cast<ir::RedGlobalAddNoftzBf16x2*>(&instruction))
+    return &p->src;
   return nullptr;
 }
 
 /** Consume current installed classes, factory, variants and observers using matching archives. */
 bool checkInstalledPackedAtomicSources() {
   namespace ir = ptx_frontend::resolved_ir;
-  static_assert(std::same_as<decltype(ir::AtomGlobalAddNoftzF16x2{}.src.value), ir::RegOrImm>);
-  static_assert(std::same_as<decltype(ir::AtomGlobalAddNoftzBf16x2{}.src.value), ir::RegOrImm>);
-  static_assert(std::same_as<decltype(ir::RedGlobalAddNoftzF16x2{}.src.value), ir::RegOrImm>);
-  static_assert(std::same_as<decltype(ir::RedGlobalAddNoftzBf16x2{}.src.value), ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::AtomGlobalAddNoftzF16x2{}.src.value),
+                             ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::AtomGlobalAddNoftzBf16x2{}.src.value),
+                             ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::RedGlobalAddNoftzF16x2{}.src.value),
+                             ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::RedGlobalAddNoftzBf16x2{}.src.value),
+                             ir::RegOrImm>);
   static_assert(std::variant_size_v<ir::RegOrImm> == 2);
-  static_assert(std::same_as<std::variant_alternative_t<0, ir::RegOrImm>, ir::ResolvedRegisterRef>);
-  static_assert(std::same_as<std::variant_alternative_t<1, ir::RegOrImm>, ir::ResolvedImmediate>);
+  static_assert(std::same_as<std::variant_alternative_t<0, ir::RegOrImm>,
+                             ir::ResolvedRegisterRef>);
+  static_assert(std::same_as<std::variant_alternative_t<1, ir::RegOrImm>,
+                             ir::ResolvedImmediate>);
   const auto profile = ptx_frontend::base::find_target_profile("sm_90");
-  if (!profile) return false;
+  if (!profile)
+    return false;
   const ir::checker::Context context{
-      .target = {.ptx_version = {9,3},
+      .target = {.ptx_version = {9, 3},
                  .sm_version = profile->identity.architecture.number,
                  .enabled_family_features = profile->enabled_family_features,
                  .identity = profile->identity,
@@ -4034,7 +4165,8 @@ bool checkInstalledPackedAtomicSources() {
     bool okay = true;
     /** Bind a synchronous observer to an owner and a complete context. */
     Observer(const ir::RegOrImm& value, const ir::checker::Context& target,
-              ir::ScalarType logical) : expected(&value), context(target), type(logical) {}
+             ir::ScalarType logical)
+        : expected(&value), context(target), type(logical) {}
     /** Preserve source-only metadata within the current operand bracket. */
     void operand_context(const ir::checker::OperandDescriptor* value,
                          std::optional<ir::MemoryStateSpace>) override {
@@ -4044,88 +4176,122 @@ bool checkInstalledPackedAtomicSources() {
     void reg_or_imm(const ir::RegOrImm& value,
                     std::span<const ptx_frontend::SourceRange> locations,
                     ir::checker::AddressSymbolResolutionPolicy) override {
-      if (&value != expected) return;
+      if (&value != expected)
+        return;
       const ir::checker::OperandDescriptor projection{
-          .target_field_id="src",
-          .type_expression={.kind=ir::checker::OperandTypeExpressionKind::FixedScalar,
-                            .fixed_scalar_type=type},
-          .role=ir::checker::OperandRole::Source,
-          .access=ir::checker::OperandAccess::Read,
-          .allowed_shapes=ir::checker::OperandShape::Register|ir::checker::OperandShape::Immediate};
+          .target_field_id = "src",
+          .type_expression =
+              {.kind = ir::checker::OperandTypeExpressionKind::FixedScalar,
+               .fixed_scalar_type = type},
+          .role = ir::checker::OperandRole::Source,
+          .access = ir::checker::OperandAccess::Read,
+          .allowed_shapes = ir::checker::OperandShape::Register |
+                            ir::checker::OperandShape::Immediate};
       ++count;
       okay &= &value == expected && !locations.empty();
-      ir::checker::OperandView view{.field_id = "src",
-                                    .actual_shape = ir::checker::OperandShape::Immediate};
+      ir::checker::OperandView view{
+          .field_id = "src",
+          .actual_shape = ir::checker::OperandShape::Immediate};
       view.locations = locations;
       if (const auto* word = std::get_if<ir::ResolvedImmediate>(&value)) {
-        okay &= word->type == type && word->bits ==
-            (type == ir::ScalarType::BF16x2 ? 0x3fc03fc0u : 0x3e003e00u) &&
-            !word->integer_source_bits && !word->is_negative;
+        okay &= word->type == type &&
+                word->bits == (type == ir::ScalarType::BF16x2 ? 0x3fc03fc0u
+                                                              : 0x3e003e00u) &&
+                !word->integer_source_bits && !word->is_negative;
         view.immediate_type = word->type;
         view.immediate_bits = word->bits;
         view.immediate_is_negative = word->is_negative;
         view.integer_source_bits = word->integer_source_bits;
-      } else if (const auto* reg = std::get_if<ir::ResolvedRegisterRef>(&value)) {
-        okay &= reg->symbol_id.has_value() && reg->declared_type == ir::ScalarType::B32;
+      } else if (const auto* reg =
+                     std::get_if<ir::ResolvedRegisterRef>(&value)) {
+        okay &= reg->symbol_id.has_value() &&
+                reg->declared_type == ir::ScalarType::B32;
         view.actual_shape = ir::checker::OperandShape::Register;
         view.register_type = reg->declared_type;
         view.register_symbol_id = reg->symbol_id;
         view.register_class = reg->register_class;
         view.register_ref = reg;
         view.register_vector_width = reg->vector_width;
-      } else { okay = false; return; }
-      okay &= ir::checker::check_operands({&projection,1}, {}, {&view,1}, {}, context).has_value();
+      } else {
+        okay = false;
+        return;
+      }
+      okay &= ir::checker::check_operands({&projection, 1}, {}, {&view, 1}, {},
+                                          context)
+                  .has_value();
     }
   };
-  for (bool reduction : {false,true})
-    for (bool bfloat : {false,true})
-      for (bool policy : {false,true})
-        for (bool immediate : {false,true}) {
-          const auto logical = bfloat ? ir::ScalarType::BF16x2 : ir::ScalarType::F16x2;
+  for (bool reduction : {false, true})
+    for (bool bfloat : {false, true})
+      for (bool policy : {false, true})
+        for (bool immediate : {false, true}) {
+          const auto logical =
+              bfloat ? ir::ScalarType::BF16x2 : ir::ScalarType::F16x2;
           const auto word = bfloat ? 0x3fc03fc0u : 0x3e003e00u;
-          const std::string statement = std::string(reduction ? "red" : "atom") +
-              ".global.add.noftz" + (policy ? ".L2::cache_hint" : "") +
+          const std::string statement =
+              std::string(reduction ? "red" : "atom") + ".global.add.noftz" +
+              (policy ? ".L2::cache_hint" : "") +
               (bfloat ? ".bf16x2 " : ".f16x2 ") + (reduction ? "" : "%dst,") +
-              "[cell]," + (immediate ? (bfloat ? "0f3fc03fc0" : "0f3e003e00") : "%bits") +
+              "[cell]," +
+              (immediate ? (bfloat ? "0f3fc03fc0" : "0f3e003e00") : "%bits") +
               (policy ? ",%policy;" : ";");
-          const auto expected_kind = reduction
-              ? (bfloat ? ir::InstructionKind::RedGlobalAddNoftzBf16x2
-                         : ir::InstructionKind::RedGlobalAddNoftzF16x2)
-              : (bfloat ? ir::InstructionKind::AtomGlobalAddNoftzBf16x2
-                         : ir::InstructionKind::AtomGlobalAddNoftzF16x2);
+          const auto expected_kind =
+              reduction
+                  ? (bfloat ? ir::InstructionKind::RedGlobalAddNoftzBf16x2
+                            : ir::InstructionKind::RedGlobalAddNoftzF16x2)
+                  : (bfloat ? ir::InstructionKind::AtomGlobalAddNoftzBf16x2
+                            : ir::InstructionKind::AtomGlobalAddNoftzF16x2);
           {
-            std::string standalone=statement;
-            for (const auto& replacement : std::array<std::pair<std::string_view,std::string_view>,4>{{
-                {"%dst","%b0"},{"%bits","%b1"},{"[cell]","[%rd0]"},{"%policy","%rd1"}}}) {
-              const auto position=standalone.find(replacement.first);
-              if (position!=std::string::npos)
-                standalone.replace(position,replacement.first.size(),replacement.second);
+            std::string standalone = statement;
+            for (const auto& replacement :
+                 std::array<std::pair<std::string_view, std::string_view>, 4>{
+                     {{"%dst", "%b0"},
+                      {"%bits", "%b1"},
+                      {"[cell]", "[%rd0]"},
+                      {"%policy", "%rd1"}}}) {
+              const auto position = standalone.find(replacement.first);
+              if (position != std::string::npos)
+                standalone.replace(position, replacement.first.size(),
+                                   replacement.second);
             }
             ptx_frontend::PtxSyntaxParser factory_parser(standalone);
             const auto syntax = factory_parser.parseInstruction();
-            if (!syntax || !syntax.diagnostics.empty()) return false;
+            if (!syntax || !syntax.diagnostics.empty())
+              return false;
             const auto factory = ir::resolveInstruction(*syntax);
-            if (!factory || !*factory || (*factory)->instruction_kind() != expected_kind) return false;
+            if (!factory || !*factory ||
+                (*factory)->instruction_kind() != expected_kind)
+              return false;
             auto* member = installedPackedAtomicMember(**factory);
-            if (!member || member->locs.empty()) return false;
+            if (!member || member->locs.empty())
+              return false;
             if (immediate) {
-              const auto* value = std::get_if<ir::ResolvedImmediate>(&member->value);
-              if (!value || value->type != logical || value->bits != word) return false;
-            } else if (!std::get_if<ir::ResolvedRegisterRef>(&member->value)) return false;
+              const auto* value =
+                  std::get_if<ir::ResolvedImmediate>(&member->value);
+              if (!value || value->type != logical || value->bits != word)
+                return false;
+            } else if (!std::get_if<ir::ResolvedRegisterRef>(&member->value))
+              return false;
           }
           std::optional<ir::ResolvedModule> module;
           {
-            const std::string text = ".version 9.3\n.target sm_90\n.address_size 64\n"
+            const std::string text =
+                ".version 9.3\n.target sm_90\n.address_size 64\n"
                 ".global .align 4 .b32 cell;\n.entry k(){.reg .b32 %dst,%bits;"
-                ".reg .b64 %policy;" + statement + "}";
+                ".reg .b64 %policy;" +
+                statement + "}";
             ptx_frontend::PtxSyntaxParser parser(text);
             const auto ast = parser.parseModule();
-            if (!ast || !ast.diagnostics.empty()) return false;
+            if (!ast || !ast.diagnostics.empty())
+              return false;
             auto result = ir::resolveAndValidateModule(*ast);
-            if (!result || !ir::validateModule(*ast,*result)) return false;
+            if (!result || !ir::validateModule(*ast, *result))
+              return false;
             module.emplace(std::move(*result));
           }
-          if (module->functions.size()!=1 || module->functions.front().body.size()!=1) return false;
+          if (module->functions.size() != 1 ||
+              module->functions.front().body.size() != 1)
+            return false;
           auto copy = *module;
           ir::ResolvedModule assigned;
           assigned = copy;
@@ -4135,38 +4301,51 @@ bool checkInstalledPackedAtomicSources() {
           function_assigned = function_copy;
           auto clone = moved.functions.front().body.front()->clone();
           module.reset();
-          if (!ir::validateModule(moved) || function_assigned.body.size()!=1 || !clone) return false;
-          for (auto* instruction : {moved.functions.front().body.front().get(),
-                                    function_assigned.body.front().get(), clone.get()}) {
-            if (!instruction || instruction->instruction_kind()!=expected_kind ||
-                !instruction->check(context)) return false;
+          if (!ir::validateModule(moved) ||
+              function_assigned.body.size() != 1 || !clone)
+            return false;
+          for (auto* instruction :
+               {moved.functions.front().body.front().get(),
+                function_assigned.body.front().get(), clone.get()}) {
+            if (!instruction ||
+                instruction->instruction_kind() != expected_kind ||
+                !instruction->check(context))
+              return false;
             auto* member = installedPackedAtomicMember(*instruction);
-            if (!member || member->locs.empty()) return false;
+            if (!member || member->locs.empty())
+              return false;
 #ifdef PTX_PACKED_ATOMIC_CAPTURE_GENERATED_VIEWS
-            const auto generated_before=ir::packed_atomic_projection::observed;
-            ir::packed_atomic_projection::mirrors=true;
-            ir::packed_atomic_projection::logical=logical;
-            ir::packed_atomic_projection::expected=member;
-            const auto generated_check=instruction->check(context);
-            ir::packed_atomic_projection::expected=nullptr;
+            const auto generated_before =
+                ir::packed_atomic_projection::observed;
+            ir::packed_atomic_projection::mirrors = true;
+            ir::packed_atomic_projection::logical = logical;
+            ir::packed_atomic_projection::expected = member;
+            const auto generated_check = instruction->check(context);
+            ir::packed_atomic_projection::expected = nullptr;
             if (!generated_check || !ir::packed_atomic_projection::mirrors ||
-                ir::packed_atomic_projection::observed!=generated_before+1) return false;
+                ir::packed_atomic_projection::observed != generated_before + 1)
+              return false;
 #endif
             Observer observer(member->value, context, logical);
             instruction->visit_references(observer);
-            if (!observer.okay || observer.count!=1 || observer.descriptor) return false;
+            if (!observer.okay || observer.count != 1 || observer.descriptor)
+              return false;
             if (immediate) {
               auto* value = std::get_if<ir::ResolvedImmediate>(&member->value);
-              if (!value) return false;
+              if (!value)
+                return false;
               const auto saved = *value;
-              *value = ir::ResolvedImmediate{.bits=word,.type=logical};
-              if (!instruction->check(context)) return false;
-              value->bits |= std::uint64_t{1}<<32;
-              if (instruction->check(context)) return false;
+              *value = ir::ResolvedImmediate{.bits = word, .type = logical};
+              if (!instruction->check(context))
+                return false;
+              value->bits |= std::uint64_t{1} << 32;
+              if (instruction->check(context))
+                return false;
               *value = saved;
             }
           }
-          if (!ir::validateModule(moved)) return false;
+          if (!ir::validateModule(moved))
+            return false;
         }
   return true;
 }

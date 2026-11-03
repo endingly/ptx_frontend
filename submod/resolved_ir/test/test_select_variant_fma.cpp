@@ -214,12 +214,13 @@ TEST(ResolveFma, AcceptsFloatingImmediatesOnlyWhereTheFormAllowsThem) {
   EXPECT_EQ(std::get<ResolvedImmediate>(widened_variant->src3.value).bits,
             0x7ff0000000000000ULL);
 
-  const auto bf16 = resolveFma(parse_instruction(
-      "fma.rn.f32.bf16 %f0, 1.0, %b2, %f3;"));
+  const auto bf16 =
+      resolveFma(parse_instruction("fma.rn.f32.bf16 %f0, 1.0, %b2, %f3;"));
   ASSERT_TRUE(bf16);
   const auto* mixed_bf16 = dynamic_cast<const FmaMixedF32Bf16*>(bf16->get());
   ASSERT_NE(mixed_bf16, nullptr);
-  const auto* bf16_literal = std::get_if<ResolvedImmediate>(&mixed_bf16->src1.value);
+  const auto* bf16_literal =
+      std::get_if<ResolvedImmediate>(&mixed_bf16->src1.value);
   ASSERT_NE(bf16_literal, nullptr);
   EXPECT_EQ(bf16_literal->type, ScalarType::BF16);
   EXPECT_EQ(bf16_literal->bits, 0x3f80u);

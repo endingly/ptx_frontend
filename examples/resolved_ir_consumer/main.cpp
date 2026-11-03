@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <algorithm>
 #include <type_traits>
+#include <vector>
 #include <algorithm>
 #include <array>
 #include <concepts>
@@ -219,6 +220,177 @@ ptx_frontend::resolved_ir::checker::CheckResult packed_setp_wrap_operands(
                                    context, matrix);
 }
 #undef PACKED_SETP_PARAMS
+#endif
+
+#if defined(PTX_ATOMIC_VALUE_CHECKER_WRAP)
+namespace ptx_frontend::resolved_ir::atomic_value_test_wrap {
+/** Expected actual member and independent source facts for one synchronous generated check. */
+struct Capture {
+  /** Borrowed only while the current exact-class instruction remains live. */
+  const WithLocs<ResolvedValueVector>* member = nullptr;
+  /** Independent logical and physical types from the selected finite fixture. */
+  ScalarType logical = ScalarType::Invalid;
+  ScalarType physical = ScalarType::Invalid;
+  /** Independently counted scalar lanes and exact literal word; no conversion oracle here. */
+  size_t arity = 0;
+  uint64_t bits = 0;
+  /** Register-only, all-immediate, or first-immediate mixed brace mode. */
+  unsigned mode = 0;
+  /** Independently found written scalar ranges, owned by the caller during checking. */
+  std::vector<SourceRange> ranges;
+  /** Copied observations, never retained callback views. */
+  size_t calls = 0;
+  bool valid = true;
+};
+/** One thread's synchronous test observation; never a production observer hook. */
+inline thread_local Capture* active = nullptr;
+/** Restore an enclosing observation even if the real checker throws. */
+class Scope {
+  /** Previous stack-owned capture restored before its enclosing scope resumes. */
+  Capture* previous_;
+
+ public:
+  /** Borrow a live capture only for this stack scope. */
+  explicit Scope(Capture& value) : previous_(active) { active = &value; }
+  /** Release every capture borrow when the synchronous call finishes. */
+  ~Scope() { active = previous_; }
+};
+/** Independently locate each source-brace leaf in the ASCII fixture, not in owned IR. */
+inline std::vector<SourceRange> ranges(std::string_view text) {
+  const auto address = text.find("[data],");
+  const auto open =
+      address == std::string_view::npos ? address : text.find('{', address);
+  if (open == std::string_view::npos)
+    throw std::logic_error("Missing actual source brace.");
+  std::vector<SourceRange> result;
+  size_t begin = open + 1;
+  for (;;) {
+    const auto end = text.find_first_of(",}", begin);
+    if (end == std::string_view::npos || end == begin)
+      throw std::logic_error("Missing scalar source leaf.");
+    SourcePos position{1, 1};
+    for (const char character : text.substr(0, begin)) {
+      if (character == '\n') {
+        ++position.line;
+        position.column = 1;
+      } else
+        ++position.column;
+    }
+    result.push_back(
+        {position,
+         {position.line, position.column + static_cast<int32_t>(end - begin)}});
+    if (text[end] == '}')
+      break;
+    begin = end + 1;
+  }
+  return result;
+}
+}  // namespace ptx_frontend::resolved_ir::atomic_value_test_wrap
+/** Forward the real library checker without changing any argument or result. */
+extern "C" ptx_frontend::resolved_ir::checker::
+    CheckResult
+    atomic_value_real_operands(std::span<const ptx_frontend::resolved_ir::checker::OperandDescriptor>, std::span<const ptx_frontend::resolved_ir::checker::FieldView>, std::span<const ptx_frontend::resolved_ir::checker::OperandView>, std::span<const ptx_frontend::resolved_ir::checker::OperandTypeCompatibilityDescriptor>, const ptx_frontend::resolved_ir::checker::Context&, const ptx_frontend::resolved_ir::MatrixInstructionDescriptor*) asm(
+        "__real__ZN12ptx_frontend11resolved_ir7checker14check_"
+        "operandsESt4spanIKNS1_17OperandDescriptorELm18446744073709551615EES2_"
+        "IKNS1_9FieldViewELm18446744073709551615EES2_IKNS1_"
+        "11OperandViewELm18446744073709551615EES2_IKNS1_"
+        "34OperandTypeCompatibilityDescriptorELm18446744073709551615EERKNS1_"
+        "7ContextEPKNS0_27MatrixInstructionDescriptorE");
+/** Observe actual generated projections only inside the synchronous Instruction::check call. */
+extern "C" ptx_frontend::resolved_ir::checker::
+    CheckResult
+    atomic_value_wrap_operands(std::span<const ptx_frontend::resolved_ir::checker::OperandDescriptor>, std::span<const ptx_frontend::resolved_ir::checker::FieldView>, std::span<const ptx_frontend::resolved_ir::checker::OperandView>, std::span<const ptx_frontend::resolved_ir::checker::OperandTypeCompatibilityDescriptor>, const ptx_frontend::resolved_ir::checker::Context&, const ptx_frontend::resolved_ir::MatrixInstructionDescriptor*) asm(
+        "__wrap__ZN12ptx_frontend11resolved_ir7checker14check_"
+        "operandsESt4spanIKNS1_17OperandDescriptorELm18446744073709551615EES2_"
+        "IKNS1_9FieldViewELm18446744073709551615EES2_IKNS1_"
+        "11OperandViewELm18446744073709551615EES2_IKNS1_"
+        "34OperandTypeCompatibilityDescriptorELm18446744073709551615EERKNS1_"
+        "7ContextEPKNS0_27MatrixInstructionDescriptorE");
+ptx_frontend::resolved_ir::checker::CheckResult atomic_value_wrap_operands(
+    std::span<const ptx_frontend::resolved_ir::checker::OperandDescriptor>
+        descriptors,
+    std::span<const ptx_frontend::resolved_ir::checker::FieldView> fields,
+    std::span<const ptx_frontend::resolved_ir::checker::OperandView> views,
+    std::span<const ptx_frontend::resolved_ir::checker::
+                  OperandTypeCompatibilityDescriptor>
+        compatibility,
+    const ptx_frontend::resolved_ir::checker::Context& context,
+    const ptx_frontend::resolved_ir::MatrixInstructionDescriptor* matrix) {
+  using namespace ptx_frontend::resolved_ir;
+  if (auto* expected = atomic_value_test_wrap::active) {
+    for (const auto& view : views)
+      if (view.field_id == "src") {
+        ++expected->calls;
+        const auto descriptor =
+            std::ranges::find(descriptors, std::string_view("src"),
+                              &checker::OperandDescriptor::target_field_id);
+        const auto* member = expected->member;
+        bool valid =
+            member && member->value.elements.size() == expected->arity &&
+            member->locs.size() == expected->arity &&
+            expected->ranges.size() == expected->arity &&
+            descriptor != descriptors.end() &&
+            descriptor->source_value_vector &&
+            descriptor->access == checker::OperandAccess::Read &&
+            descriptor->role == checker::OperandRole::Source &&
+            descriptor->vector_type_policy ==
+                checker::VectorTypePolicy::Element &&
+            descriptor->register_width_policy ==
+                ptx_frontend::base::ScalarTypeSizePolicy::SameWidth &&
+            !descriptor->allow_named_vector && !descriptor->allow_vector_sink &&
+            view.actual_shape == checker::OperandShape::Vector &&
+            view.value_vector == &member->value && !view.register_vector &&
+            !view.mov_value_vector && view.vector_arity == expected->arity &&
+            view.locations.data() == member->locs.data() &&
+            std::ranges::equal(view.locations, expected->ranges) &&
+            member->locs == expected->ranges;
+        if (valid)
+          for (size_t index = 0; index < expected->arity; ++index) {
+            const bool immediate_lane =
+                expected->mode == 1 || (expected->mode == 2 && index == 0);
+            if (immediate_lane) {
+              const auto* immediate = std::get_if<ResolvedImmediate>(
+                  &member->value.elements[index]);
+              valid = valid && immediate &&
+                      view.vector_element_immediates[index] == immediate &&
+                      !view.vector_element_registers[index] &&
+                      view.vector_element_shapes[index] ==
+                          checker::OperandShape::Immediate &&
+                      immediate->type == expected->logical &&
+                      immediate->bits == expected->bits &&
+                      !immediate->integer_source_bits &&
+                      !immediate->is_negative &&
+                      view.vector_element_types[index] == immediate->type &&
+                      view.vector_immediate_bits[index] == immediate->bits &&
+                      view.vector_immediate_source_bits[index] ==
+                          immediate->integer_source_bits &&
+                      view.vector_immediate_negative[index] ==
+                          immediate->is_negative;
+            } else {
+              const auto* reg = std::get_if<ResolvedRegisterRef>(
+                  &member->value.elements[index]);
+              valid = valid && reg &&
+                      view.vector_element_registers[index] == reg &&
+                      !view.vector_element_immediates[index] &&
+                      view.vector_element_shapes[index] ==
+                          checker::OperandShape::Register &&
+                      reg->spelling == "s" + std::to_string(index) &&
+                      reg->symbol_id &&
+                      reg->register_class == ResolvedRegisterClass::General &&
+                      !reg->vector_width &&
+                      reg->declared_type == expected->physical &&
+                      view.vector_element_types[index] == *reg->declared_type &&
+                      !view.vector_immediate_bits[index].has_value() &&
+                      !view.vector_immediate_source_bits[index] &&
+                      !view.vector_immediate_negative[index];
+            }
+          }
+        expected->valid = expected->valid && valid;
+      }
+  }
+  return atomic_value_real_operands(descriptors, fields, views, compatibility,
+                                    context, matrix);
+}
 #endif
 
 /** Verify installed catalog metadata and owned header gates without source storage. */
@@ -2818,6 +2990,963 @@ bool checkInstalledPackedSetpGeneratedViews() {
 }
 #endif
 
+/** One finite installed source branch, retaining exact class/type/arity/layout facts. */
+struct InstalledAtomicValueCase {
+  /** Stable fixture identity used for descriptive failure output. */
+  std::string_view id;
+  /** Exact existing public final class. */
+  ptx_frontend::resolved_ir::InstructionKind kind;
+  /** Presence of the unchanged register-vector destination. */
+  bool atom;
+  /** Presence of the unchanged B64 cache-policy register. */
+  bool hinted;
+  /** Required scalar lane count. */
+  unsigned arity;
+  /** Logical immediate conversion/use type. */
+  ptx_frontend::resolved_ir::ScalarType logical;
+  /** Existing physical bit declaration used by both register control roles. */
+  std::string_view physical;
+  /** Exact already-supported modifier/control prefix. */
+  std::string_view operation;
+  /** Accepted common numeric or bare packed-word producer. */
+  std::string_view literal;
+  /** Existing converter golden or exact raw packed word. */
+  uint64_t bits;
+};
+
+/** Borrow the actual installed member from its live exact-class instruction. */
+const ptx_frontend::WithLocs<ptx_frontend::resolved_ir::ResolvedValueVector>&
+installedAtomicValueSource(
+    const ptx_frontend::resolved_ir::Instruction& instruction) {
+  namespace ir = ptx_frontend::resolved_ir;
+  if (const auto* form =
+          dynamic_cast<const ir::AtomVectorAddNoftzF16*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::AtomVectorMinNoftzF16*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::AtomVectorMaxNoftzF16*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::AtomVectorAddNoftzBf16*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::AtomVectorMinNoftzBf16*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::AtomVectorMaxNoftzBf16*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::AtomVectorAddNoftzF16x2*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::AtomVectorMinNoftzF16x2*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::AtomVectorMaxNoftzF16x2*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::AtomVectorAddNoftzBf16x2*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::AtomVectorMinNoftzBf16x2*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::AtomVectorMaxNoftzBf16x2*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::AtomVectorAddF32*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::RedVectorAddNoftzF16*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::RedVectorMinNoftzF16*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::RedVectorMaxNoftzF16*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::RedVectorAddNoftzBf16*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::RedVectorMinNoftzBf16*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::RedVectorMaxNoftzBf16*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::RedVectorAddNoftzF16x2*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::RedVectorMinNoftzF16x2*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::RedVectorMaxNoftzF16x2*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::RedVectorAddNoftzBf16x2*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::RedVectorMinNoftzBf16x2*>(&instruction))
+    return form->src;
+  if (const auto* form =
+          dynamic_cast<const ir::RedVectorMaxNoftzBf16x2*>(&instruction))
+    return form->src;
+  if (const auto* form = dynamic_cast<const ir::RedVectorAddF32*>(&instruction))
+    return form->src;
+  throw std::logic_error("Expected an installed vector atomic source class.");
+}
+
+/** Build a source brace fixture without changing arity or making a whole-vector grant. */
+std::string installedAtomicValuePack(unsigned arity, std::string_view value,
+                                     bool registers) {
+  std::string result = "{";
+  for (unsigned index = 0; index < arity; ++index)
+    result += (index ? "," : "") + std::string(value) +
+              (registers ? std::to_string(index) : "");
+  return result + "}";
+}
+
+/** Inspect actual installed values while the source owner outlives each synchronous callback. */
+bool checkInstalledAtomicValueVectors() {
+  namespace ir = ptx_frontend::resolved_ir;
+  static_assert(std::same_as<decltype(ir::AtomVectorAddNoftzF16{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::AtomVectorAddNoftzF16> &&
+                std::copy_constructible<ir::AtomVectorAddNoftzF16> &&
+                std::is_copy_assignable_v<ir::AtomVectorAddNoftzF16> &&
+                std::derived_from<ir::AtomVectorAddNoftzF16, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::AtomVectorMinNoftzF16{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::AtomVectorMinNoftzF16> &&
+                std::copy_constructible<ir::AtomVectorMinNoftzF16> &&
+                std::is_copy_assignable_v<ir::AtomVectorMinNoftzF16> &&
+                std::derived_from<ir::AtomVectorMinNoftzF16, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::AtomVectorMaxNoftzF16{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::AtomVectorMaxNoftzF16> &&
+                std::copy_constructible<ir::AtomVectorMaxNoftzF16> &&
+                std::is_copy_assignable_v<ir::AtomVectorMaxNoftzF16> &&
+                std::derived_from<ir::AtomVectorMaxNoftzF16, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::AtomVectorAddNoftzBf16{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::AtomVectorAddNoftzBf16> &&
+                std::copy_constructible<ir::AtomVectorAddNoftzBf16> &&
+                std::is_copy_assignable_v<ir::AtomVectorAddNoftzBf16> &&
+                std::derived_from<ir::AtomVectorAddNoftzBf16, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::AtomVectorMinNoftzBf16{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::AtomVectorMinNoftzBf16> &&
+                std::copy_constructible<ir::AtomVectorMinNoftzBf16> &&
+                std::is_copy_assignable_v<ir::AtomVectorMinNoftzBf16> &&
+                std::derived_from<ir::AtomVectorMinNoftzBf16, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::AtomVectorMaxNoftzBf16{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::AtomVectorMaxNoftzBf16> &&
+                std::copy_constructible<ir::AtomVectorMaxNoftzBf16> &&
+                std::is_copy_assignable_v<ir::AtomVectorMaxNoftzBf16> &&
+                std::derived_from<ir::AtomVectorMaxNoftzBf16, ir::Instruction>);
+  static_assert(
+      std::same_as<decltype(ir::AtomVectorAddNoftzF16x2{}.src),
+                   ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+      std::default_initializable<ir::AtomVectorAddNoftzF16x2> &&
+      std::copy_constructible<ir::AtomVectorAddNoftzF16x2> &&
+      std::is_copy_assignable_v<ir::AtomVectorAddNoftzF16x2> &&
+      std::derived_from<ir::AtomVectorAddNoftzF16x2, ir::Instruction>);
+  static_assert(
+      std::same_as<decltype(ir::AtomVectorMinNoftzF16x2{}.src),
+                   ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+      std::default_initializable<ir::AtomVectorMinNoftzF16x2> &&
+      std::copy_constructible<ir::AtomVectorMinNoftzF16x2> &&
+      std::is_copy_assignable_v<ir::AtomVectorMinNoftzF16x2> &&
+      std::derived_from<ir::AtomVectorMinNoftzF16x2, ir::Instruction>);
+  static_assert(
+      std::same_as<decltype(ir::AtomVectorMaxNoftzF16x2{}.src),
+                   ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+      std::default_initializable<ir::AtomVectorMaxNoftzF16x2> &&
+      std::copy_constructible<ir::AtomVectorMaxNoftzF16x2> &&
+      std::is_copy_assignable_v<ir::AtomVectorMaxNoftzF16x2> &&
+      std::derived_from<ir::AtomVectorMaxNoftzF16x2, ir::Instruction>);
+  static_assert(
+      std::same_as<decltype(ir::AtomVectorAddNoftzBf16x2{}.src),
+                   ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+      std::default_initializable<ir::AtomVectorAddNoftzBf16x2> &&
+      std::copy_constructible<ir::AtomVectorAddNoftzBf16x2> &&
+      std::is_copy_assignable_v<ir::AtomVectorAddNoftzBf16x2> &&
+      std::derived_from<ir::AtomVectorAddNoftzBf16x2, ir::Instruction>);
+  static_assert(
+      std::same_as<decltype(ir::AtomVectorMinNoftzBf16x2{}.src),
+                   ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+      std::default_initializable<ir::AtomVectorMinNoftzBf16x2> &&
+      std::copy_constructible<ir::AtomVectorMinNoftzBf16x2> &&
+      std::is_copy_assignable_v<ir::AtomVectorMinNoftzBf16x2> &&
+      std::derived_from<ir::AtomVectorMinNoftzBf16x2, ir::Instruction>);
+  static_assert(
+      std::same_as<decltype(ir::AtomVectorMaxNoftzBf16x2{}.src),
+                   ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+      std::default_initializable<ir::AtomVectorMaxNoftzBf16x2> &&
+      std::copy_constructible<ir::AtomVectorMaxNoftzBf16x2> &&
+      std::is_copy_assignable_v<ir::AtomVectorMaxNoftzBf16x2> &&
+      std::derived_from<ir::AtomVectorMaxNoftzBf16x2, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::AtomVectorAddF32{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::AtomVectorAddF32> &&
+                std::copy_constructible<ir::AtomVectorAddF32> &&
+                std::is_copy_assignable_v<ir::AtomVectorAddF32> &&
+                std::derived_from<ir::AtomVectorAddF32, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::RedVectorAddNoftzF16{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::RedVectorAddNoftzF16> &&
+                std::copy_constructible<ir::RedVectorAddNoftzF16> &&
+                std::is_copy_assignable_v<ir::RedVectorAddNoftzF16> &&
+                std::derived_from<ir::RedVectorAddNoftzF16, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::RedVectorMinNoftzF16{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::RedVectorMinNoftzF16> &&
+                std::copy_constructible<ir::RedVectorMinNoftzF16> &&
+                std::is_copy_assignable_v<ir::RedVectorMinNoftzF16> &&
+                std::derived_from<ir::RedVectorMinNoftzF16, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::RedVectorMaxNoftzF16{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::RedVectorMaxNoftzF16> &&
+                std::copy_constructible<ir::RedVectorMaxNoftzF16> &&
+                std::is_copy_assignable_v<ir::RedVectorMaxNoftzF16> &&
+                std::derived_from<ir::RedVectorMaxNoftzF16, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::RedVectorAddNoftzBf16{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::RedVectorAddNoftzBf16> &&
+                std::copy_constructible<ir::RedVectorAddNoftzBf16> &&
+                std::is_copy_assignable_v<ir::RedVectorAddNoftzBf16> &&
+                std::derived_from<ir::RedVectorAddNoftzBf16, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::RedVectorMinNoftzBf16{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::RedVectorMinNoftzBf16> &&
+                std::copy_constructible<ir::RedVectorMinNoftzBf16> &&
+                std::is_copy_assignable_v<ir::RedVectorMinNoftzBf16> &&
+                std::derived_from<ir::RedVectorMinNoftzBf16, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::RedVectorMaxNoftzBf16{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::RedVectorMaxNoftzBf16> &&
+                std::copy_constructible<ir::RedVectorMaxNoftzBf16> &&
+                std::is_copy_assignable_v<ir::RedVectorMaxNoftzBf16> &&
+                std::derived_from<ir::RedVectorMaxNoftzBf16, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::RedVectorAddNoftzF16x2{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::RedVectorAddNoftzF16x2> &&
+                std::copy_constructible<ir::RedVectorAddNoftzF16x2> &&
+                std::is_copy_assignable_v<ir::RedVectorAddNoftzF16x2> &&
+                std::derived_from<ir::RedVectorAddNoftzF16x2, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::RedVectorMinNoftzF16x2{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::RedVectorMinNoftzF16x2> &&
+                std::copy_constructible<ir::RedVectorMinNoftzF16x2> &&
+                std::is_copy_assignable_v<ir::RedVectorMinNoftzF16x2> &&
+                std::derived_from<ir::RedVectorMinNoftzF16x2, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::RedVectorMaxNoftzF16x2{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::RedVectorMaxNoftzF16x2> &&
+                std::copy_constructible<ir::RedVectorMaxNoftzF16x2> &&
+                std::is_copy_assignable_v<ir::RedVectorMaxNoftzF16x2> &&
+                std::derived_from<ir::RedVectorMaxNoftzF16x2, ir::Instruction>);
+  static_assert(
+      std::same_as<decltype(ir::RedVectorAddNoftzBf16x2{}.src),
+                   ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+      std::default_initializable<ir::RedVectorAddNoftzBf16x2> &&
+      std::copy_constructible<ir::RedVectorAddNoftzBf16x2> &&
+      std::is_copy_assignable_v<ir::RedVectorAddNoftzBf16x2> &&
+      std::derived_from<ir::RedVectorAddNoftzBf16x2, ir::Instruction>);
+  static_assert(
+      std::same_as<decltype(ir::RedVectorMinNoftzBf16x2{}.src),
+                   ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+      std::default_initializable<ir::RedVectorMinNoftzBf16x2> &&
+      std::copy_constructible<ir::RedVectorMinNoftzBf16x2> &&
+      std::is_copy_assignable_v<ir::RedVectorMinNoftzBf16x2> &&
+      std::derived_from<ir::RedVectorMinNoftzBf16x2, ir::Instruction>);
+  static_assert(
+      std::same_as<decltype(ir::RedVectorMaxNoftzBf16x2{}.src),
+                   ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+      std::default_initializable<ir::RedVectorMaxNoftzBf16x2> &&
+      std::copy_constructible<ir::RedVectorMaxNoftzBf16x2> &&
+      std::is_copy_assignable_v<ir::RedVectorMaxNoftzBf16x2> &&
+      std::derived_from<ir::RedVectorMaxNoftzBf16x2, ir::Instruction>);
+  static_assert(std::same_as<decltype(ir::RedVectorAddF32{}.src),
+                             ptx_frontend::WithLocs<ir::ResolvedValueVector>> &&
+                std::default_initializable<ir::RedVectorAddF32> &&
+                std::copy_constructible<ir::RedVectorAddF32> &&
+                std::is_copy_assignable_v<ir::RedVectorAddF32> &&
+                std::derived_from<ir::RedVectorAddF32, ir::Instruction>);
+  /** Exact finite class/type/arity/layout fixtures, not a program quota. */
+  constexpr InstalledAtomicValueCase cases[] = {
+      {"atom/atom_vector_add_noftz_f16/no_hint/src/f16/v2",
+       ir::AtomVectorAddNoftzF16::kind, true, false, 2, ir::ScalarType::F16,
+       "b16", "atom.global.add.noftz.v2.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_add_noftz_f16/no_hint/src/f16/v4",
+       ir::AtomVectorAddNoftzF16::kind, true, false, 4, ir::ScalarType::F16,
+       "b16", "atom.global.add.noftz.v4.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_add_noftz_f16/no_hint/src/f16/v8",
+       ir::AtomVectorAddNoftzF16::kind, true, false, 8, ir::ScalarType::F16,
+       "b16", "atom.global.add.noftz.v8.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_add_noftz_f16/with_policy/src/f16/v2",
+       ir::AtomVectorAddNoftzF16::kind, true, true, 2, ir::ScalarType::F16,
+       "b16", "atom.global.add.noftz.L2::cache_hint.v2.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_add_noftz_f16/with_policy/src/f16/v4",
+       ir::AtomVectorAddNoftzF16::kind, true, true, 4, ir::ScalarType::F16,
+       "b16", "atom.global.add.noftz.L2::cache_hint.v4.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_add_noftz_f16/with_policy/src/f16/v8",
+       ir::AtomVectorAddNoftzF16::kind, true, true, 8, ir::ScalarType::F16,
+       "b16", "atom.global.add.noftz.L2::cache_hint.v8.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_min_noftz_f16/no_hint/src/f16/v2",
+       ir::AtomVectorMinNoftzF16::kind, true, false, 2, ir::ScalarType::F16,
+       "b16", "atom.global.min.noftz.v2.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_min_noftz_f16/no_hint/src/f16/v4",
+       ir::AtomVectorMinNoftzF16::kind, true, false, 4, ir::ScalarType::F16,
+       "b16", "atom.global.min.noftz.v4.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_min_noftz_f16/no_hint/src/f16/v8",
+       ir::AtomVectorMinNoftzF16::kind, true, false, 8, ir::ScalarType::F16,
+       "b16", "atom.global.min.noftz.v8.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_min_noftz_f16/with_policy/src/f16/v2",
+       ir::AtomVectorMinNoftzF16::kind, true, true, 2, ir::ScalarType::F16,
+       "b16", "atom.global.min.noftz.L2::cache_hint.v2.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_min_noftz_f16/with_policy/src/f16/v4",
+       ir::AtomVectorMinNoftzF16::kind, true, true, 4, ir::ScalarType::F16,
+       "b16", "atom.global.min.noftz.L2::cache_hint.v4.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_min_noftz_f16/with_policy/src/f16/v8",
+       ir::AtomVectorMinNoftzF16::kind, true, true, 8, ir::ScalarType::F16,
+       "b16", "atom.global.min.noftz.L2::cache_hint.v8.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_max_noftz_f16/no_hint/src/f16/v2",
+       ir::AtomVectorMaxNoftzF16::kind, true, false, 2, ir::ScalarType::F16,
+       "b16", "atom.global.max.noftz.v2.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_max_noftz_f16/no_hint/src/f16/v4",
+       ir::AtomVectorMaxNoftzF16::kind, true, false, 4, ir::ScalarType::F16,
+       "b16", "atom.global.max.noftz.v4.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_max_noftz_f16/no_hint/src/f16/v8",
+       ir::AtomVectorMaxNoftzF16::kind, true, false, 8, ir::ScalarType::F16,
+       "b16", "atom.global.max.noftz.v8.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_max_noftz_f16/with_policy/src/f16/v2",
+       ir::AtomVectorMaxNoftzF16::kind, true, true, 2, ir::ScalarType::F16,
+       "b16", "atom.global.max.noftz.L2::cache_hint.v2.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_max_noftz_f16/with_policy/src/f16/v4",
+       ir::AtomVectorMaxNoftzF16::kind, true, true, 4, ir::ScalarType::F16,
+       "b16", "atom.global.max.noftz.L2::cache_hint.v4.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_max_noftz_f16/with_policy/src/f16/v8",
+       ir::AtomVectorMaxNoftzF16::kind, true, true, 8, ir::ScalarType::F16,
+       "b16", "atom.global.max.noftz.L2::cache_hint.v8.f16", "1.5", 0x3e00ULL},
+      {"atom/atom_vector_add_noftz_bf16/no_hint/src/bf16/v2",
+       ir::AtomVectorAddNoftzBf16::kind, true, false, 2, ir::ScalarType::BF16,
+       "b16", "atom.global.add.noftz.v2.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_add_noftz_bf16/no_hint/src/bf16/v4",
+       ir::AtomVectorAddNoftzBf16::kind, true, false, 4, ir::ScalarType::BF16,
+       "b16", "atom.global.add.noftz.v4.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_add_noftz_bf16/no_hint/src/bf16/v8",
+       ir::AtomVectorAddNoftzBf16::kind, true, false, 8, ir::ScalarType::BF16,
+       "b16", "atom.global.add.noftz.v8.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_add_noftz_bf16/with_policy/src/bf16/v2",
+       ir::AtomVectorAddNoftzBf16::kind, true, true, 2, ir::ScalarType::BF16,
+       "b16", "atom.global.add.noftz.L2::cache_hint.v2.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_add_noftz_bf16/with_policy/src/bf16/v4",
+       ir::AtomVectorAddNoftzBf16::kind, true, true, 4, ir::ScalarType::BF16,
+       "b16", "atom.global.add.noftz.L2::cache_hint.v4.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_add_noftz_bf16/with_policy/src/bf16/v8",
+       ir::AtomVectorAddNoftzBf16::kind, true, true, 8, ir::ScalarType::BF16,
+       "b16", "atom.global.add.noftz.L2::cache_hint.v8.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_min_noftz_bf16/no_hint/src/bf16/v2",
+       ir::AtomVectorMinNoftzBf16::kind, true, false, 2, ir::ScalarType::BF16,
+       "b16", "atom.global.min.noftz.v2.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_min_noftz_bf16/no_hint/src/bf16/v4",
+       ir::AtomVectorMinNoftzBf16::kind, true, false, 4, ir::ScalarType::BF16,
+       "b16", "atom.global.min.noftz.v4.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_min_noftz_bf16/no_hint/src/bf16/v8",
+       ir::AtomVectorMinNoftzBf16::kind, true, false, 8, ir::ScalarType::BF16,
+       "b16", "atom.global.min.noftz.v8.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_min_noftz_bf16/with_policy/src/bf16/v2",
+       ir::AtomVectorMinNoftzBf16::kind, true, true, 2, ir::ScalarType::BF16,
+       "b16", "atom.global.min.noftz.L2::cache_hint.v2.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_min_noftz_bf16/with_policy/src/bf16/v4",
+       ir::AtomVectorMinNoftzBf16::kind, true, true, 4, ir::ScalarType::BF16,
+       "b16", "atom.global.min.noftz.L2::cache_hint.v4.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_min_noftz_bf16/with_policy/src/bf16/v8",
+       ir::AtomVectorMinNoftzBf16::kind, true, true, 8, ir::ScalarType::BF16,
+       "b16", "atom.global.min.noftz.L2::cache_hint.v8.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_max_noftz_bf16/no_hint/src/bf16/v2",
+       ir::AtomVectorMaxNoftzBf16::kind, true, false, 2, ir::ScalarType::BF16,
+       "b16", "atom.global.max.noftz.v2.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_max_noftz_bf16/no_hint/src/bf16/v4",
+       ir::AtomVectorMaxNoftzBf16::kind, true, false, 4, ir::ScalarType::BF16,
+       "b16", "atom.global.max.noftz.v4.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_max_noftz_bf16/no_hint/src/bf16/v8",
+       ir::AtomVectorMaxNoftzBf16::kind, true, false, 8, ir::ScalarType::BF16,
+       "b16", "atom.global.max.noftz.v8.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_max_noftz_bf16/with_policy/src/bf16/v2",
+       ir::AtomVectorMaxNoftzBf16::kind, true, true, 2, ir::ScalarType::BF16,
+       "b16", "atom.global.max.noftz.L2::cache_hint.v2.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_max_noftz_bf16/with_policy/src/bf16/v4",
+       ir::AtomVectorMaxNoftzBf16::kind, true, true, 4, ir::ScalarType::BF16,
+       "b16", "atom.global.max.noftz.L2::cache_hint.v4.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_max_noftz_bf16/with_policy/src/bf16/v8",
+       ir::AtomVectorMaxNoftzBf16::kind, true, true, 8, ir::ScalarType::BF16,
+       "b16", "atom.global.max.noftz.L2::cache_hint.v8.bf16", "1.5", 0x3fc0ULL},
+      {"atom/atom_vector_add_noftz_f16x2/no_hint/src/f16x2/v2",
+       ir::AtomVectorAddNoftzF16x2::kind, true, false, 2, ir::ScalarType::F16x2,
+       "b32", "atom.global.add.noftz.v2.f16x2", "0f3e003e00", 0x3e003e00ULL},
+      {"atom/atom_vector_add_noftz_f16x2/no_hint/src/f16x2/v4",
+       ir::AtomVectorAddNoftzF16x2::kind, true, false, 4, ir::ScalarType::F16x2,
+       "b32", "atom.global.add.noftz.v4.f16x2", "0f3e003e00", 0x3e003e00ULL},
+      {"atom/atom_vector_add_noftz_f16x2/with_policy/src/f16x2/v2",
+       ir::AtomVectorAddNoftzF16x2::kind, true, true, 2, ir::ScalarType::F16x2,
+       "b32", "atom.global.add.noftz.L2::cache_hint.v2.f16x2", "0f3e003e00",
+       0x3e003e00ULL},
+      {"atom/atom_vector_add_noftz_f16x2/with_policy/src/f16x2/v4",
+       ir::AtomVectorAddNoftzF16x2::kind, true, true, 4, ir::ScalarType::F16x2,
+       "b32", "atom.global.add.noftz.L2::cache_hint.v4.f16x2", "0f3e003e00",
+       0x3e003e00ULL},
+      {"atom/atom_vector_min_noftz_f16x2/no_hint/src/f16x2/v2",
+       ir::AtomVectorMinNoftzF16x2::kind, true, false, 2, ir::ScalarType::F16x2,
+       "b32", "atom.global.min.noftz.v2.f16x2", "0f3e003e00", 0x3e003e00ULL},
+      {"atom/atom_vector_min_noftz_f16x2/no_hint/src/f16x2/v4",
+       ir::AtomVectorMinNoftzF16x2::kind, true, false, 4, ir::ScalarType::F16x2,
+       "b32", "atom.global.min.noftz.v4.f16x2", "0f3e003e00", 0x3e003e00ULL},
+      {"atom/atom_vector_min_noftz_f16x2/with_policy/src/f16x2/v2",
+       ir::AtomVectorMinNoftzF16x2::kind, true, true, 2, ir::ScalarType::F16x2,
+       "b32", "atom.global.min.noftz.L2::cache_hint.v2.f16x2", "0f3e003e00",
+       0x3e003e00ULL},
+      {"atom/atom_vector_min_noftz_f16x2/with_policy/src/f16x2/v4",
+       ir::AtomVectorMinNoftzF16x2::kind, true, true, 4, ir::ScalarType::F16x2,
+       "b32", "atom.global.min.noftz.L2::cache_hint.v4.f16x2", "0f3e003e00",
+       0x3e003e00ULL},
+      {"atom/atom_vector_max_noftz_f16x2/no_hint/src/f16x2/v2",
+       ir::AtomVectorMaxNoftzF16x2::kind, true, false, 2, ir::ScalarType::F16x2,
+       "b32", "atom.global.max.noftz.v2.f16x2", "0f3e003e00", 0x3e003e00ULL},
+      {"atom/atom_vector_max_noftz_f16x2/no_hint/src/f16x2/v4",
+       ir::AtomVectorMaxNoftzF16x2::kind, true, false, 4, ir::ScalarType::F16x2,
+       "b32", "atom.global.max.noftz.v4.f16x2", "0f3e003e00", 0x3e003e00ULL},
+      {"atom/atom_vector_max_noftz_f16x2/with_policy/src/f16x2/v2",
+       ir::AtomVectorMaxNoftzF16x2::kind, true, true, 2, ir::ScalarType::F16x2,
+       "b32", "atom.global.max.noftz.L2::cache_hint.v2.f16x2", "0f3e003e00",
+       0x3e003e00ULL},
+      {"atom/atom_vector_max_noftz_f16x2/with_policy/src/f16x2/v4",
+       ir::AtomVectorMaxNoftzF16x2::kind, true, true, 4, ir::ScalarType::F16x2,
+       "b32", "atom.global.max.noftz.L2::cache_hint.v4.f16x2", "0f3e003e00",
+       0x3e003e00ULL},
+      {"atom/atom_vector_add_noftz_bf16x2/no_hint/src/bf16x2/v2",
+       ir::AtomVectorAddNoftzBf16x2::kind, true, false, 2,
+       ir::ScalarType::BF16x2, "b32", "atom.global.add.noftz.v2.bf16x2",
+       "0f3fc03fc0", 0x3fc03fc0ULL},
+      {"atom/atom_vector_add_noftz_bf16x2/no_hint/src/bf16x2/v4",
+       ir::AtomVectorAddNoftzBf16x2::kind, true, false, 4,
+       ir::ScalarType::BF16x2, "b32", "atom.global.add.noftz.v4.bf16x2",
+       "0f3fc03fc0", 0x3fc03fc0ULL},
+      {"atom/atom_vector_add_noftz_bf16x2/with_policy/src/bf16x2/v2",
+       ir::AtomVectorAddNoftzBf16x2::kind, true, true, 2,
+       ir::ScalarType::BF16x2, "b32",
+       "atom.global.add.noftz.L2::cache_hint.v2.bf16x2", "0f3fc03fc0",
+       0x3fc03fc0ULL},
+      {"atom/atom_vector_add_noftz_bf16x2/with_policy/src/bf16x2/v4",
+       ir::AtomVectorAddNoftzBf16x2::kind, true, true, 4,
+       ir::ScalarType::BF16x2, "b32",
+       "atom.global.add.noftz.L2::cache_hint.v4.bf16x2", "0f3fc03fc0",
+       0x3fc03fc0ULL},
+      {"atom/atom_vector_min_noftz_bf16x2/no_hint/src/bf16x2/v2",
+       ir::AtomVectorMinNoftzBf16x2::kind, true, false, 2,
+       ir::ScalarType::BF16x2, "b32", "atom.global.min.noftz.v2.bf16x2",
+       "0f3fc03fc0", 0x3fc03fc0ULL},
+      {"atom/atom_vector_min_noftz_bf16x2/no_hint/src/bf16x2/v4",
+       ir::AtomVectorMinNoftzBf16x2::kind, true, false, 4,
+       ir::ScalarType::BF16x2, "b32", "atom.global.min.noftz.v4.bf16x2",
+       "0f3fc03fc0", 0x3fc03fc0ULL},
+      {"atom/atom_vector_min_noftz_bf16x2/with_policy/src/bf16x2/v2",
+       ir::AtomVectorMinNoftzBf16x2::kind, true, true, 2,
+       ir::ScalarType::BF16x2, "b32",
+       "atom.global.min.noftz.L2::cache_hint.v2.bf16x2", "0f3fc03fc0",
+       0x3fc03fc0ULL},
+      {"atom/atom_vector_min_noftz_bf16x2/with_policy/src/bf16x2/v4",
+       ir::AtomVectorMinNoftzBf16x2::kind, true, true, 4,
+       ir::ScalarType::BF16x2, "b32",
+       "atom.global.min.noftz.L2::cache_hint.v4.bf16x2", "0f3fc03fc0",
+       0x3fc03fc0ULL},
+      {"atom/atom_vector_max_noftz_bf16x2/no_hint/src/bf16x2/v2",
+       ir::AtomVectorMaxNoftzBf16x2::kind, true, false, 2,
+       ir::ScalarType::BF16x2, "b32", "atom.global.max.noftz.v2.bf16x2",
+       "0f3fc03fc0", 0x3fc03fc0ULL},
+      {"atom/atom_vector_max_noftz_bf16x2/no_hint/src/bf16x2/v4",
+       ir::AtomVectorMaxNoftzBf16x2::kind, true, false, 4,
+       ir::ScalarType::BF16x2, "b32", "atom.global.max.noftz.v4.bf16x2",
+       "0f3fc03fc0", 0x3fc03fc0ULL},
+      {"atom/atom_vector_max_noftz_bf16x2/with_policy/src/bf16x2/v2",
+       ir::AtomVectorMaxNoftzBf16x2::kind, true, true, 2,
+       ir::ScalarType::BF16x2, "b32",
+       "atom.global.max.noftz.L2::cache_hint.v2.bf16x2", "0f3fc03fc0",
+       0x3fc03fc0ULL},
+      {"atom/atom_vector_max_noftz_bf16x2/with_policy/src/bf16x2/v4",
+       ir::AtomVectorMaxNoftzBf16x2::kind, true, true, 4,
+       ir::ScalarType::BF16x2, "b32",
+       "atom.global.max.noftz.L2::cache_hint.v4.bf16x2", "0f3fc03fc0",
+       0x3fc03fc0ULL},
+      {"atom/atom_vector_add_f32/no_hint/src/f32/v2",
+       ir::AtomVectorAddF32::kind, true, false, 2, ir::ScalarType::F32, "b32",
+       "atom.global.add.v2.f32", "1.5", 0x3fc00000ULL},
+      {"atom/atom_vector_add_f32/no_hint/src/f32/v4",
+       ir::AtomVectorAddF32::kind, true, false, 4, ir::ScalarType::F32, "b32",
+       "atom.global.add.v4.f32", "1.5", 0x3fc00000ULL},
+      {"atom/atom_vector_add_f32/with_policy/src/f32/v2",
+       ir::AtomVectorAddF32::kind, true, true, 2, ir::ScalarType::F32, "b32",
+       "atom.global.add.L2::cache_hint.v2.f32", "1.5", 0x3fc00000ULL},
+      {"atom/atom_vector_add_f32/with_policy/src/f32/v4",
+       ir::AtomVectorAddF32::kind, true, true, 4, ir::ScalarType::F32, "b32",
+       "atom.global.add.L2::cache_hint.v4.f32", "1.5", 0x3fc00000ULL},
+      {"red/red_vector_add_noftz_f16/no_hint/src/f16/v2",
+       ir::RedVectorAddNoftzF16::kind, false, false, 2, ir::ScalarType::F16,
+       "b16", "red.global.add.noftz.v2.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_add_noftz_f16/no_hint/src/f16/v4",
+       ir::RedVectorAddNoftzF16::kind, false, false, 4, ir::ScalarType::F16,
+       "b16", "red.global.add.noftz.v4.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_add_noftz_f16/no_hint/src/f16/v8",
+       ir::RedVectorAddNoftzF16::kind, false, false, 8, ir::ScalarType::F16,
+       "b16", "red.global.add.noftz.v8.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_add_noftz_f16/with_policy/src/f16/v2",
+       ir::RedVectorAddNoftzF16::kind, false, true, 2, ir::ScalarType::F16,
+       "b16", "red.global.add.noftz.L2::cache_hint.v2.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_add_noftz_f16/with_policy/src/f16/v4",
+       ir::RedVectorAddNoftzF16::kind, false, true, 4, ir::ScalarType::F16,
+       "b16", "red.global.add.noftz.L2::cache_hint.v4.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_add_noftz_f16/with_policy/src/f16/v8",
+       ir::RedVectorAddNoftzF16::kind, false, true, 8, ir::ScalarType::F16,
+       "b16", "red.global.add.noftz.L2::cache_hint.v8.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_min_noftz_f16/no_hint/src/f16/v2",
+       ir::RedVectorMinNoftzF16::kind, false, false, 2, ir::ScalarType::F16,
+       "b16", "red.global.min.noftz.v2.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_min_noftz_f16/no_hint/src/f16/v4",
+       ir::RedVectorMinNoftzF16::kind, false, false, 4, ir::ScalarType::F16,
+       "b16", "red.global.min.noftz.v4.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_min_noftz_f16/no_hint/src/f16/v8",
+       ir::RedVectorMinNoftzF16::kind, false, false, 8, ir::ScalarType::F16,
+       "b16", "red.global.min.noftz.v8.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_min_noftz_f16/with_policy/src/f16/v2",
+       ir::RedVectorMinNoftzF16::kind, false, true, 2, ir::ScalarType::F16,
+       "b16", "red.global.min.noftz.L2::cache_hint.v2.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_min_noftz_f16/with_policy/src/f16/v4",
+       ir::RedVectorMinNoftzF16::kind, false, true, 4, ir::ScalarType::F16,
+       "b16", "red.global.min.noftz.L2::cache_hint.v4.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_min_noftz_f16/with_policy/src/f16/v8",
+       ir::RedVectorMinNoftzF16::kind, false, true, 8, ir::ScalarType::F16,
+       "b16", "red.global.min.noftz.L2::cache_hint.v8.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_max_noftz_f16/no_hint/src/f16/v2",
+       ir::RedVectorMaxNoftzF16::kind, false, false, 2, ir::ScalarType::F16,
+       "b16", "red.global.max.noftz.v2.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_max_noftz_f16/no_hint/src/f16/v4",
+       ir::RedVectorMaxNoftzF16::kind, false, false, 4, ir::ScalarType::F16,
+       "b16", "red.global.max.noftz.v4.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_max_noftz_f16/no_hint/src/f16/v8",
+       ir::RedVectorMaxNoftzF16::kind, false, false, 8, ir::ScalarType::F16,
+       "b16", "red.global.max.noftz.v8.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_max_noftz_f16/with_policy/src/f16/v2",
+       ir::RedVectorMaxNoftzF16::kind, false, true, 2, ir::ScalarType::F16,
+       "b16", "red.global.max.noftz.L2::cache_hint.v2.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_max_noftz_f16/with_policy/src/f16/v4",
+       ir::RedVectorMaxNoftzF16::kind, false, true, 4, ir::ScalarType::F16,
+       "b16", "red.global.max.noftz.L2::cache_hint.v4.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_max_noftz_f16/with_policy/src/f16/v8",
+       ir::RedVectorMaxNoftzF16::kind, false, true, 8, ir::ScalarType::F16,
+       "b16", "red.global.max.noftz.L2::cache_hint.v8.f16", "1.5", 0x3e00ULL},
+      {"red/red_vector_add_noftz_bf16/no_hint/src/bf16/v2",
+       ir::RedVectorAddNoftzBf16::kind, false, false, 2, ir::ScalarType::BF16,
+       "b16", "red.global.add.noftz.v2.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_add_noftz_bf16/no_hint/src/bf16/v4",
+       ir::RedVectorAddNoftzBf16::kind, false, false, 4, ir::ScalarType::BF16,
+       "b16", "red.global.add.noftz.v4.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_add_noftz_bf16/no_hint/src/bf16/v8",
+       ir::RedVectorAddNoftzBf16::kind, false, false, 8, ir::ScalarType::BF16,
+       "b16", "red.global.add.noftz.v8.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_add_noftz_bf16/with_policy/src/bf16/v2",
+       ir::RedVectorAddNoftzBf16::kind, false, true, 2, ir::ScalarType::BF16,
+       "b16", "red.global.add.noftz.L2::cache_hint.v2.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_add_noftz_bf16/with_policy/src/bf16/v4",
+       ir::RedVectorAddNoftzBf16::kind, false, true, 4, ir::ScalarType::BF16,
+       "b16", "red.global.add.noftz.L2::cache_hint.v4.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_add_noftz_bf16/with_policy/src/bf16/v8",
+       ir::RedVectorAddNoftzBf16::kind, false, true, 8, ir::ScalarType::BF16,
+       "b16", "red.global.add.noftz.L2::cache_hint.v8.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_min_noftz_bf16/no_hint/src/bf16/v2",
+       ir::RedVectorMinNoftzBf16::kind, false, false, 2, ir::ScalarType::BF16,
+       "b16", "red.global.min.noftz.v2.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_min_noftz_bf16/no_hint/src/bf16/v4",
+       ir::RedVectorMinNoftzBf16::kind, false, false, 4, ir::ScalarType::BF16,
+       "b16", "red.global.min.noftz.v4.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_min_noftz_bf16/no_hint/src/bf16/v8",
+       ir::RedVectorMinNoftzBf16::kind, false, false, 8, ir::ScalarType::BF16,
+       "b16", "red.global.min.noftz.v8.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_min_noftz_bf16/with_policy/src/bf16/v2",
+       ir::RedVectorMinNoftzBf16::kind, false, true, 2, ir::ScalarType::BF16,
+       "b16", "red.global.min.noftz.L2::cache_hint.v2.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_min_noftz_bf16/with_policy/src/bf16/v4",
+       ir::RedVectorMinNoftzBf16::kind, false, true, 4, ir::ScalarType::BF16,
+       "b16", "red.global.min.noftz.L2::cache_hint.v4.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_min_noftz_bf16/with_policy/src/bf16/v8",
+       ir::RedVectorMinNoftzBf16::kind, false, true, 8, ir::ScalarType::BF16,
+       "b16", "red.global.min.noftz.L2::cache_hint.v8.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_max_noftz_bf16/no_hint/src/bf16/v2",
+       ir::RedVectorMaxNoftzBf16::kind, false, false, 2, ir::ScalarType::BF16,
+       "b16", "red.global.max.noftz.v2.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_max_noftz_bf16/no_hint/src/bf16/v4",
+       ir::RedVectorMaxNoftzBf16::kind, false, false, 4, ir::ScalarType::BF16,
+       "b16", "red.global.max.noftz.v4.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_max_noftz_bf16/no_hint/src/bf16/v8",
+       ir::RedVectorMaxNoftzBf16::kind, false, false, 8, ir::ScalarType::BF16,
+       "b16", "red.global.max.noftz.v8.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_max_noftz_bf16/with_policy/src/bf16/v2",
+       ir::RedVectorMaxNoftzBf16::kind, false, true, 2, ir::ScalarType::BF16,
+       "b16", "red.global.max.noftz.L2::cache_hint.v2.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_max_noftz_bf16/with_policy/src/bf16/v4",
+       ir::RedVectorMaxNoftzBf16::kind, false, true, 4, ir::ScalarType::BF16,
+       "b16", "red.global.max.noftz.L2::cache_hint.v4.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_max_noftz_bf16/with_policy/src/bf16/v8",
+       ir::RedVectorMaxNoftzBf16::kind, false, true, 8, ir::ScalarType::BF16,
+       "b16", "red.global.max.noftz.L2::cache_hint.v8.bf16", "1.5", 0x3fc0ULL},
+      {"red/red_vector_add_noftz_f16x2/no_hint/src/f16x2/v2",
+       ir::RedVectorAddNoftzF16x2::kind, false, false, 2, ir::ScalarType::F16x2,
+       "b32", "red.global.add.noftz.v2.f16x2", "0f3e003e00", 0x3e003e00ULL},
+      {"red/red_vector_add_noftz_f16x2/no_hint/src/f16x2/v4",
+       ir::RedVectorAddNoftzF16x2::kind, false, false, 4, ir::ScalarType::F16x2,
+       "b32", "red.global.add.noftz.v4.f16x2", "0f3e003e00", 0x3e003e00ULL},
+      {"red/red_vector_add_noftz_f16x2/with_policy/src/f16x2/v2",
+       ir::RedVectorAddNoftzF16x2::kind, false, true, 2, ir::ScalarType::F16x2,
+       "b32", "red.global.add.noftz.L2::cache_hint.v2.f16x2", "0f3e003e00",
+       0x3e003e00ULL},
+      {"red/red_vector_add_noftz_f16x2/with_policy/src/f16x2/v4",
+       ir::RedVectorAddNoftzF16x2::kind, false, true, 4, ir::ScalarType::F16x2,
+       "b32", "red.global.add.noftz.L2::cache_hint.v4.f16x2", "0f3e003e00",
+       0x3e003e00ULL},
+      {"red/red_vector_min_noftz_f16x2/no_hint/src/f16x2/v2",
+       ir::RedVectorMinNoftzF16x2::kind, false, false, 2, ir::ScalarType::F16x2,
+       "b32", "red.global.min.noftz.v2.f16x2", "0f3e003e00", 0x3e003e00ULL},
+      {"red/red_vector_min_noftz_f16x2/no_hint/src/f16x2/v4",
+       ir::RedVectorMinNoftzF16x2::kind, false, false, 4, ir::ScalarType::F16x2,
+       "b32", "red.global.min.noftz.v4.f16x2", "0f3e003e00", 0x3e003e00ULL},
+      {"red/red_vector_min_noftz_f16x2/with_policy/src/f16x2/v2",
+       ir::RedVectorMinNoftzF16x2::kind, false, true, 2, ir::ScalarType::F16x2,
+       "b32", "red.global.min.noftz.L2::cache_hint.v2.f16x2", "0f3e003e00",
+       0x3e003e00ULL},
+      {"red/red_vector_min_noftz_f16x2/with_policy/src/f16x2/v4",
+       ir::RedVectorMinNoftzF16x2::kind, false, true, 4, ir::ScalarType::F16x2,
+       "b32", "red.global.min.noftz.L2::cache_hint.v4.f16x2", "0f3e003e00",
+       0x3e003e00ULL},
+      {"red/red_vector_max_noftz_f16x2/no_hint/src/f16x2/v2",
+       ir::RedVectorMaxNoftzF16x2::kind, false, false, 2, ir::ScalarType::F16x2,
+       "b32", "red.global.max.noftz.v2.f16x2", "0f3e003e00", 0x3e003e00ULL},
+      {"red/red_vector_max_noftz_f16x2/no_hint/src/f16x2/v4",
+       ir::RedVectorMaxNoftzF16x2::kind, false, false, 4, ir::ScalarType::F16x2,
+       "b32", "red.global.max.noftz.v4.f16x2", "0f3e003e00", 0x3e003e00ULL},
+      {"red/red_vector_max_noftz_f16x2/with_policy/src/f16x2/v2",
+       ir::RedVectorMaxNoftzF16x2::kind, false, true, 2, ir::ScalarType::F16x2,
+       "b32", "red.global.max.noftz.L2::cache_hint.v2.f16x2", "0f3e003e00",
+       0x3e003e00ULL},
+      {"red/red_vector_max_noftz_f16x2/with_policy/src/f16x2/v4",
+       ir::RedVectorMaxNoftzF16x2::kind, false, true, 4, ir::ScalarType::F16x2,
+       "b32", "red.global.max.noftz.L2::cache_hint.v4.f16x2", "0f3e003e00",
+       0x3e003e00ULL},
+      {"red/red_vector_add_noftz_bf16x2/no_hint/src/bf16x2/v2",
+       ir::RedVectorAddNoftzBf16x2::kind, false, false, 2,
+       ir::ScalarType::BF16x2, "b32", "red.global.add.noftz.v2.bf16x2",
+       "0f3fc03fc0", 0x3fc03fc0ULL},
+      {"red/red_vector_add_noftz_bf16x2/no_hint/src/bf16x2/v4",
+       ir::RedVectorAddNoftzBf16x2::kind, false, false, 4,
+       ir::ScalarType::BF16x2, "b32", "red.global.add.noftz.v4.bf16x2",
+       "0f3fc03fc0", 0x3fc03fc0ULL},
+      {"red/red_vector_add_noftz_bf16x2/with_policy/src/bf16x2/v2",
+       ir::RedVectorAddNoftzBf16x2::kind, false, true, 2,
+       ir::ScalarType::BF16x2, "b32",
+       "red.global.add.noftz.L2::cache_hint.v2.bf16x2", "0f3fc03fc0",
+       0x3fc03fc0ULL},
+      {"red/red_vector_add_noftz_bf16x2/with_policy/src/bf16x2/v4",
+       ir::RedVectorAddNoftzBf16x2::kind, false, true, 4,
+       ir::ScalarType::BF16x2, "b32",
+       "red.global.add.noftz.L2::cache_hint.v4.bf16x2", "0f3fc03fc0",
+       0x3fc03fc0ULL},
+      {"red/red_vector_min_noftz_bf16x2/no_hint/src/bf16x2/v2",
+       ir::RedVectorMinNoftzBf16x2::kind, false, false, 2,
+       ir::ScalarType::BF16x2, "b32", "red.global.min.noftz.v2.bf16x2",
+       "0f3fc03fc0", 0x3fc03fc0ULL},
+      {"red/red_vector_min_noftz_bf16x2/no_hint/src/bf16x2/v4",
+       ir::RedVectorMinNoftzBf16x2::kind, false, false, 4,
+       ir::ScalarType::BF16x2, "b32", "red.global.min.noftz.v4.bf16x2",
+       "0f3fc03fc0", 0x3fc03fc0ULL},
+      {"red/red_vector_min_noftz_bf16x2/with_policy/src/bf16x2/v2",
+       ir::RedVectorMinNoftzBf16x2::kind, false, true, 2,
+       ir::ScalarType::BF16x2, "b32",
+       "red.global.min.noftz.L2::cache_hint.v2.bf16x2", "0f3fc03fc0",
+       0x3fc03fc0ULL},
+      {"red/red_vector_min_noftz_bf16x2/with_policy/src/bf16x2/v4",
+       ir::RedVectorMinNoftzBf16x2::kind, false, true, 4,
+       ir::ScalarType::BF16x2, "b32",
+       "red.global.min.noftz.L2::cache_hint.v4.bf16x2", "0f3fc03fc0",
+       0x3fc03fc0ULL},
+      {"red/red_vector_max_noftz_bf16x2/no_hint/src/bf16x2/v2",
+       ir::RedVectorMaxNoftzBf16x2::kind, false, false, 2,
+       ir::ScalarType::BF16x2, "b32", "red.global.max.noftz.v2.bf16x2",
+       "0f3fc03fc0", 0x3fc03fc0ULL},
+      {"red/red_vector_max_noftz_bf16x2/no_hint/src/bf16x2/v4",
+       ir::RedVectorMaxNoftzBf16x2::kind, false, false, 4,
+       ir::ScalarType::BF16x2, "b32", "red.global.max.noftz.v4.bf16x2",
+       "0f3fc03fc0", 0x3fc03fc0ULL},
+      {"red/red_vector_max_noftz_bf16x2/with_policy/src/bf16x2/v2",
+       ir::RedVectorMaxNoftzBf16x2::kind, false, true, 2,
+       ir::ScalarType::BF16x2, "b32",
+       "red.global.max.noftz.L2::cache_hint.v2.bf16x2", "0f3fc03fc0",
+       0x3fc03fc0ULL},
+      {"red/red_vector_max_noftz_bf16x2/with_policy/src/bf16x2/v4",
+       ir::RedVectorMaxNoftzBf16x2::kind, false, true, 4,
+       ir::ScalarType::BF16x2, "b32",
+       "red.global.max.noftz.L2::cache_hint.v4.bf16x2", "0f3fc03fc0",
+       0x3fc03fc0ULL},
+      {"red/red_vector_add_f32/no_hint/src/f32/v2", ir::RedVectorAddF32::kind,
+       false, false, 2, ir::ScalarType::F32, "b32", "red.global.add.v2.f32",
+       "1.5", 0x3fc00000ULL},
+      {"red/red_vector_add_f32/no_hint/src/f32/v4", ir::RedVectorAddF32::kind,
+       false, false, 4, ir::ScalarType::F32, "b32", "red.global.add.v4.f32",
+       "1.5", 0x3fc00000ULL},
+      {"red/red_vector_add_f32/with_policy/src/f32/v2",
+       ir::RedVectorAddF32::kind, false, true, 2, ir::ScalarType::F32, "b32",
+       "red.global.add.L2::cache_hint.v2.f32", "1.5", 0x3fc00000ULL},
+      {"red/red_vector_add_f32/with_policy/src/f32/v4",
+       ir::RedVectorAddF32::kind, false, true, 4, ir::ScalarType::F32, "b32",
+       "red.global.add.L2::cache_hint.v4.f32", "1.5", 0x3fc00000ULL},
+  };
+  for (const auto& item : cases)
+    for (unsigned mode = 0; mode < 3; ++mode) {
+      const bool literal = mode == 1;
+      const bool mixed = mode == 2;
+      /** Include branch identity in every installed-fixture failure. */
+      const auto require = [&](bool condition, std::string_view contract) {
+        if (!condition)
+          std::cerr << "atomic ValueVector consumer " << item.id << ": "
+                    << contract << '\n';
+        return condition;
+      };
+      std::optional<ir::ResolvedModule> owned;
+      std::vector<ptx_frontend::SourceRange> written_ranges;
+      {
+        std::string text =
+            ".version 9.3\n.target sm_90\n.global .align 16 .b8 "
+            "data[256];\n.entry kernel(){ .reg ." +
+            std::string(item.physical) + " d<8>,s<8>; .reg .b64 policy; " +
+            std::string(item.operation) + " ";
+        if (item.atom)
+          text += installedAtomicValuePack(item.arity, "d", true) + ",";
+        auto pack = installedAtomicValuePack(
+            item.arity, literal ? item.literal : "s", !literal);
+        if (mixed) {
+          const auto comma = pack.find(',');
+          if (comma == std::string::npos)
+            return false;
+          pack.replace(1, comma - 1, item.literal);
+        }
+        text += "[data]," + pack;
+        text += item.hinted ? ",policy; }" : "; }";
+#if defined(PTX_ATOMIC_VALUE_CHECKER_WRAP)
+        written_ranges = ir::atomic_value_test_wrap::ranges(text);
+#endif
+        ptx_frontend::PtxSyntaxParser parser(text);
+        const auto ast = parser.parseModule();
+        if (!require(ast.has_value(), "complete source parses") ||
+            !require(ast.diagnostics.empty(), "parse diagnostics empty"))
+          return false;
+        auto result = ir::resolveAndValidateModule(*ast);
+        if (!require(result.has_value(),
+                     "register/literal source strictly resolves") ||
+            !require(ir::validateModule(*ast, *result).has_value(),
+                     "source identity validates"))
+          return false;
+        owned.emplace(std::move(*result));
+      }
+      if (!require(owned && owned->functions.size() == 1,
+                   "one owner survives real AST/source death") ||
+          !require(owned->functions.front().body.size() == 1 &&
+                       owned->functions.front().body.front(),
+                   "one concrete instruction is owned"))
+        return false;
+      {
+        const auto& instruction = *owned->functions.front().body.front();
+        if (!require(instruction.instruction_kind() == item.kind,
+                     "exact class retained"))
+          return false;
+        const auto& source = installedAtomicValueSource(instruction);
+        if (!require(source.value.elements.size() == item.arity &&
+                         source.locs.size() == item.arity,
+                     "all actual lanes and locations retained"))
+          return false;
+        for (size_t lane_index = 0; lane_index < source.value.elements.size();
+             ++lane_index) {
+          const auto& lane = source.value.elements[lane_index];
+          if (literal || (mixed && lane_index == 0)) {
+            const auto* value = std::get_if<ir::ResolvedImmediate>(&lane);
+            if (!require(value && value->type == item.logical &&
+                             value->bits == item.bits &&
+                             !value->integer_source_bits && !value->is_negative,
+                         "actual immediate type/bits/origin flags"))
+              return false;
+          } else {
+            const auto* value = std::get_if<ir::ResolvedRegisterRef>(&lane);
+            if (!require(value && value->symbol_id &&
+                             value->register_class ==
+                                 ir::ResolvedRegisterClass::General,
+                         "actual register carrier and SymbolId"))
+              return false;
+          }
+        }
+        /** Callback arguments are consumed while the actual field remains live. */
+        struct Observer final : ir::detail::IReferenceObserver {
+          /** Borrowed owner for this one traversal. */
+          const ptx_frontend::WithLocs<ir::ResolvedValueVector>& owner;
+          /** Copied result/count, never a retained callback pointer or span. */
+          bool valid = true;
+          size_t calls = 0;
+          /** Bind a live exact member. */
+          explicit Observer(
+              const ptx_frontend::WithLocs<ir::ResolvedValueVector>& source)
+              : owner(source) {}
+          /** Check every actual lane location synchronously. */
+          void value_vector(
+              const ir::ResolvedValueVector& value,
+              std::span<const ptx_frontend::SourceRange> ranges,
+              ir::checker::AddressSymbolResolutionPolicy) override {
+            if (&value != &owner.value)
+              return;
+            ++calls;
+            valid = valid && ranges.size() == owner.locs.size() &&
+                    ranges.data() == owner.locs.data();
+            if (!valid)
+              return;
+            for (size_t index = 0; index < ranges.size(); ++index)
+              valid = valid && ranges[index] == owner.locs[index];
+          }
+        } observer(source);
+        instruction.visit_references(observer);
+        if (!require(observer.calls == 1 && observer.valid,
+                     "actual value_vector observer payload/ranges"))
+          return false;
+        const auto clone = instruction.clone();
+        if (!require(clone && clone->instruction_kind() == item.kind &&
+                         installedAtomicValueSource(*clone) == source,
+                     "exact-class clone retains owned source"))
+          return false;
+      }
+      auto copied = *owned;
+      ir::ResolvedModule assigned;
+      assigned = copied;
+      ir::ResolvedFunction function = copied.functions.front(),
+                           function_assigned;
+      function_assigned = function;
+      assigned.functions.front() = std::move(function_assigned);
+      assigned.functions.front().body.front() = function.body.front()->clone();
+      owned.reset();
+#if defined(PTX_ATOMIC_VALUE_CHECKER_WRAP)
+      for (auto* current : {&copied, &assigned}) {
+        if (current->functions.size() != 1 ||
+            current->functions.front().body.size() != 1 ||
+            current->functions.front().instruction_ranges.size() != 1 ||
+            !current->functions.front().body.front())
+          return false;
+        const auto& instruction = *current->functions.front().body.front();
+        const auto& source = installedAtomicValueSource(instruction);
+        ir::atomic_value_test_wrap::Capture capture;
+        capture.member = &source;
+        capture.logical = item.logical;
+        capture.physical =
+            item.physical == "b16" ? ir::ScalarType::B16 : ir::ScalarType::B32;
+        capture.arity = item.arity;
+        capture.bits = item.bits;
+        capture.mode = mode;
+        capture.ranges = written_ranges;
+        const ir::checker::Context context{
+            .target = {.ptx_version = {9, 3}, .sm_version = 90},
+            .instruction_range =
+                current->functions.front().instruction_ranges.front()};
+        ir::checker::CheckResult checked;
+        {
+          ir::atomic_value_test_wrap::Scope scope(capture);
+          checked = instruction.check(context);
+        }
+        if (!require(bool(checked) && capture.valid && capture.calls == 1,
+                     "actual generated owner/lane pointers, mirrors, ranges "
+                     "and values"))
+          return false;
+        std::string operation(item.operation);
+        operation += " ";
+        if (item.atom)
+          operation += installedAtomicValuePack(item.arity, "d", true) + ",";
+        auto pack = installedAtomicValuePack(
+            item.arity, literal ? item.literal : "s", !literal);
+        if (mixed) {
+          const auto comma = pack.find(',');
+          if (comma == std::string::npos)
+            return false;
+          pack.replace(1, comma - 1, item.literal);
+        }
+        operation += "[data]," + pack + (item.hinted ? ",policy;" : ";");
+        ptx_frontend::PtxSyntaxParser single_parser(operation);
+        const auto single = single_parser.parseInstruction();
+        if (!require(single && single.diagnostics.empty(),
+                     "public source instruction factory parses"))
+          return false;
+        const auto scope =
+            current->symbols.symbol(current->functions.front().symbol_id)
+                .owned_scope;
+        if (!require(scope.has_value(),
+                     "actual function declaration owns its scope"))
+          return false;
+        const ir::ResolveContext declarations{.symbols = current->symbols,
+                                              .scope = *scope,
+                                              .function_scope = *scope,
+                                              .function_is_entry = true};
+        auto factory = ir::resolveInstruction(*single, declarations);
+        if (!require(factory && (*factory)->instruction_kind() == item.kind,
+                     "public source factory retains exact class"))
+          return false;
+        const auto factory_clone = (*factory)->clone();
+        if (!require(
+                factory_clone && factory_clone->instruction_kind() == item.kind,
+                "factory clone retains exact class"))
+          return false;
+        const auto& factory_source = installedAtomicValueSource(*factory_clone);
+        if (!require(factory_source.value.elements.size() == item.arity,
+                     "factory has actual public source member"))
+          return false;
+        for (size_t index = 0; index < item.arity; ++index) {
+          const bool immediate = literal || (mixed && index == 0);
+          if (!require(
+                  immediate == std::holds_alternative<ir::ResolvedImmediate>(
+                                   factory_source.value.elements[index]),
+                  "standard variant exposes actual factory arm"))
+            return false;
+          if (immediate) {
+            const auto* value = std::get_if<ir::ResolvedImmediate>(
+                &factory_source.value.elements[index]);
+            if (!require(value && value->type == item.logical &&
+                             value->bits == item.bits &&
+                             !value->integer_source_bits && !value->is_negative,
+                         "factory owned typed word/origin matches independent "
+                         "fixture"))
+              return false;
+          } else {
+            const auto* value = std::get_if<ir::ResolvedRegisterRef>(
+                &factory_source.value.elements[index]);
+            if (!require(value && value->symbol_id &&
+                             value->spelling == "s" + std::to_string(index),
+                         "factory actual declaration-bound register"))
+              return false;
+          }
+        }
+      }
+#endif
+      if (!require(ir::validateModule(copied).has_value() &&
+                       ir::validateModule(assigned).has_value(),
+                   "independent copied/assigned owners validate"))
+        return false;
+    }
+  return true;
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 /** Borrow one of the four migrated sources while its actual instruction owner survives. */
 ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>*
@@ -3002,6 +4131,8 @@ bool checkInstalledPackedAtomicSources() {
 }
 
 int main() {
+  if (!checkInstalledAtomicValueVectors())
+    return 1;
   if (!checkInstalledPackedSetpSources())
     return 1;
 #if defined(PTX_PACKED_SETP_CHECKER_WRAP)

@@ -1,13 +1,26 @@
 #pragma once
 
+#include <algorithm>
 #include <expected>
 #include <optional>
+#include <span>
 #include <string_view>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
 namespace ptx_frontend::resolved_ir::detail {
+
+/** Select an Element register type domain; callers retain width/class/provenance checks. */
+inline bool element_register_type_allowed(
+    ScalarType actual, ScalarType expected,
+    base::ScalarTypeSizePolicy width_policy,
+    std::span<const ScalarType> allowed_register_types) {
+  return allowed_register_types.empty()
+             ? base::scalar_types_compatible(actual, expected, width_policy)
+             : std::ranges::find(allowed_register_types, actual) !=
+                   allowed_register_types.end();
+}
 
 /** Validate the explicit integer alternative independently of the actual source. */
 inline bool valid_integer_immediate_type_policy(

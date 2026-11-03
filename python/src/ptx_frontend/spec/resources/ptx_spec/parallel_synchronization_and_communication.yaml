@@ -321,82 +321,82 @@ operand_patterns:
   atom_global_vector_f16:
     - {name: dst, kind: reg_vector, role: dst, access: write, type: b16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16, f16, u16, s16], require_uniform_register_family: true, allow_sink: true}}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16, f16, u16, s16], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: f16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16, f16, u16, s16], require_uniform_register_family: true}}
   atom_global_vector_f16_cache_policy:
     - {name: dst, kind: reg_vector, role: dst, access: write, type: b16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16, f16, u16, s16], require_uniform_register_family: true, allow_sink: true}}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16, f16, u16, s16], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: f16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16, f16, u16, s16], require_uniform_register_family: true}}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
   atom_global_vector_bf16:
     - {name: dst, kind: reg_vector, role: dst, access: write, type: b16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16], require_uniform_register_family: true, allow_sink: true}}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: bf16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16], require_uniform_register_family: true}}
   atom_global_vector_bf16_cache_policy:
     - {name: dst, kind: reg_vector, role: dst, access: write, type: b16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16], require_uniform_register_family: true, allow_sink: true}}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: bf16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16], require_uniform_register_family: true}}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
   atom_global_vector_packed:
     - {name: dst, kind: reg_vector, role: dst, access: write, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32], require_uniform_register_family: true, allow_sink: true}}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: bf16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32], require_uniform_register_family: true}}
   atom_global_vector_packed_cache_policy:
     - {name: dst, kind: reg_vector, role: dst, access: write, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32], require_uniform_register_family: true, allow_sink: true}}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: bf16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32], require_uniform_register_family: true}}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
   atom_global_vector_f16x2:
     - {name: dst, kind: reg_vector, role: dst, access: write, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true, allow_sink: true}}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true}}
   atom_global_vector_f16x2_cache_policy:
     - {name: dst, kind: reg_vector, role: dst, access: write, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true, allow_sink: true}}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true}}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
   atom_global_vector_f32:
     - {name: dst, kind: reg_vector, role: dst, access: write, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f32, u32, s32], require_uniform_register_family: true, allow_sink: true}}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f32, u32, s32], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: f32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f32, u32, s32], require_uniform_register_family: true}}
   atom_global_vector_f32_cache_policy:
     - {name: dst, kind: reg_vector, role: dst, access: write, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f32, u32, s32], require_uniform_register_family: true, allow_sink: true}}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f32, u32, s32], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: f32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f32, u32, s32], require_uniform_register_family: true}}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
   red_global_vector_f16:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16, f16, u16, s16], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: f16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16, f16, u16, s16], require_uniform_register_family: true}}
   red_global_vector_f16_cache_policy:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16, f16, u16, s16], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: f16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16, f16, u16, s16], require_uniform_register_family: true}}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
   red_global_vector_bf16:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: bf16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16], require_uniform_register_family: true}}
   red_global_vector_bf16_cache_policy:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: bf16, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b16], require_uniform_register_family: true}}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
   red_global_vector_packed:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: bf16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32], require_uniform_register_family: true}}
   red_global_vector_packed_cache_policy:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: bf16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32], require_uniform_register_family: true}}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
   red_global_vector_f16x2:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true}}
   red_global_vector_f16x2_cache_policy:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true}}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
   red_global_vector_f32:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f32, u32, s32], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: f32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f32, u32, s32], require_uniform_register_family: true}}
   red_global_vector_f32_cache_policy:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg_vector, role: src, access: read, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f32, u32, s32], require_uniform_register_family: true}}
+    - {name: src, kind: value_vector, role: src, access: read, type: f32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f32, u32, s32], require_uniform_register_family: true}}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
   red_global_float_scalar:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}

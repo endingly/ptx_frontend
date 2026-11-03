@@ -88,10 +88,10 @@ lane 仅接受 `.b32`。[PTX ISA 9.3 的基本类型规则](https://docs.nvidia.
 使用 `-O0 -arch=sm_90` 成功汇编了 `.f16` 搭配 `.u16`/`.s16`、`.f32`
 搭配 `.u32`/`.s32` 的全部八种 `atom`/`red` 组合，见
 [可复现的 PTX 源文件](../../../examples/atomic_vector_register_types.ptx)。
-这只证明汇编器接受，不代表已验证 GPU 执行语义。每个向量内 bit 类型
-lane 是中性的，整数与浮点寄存器 lane 不可混用；目标和源分别检查。
+这只证明汇编器接受，不代表已验证 GPU 执行语义。每个向量的寄存器中 bit 类型
+lane 是中性的，整数与浮点寄存器 family 不可混用；immediate 不参与该判断，目标和源分别检查。
 单条指令独立解析且无声明时保留未知 lane 类型；带声明的模块解析会检查上述寄存器类型范围。
-目标 lane 可以是 `_`，源 lane 必须是寄存器，目标不能全为 `_`。目标向量中
+目标 lane 可以是 `_`，源 lane 可为已授权寄存器或 floating immediate，目标不能全为 `_`。目标向量中
 各个实际写入的 lane 必须指向不同寄存器；参数化声明绑定后的 lane 同样受检，
 只读源向量则允许重复 lane。整个访问须按“向量长度 × 元素字节数”
 对齐，例如 `v8.f16` 需要 16 字节。原子性逐个标量元素成立，不保证整个
@@ -159,6 +159,41 @@ target/version 边界、单值 domain mutation，以及真实 AST 销毁后的 c
 [安装 consumer](../../../examples/resolved_ir_consumer/main.cpp) 在无 source storage 时
 读取全部十二个迁移字段并保留 release control。这些检查不证明 barrier 已初始化或
 运行时 completion。
+
+### Atomic vector value 源
+
+既有 26 个 `AtomVector*`/`RedVector*` 类在两个保留的 layout 中，以
+`WithLocs<ResolvedValueVector>` 暴露 `src`。Consumer 须以匹配的 header/library
+重建，并逐个 `RegOrImm` lane 使用 `std::get_if<ResolvedRegisterRef>` 或
+`std::get_if<ResolvedImmediate>`。Destination 仍为 register vector；可选 B64
+cache policy、精确 class identity、字段名、arity/type domain、qualifier 与 target
+gate 保持原契约。源仍要求 brace-only，不增加整体 named vector 或 source sink 授权。
+
+全部 128 个 type/arity/layout 分支接受 floating immediate lane，并可按既有规则
+与物理寄存器 carrier 混用。80 个 F16/BF16/F32 numeric 分支复用既有逻辑
+converter；48 个 F16x2/BF16x2 分支接受裸 unsigned 直接 `0f` exact32 word。
+Packed word 保留所有位，包括 encoded sign、NaN payload；不量化、splat 或 quiet。
+所有 floating source lane 均排除 Integer literal/result。Packed decimal、F64、
+unary/括号/operator 或 pair constructor 仍属 reference-qualified unavailable；
+typed current-word 容量不等于 numeric source constructor。
+
+逻辑 immediate type 独立于物理寄存器类型。显式 Element allowlist 保留：F16 的
+B16/F16/U16/S16，BF16 的 B16，F16x2 的 B32/F16x2，BF16x2 的 B32，以及
+F32 的 B32/F32/U32/S32。Membership 不得绕过物理 lane 位宽、General/scalar
+class、intrinsic 声明资格、component、owner 或 provenance 检查。无显式列表时
+继续使用既有 compatibility。Bit register lane 为中性，整数与浮点 register family
+不可混用；immediate Float lane 不参与该 register-family 判断。标量 operand
+compatibility 不变。
+
+当前 canonical logical Float lane 检查位宽内 bits、没有 integer origin
+（optional 零仍表示存在）及干净的 negative metadata。不能从标量 F16 规则推断
+其他逻辑格式下 current Bit16/Bit32 arm 的结果；这些情况需要各自格式的证据。一致的 canonical 编辑不要求
+已擦除的 Float lexical history；source association 独立检查 supplied AST identity。
+实际 ValueVector owner pointer 与全部 shape/type/register/immediate/bit/range
+mirror 必须相符；同步 observer 仅在 traversal 中借用真实 owner。真实 AST 释放、
+copy/assignment/function copy/clone 后仍保留所有权。Register sink、whole container
+或陈旧 mirror 不能代替只读 scalar lane。前端不执行 atomic 算术、ordering、cache
+效应或运行时 global-memory 行为。
 
 
 ### 标量 F16 atomic 源成员

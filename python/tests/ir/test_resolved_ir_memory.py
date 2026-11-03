@@ -2124,10 +2124,18 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                     source = next(binding for binding in layout.bindings
                                   if binding.target_field_id == "src")
                     self.assertEqual(source.allowed_shapes, (ResolvedOperandShape.VECTOR,))
+                    self.assertTrue(source.source_value_vector)
+                    field = next(field for field in layout.fields if field.name == "src")
+                    self.assertEqual(field_cpp_type(field), "WithLocs<ResolvedValueVector>")
                     self.assertEqual(source.register_width_policy,
                                      ResolvedRegisterWidthPolicy.SAME_WIDTH)
                     self.assertFalse(source.allow_vector_sink)
                     self.assertTrue(source.require_uniform_vector_register_family)
+                    logical_type = ("bf16x2" if variant.cpp_name.endswith("Bf16x2") else
+                                    "f16x2" if variant.cpp_name.endswith("F16x2") else
+                                    "bf16" if variant.cpp_name.endswith("Bf16") else
+                                    "f16" if variant.cpp_name.endswith("F16") else "f32")
+                    self.assertEqual(source.type_expression.scalar_type, logical_type)
                     lane_types = set(source.allowed_vector_register_types)
                     if variant.cpp_name.endswith("Bf16"):
                         self.assertEqual(lane_types, {"b16"})

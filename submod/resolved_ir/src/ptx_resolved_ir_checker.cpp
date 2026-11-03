@@ -2365,8 +2365,14 @@ CheckResult check_operands(
             if (!reg || reg->register_class != ResolvedRegisterClass::General ||
                 reg->vector_width || (reg->symbol_id && !reg->declared_type) ||
                 (reg->declared_type &&
-                 !scalar_types_compatible(*reg->declared_type, expected_type,
-                                          descriptor.register_width_policy)))
+                 ((!descriptor.allowed_register_types.empty() &&
+                   scalar_size_of(*reg->declared_type) !=
+                       scalar_size_of(expected_type)) ||
+                  !::ptx_frontend::resolved_ir::detail::
+                      element_register_type_allowed(
+                          *reg->declared_type, expected_type,
+                          descriptor.register_width_policy,
+                          descriptor.allowed_register_types))))
               diagnostics.push_back(CheckDiagnostic{
                   .kind = CheckDiagnosticKind::OperandTypeMismatch,
                   .range = lane_range,
@@ -2478,9 +2484,11 @@ CheckResult check_operands(
           const SourceRange& lane_range = index < operand->locations.size()
                                               ? operand->locations[index]
                                               : range;
-          if (std::ranges::find(descriptor.allowed_register_types,
-                                element_type) ==
-              descriptor.allowed_register_types.end()) {
+          if (!::ptx_frontend::resolved_ir::detail::
+                  element_register_type_allowed(
+                      element_type, expected_type,
+                      descriptor.register_width_policy,
+                      descriptor.allowed_register_types)) {
             diagnostics.push_back(CheckDiagnostic{
                 .kind = CheckDiagnosticKind::OperandTypeMismatch,
                 .range = lane_range,

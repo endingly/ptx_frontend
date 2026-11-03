@@ -227,3 +227,29 @@ class DescriptorRenderModelTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AtomicValueVectorRenderTests(unittest.TestCase):
+    """The existing derived classifier renders explicit value ownership for all atomic sources."""
+
+    def test_existing_source_value_flag_and_no_named_flag(self) -> None:
+        """Check each actual binding before any descriptor interning can share storage."""
+        backend = load_cpp_backend(packaged_backend_spec())
+        count = 0
+        for specification in get_packaged_spec_database().instructions:
+            if specification.opcode not in {"atom", "red"}:
+                continue
+            for variant in from_instruction_spec(specification).variants:
+                if not variant.cpp_name.startswith("Vector"):
+                    continue
+                for layout in variant.operand_layouts:
+                    source = next(binding for binding in layout.bindings if binding.target_field_id == "src")
+                    rendered = _build_operand_binding(source, "atomic_source", backend)
+                    members = {member.name: member.expression for member in rendered.vector_members}
+                    self.assertEqual(members.get("source_value_vector"), "true")
+                    self.assertNotIn("allow_named_vector", members)
+                    self.assertFalse(source.allow_vector_sink)
+                    self.assertEqual(members.get("allow_vector_sink", "false"), "false")
+                    self.assertIsNone(rendered.integer_immediate_type)
+                    count += 1
+        self.assertEqual(count, 52)

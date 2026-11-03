@@ -2223,3 +2223,43 @@ borrow the real owner only during traversal. The frontend does not execute
 multimem mappings, stores, reductions, ordering or GPU behavior.
 
 The scalar packed tests establish selected logical F16x2/BF16x2 canonical words. Compatibility of a Bit-typed B32 **current** word is a separate inherited-policy question and remains unproved here; scalar F16 Bit16 controls do not decide it. This qualification grants no additional source literal or constructor.
+
+### Atomic vector value sources
+
+The 26 existing `AtomVector*`/`RedVector*` classes expose `src` as
+`WithLocs<ResolvedValueVector>` in both preserved layouts. Consumers must rebuild
+against matching headers/libraries and inspect each `RegOrImm` lane with
+`std::get_if<ResolvedRegisterRef>` or `std::get_if<ResolvedImmediate>`. Destinations
+remain register vectors; optional B64 cache policies and exact class identities,
+field names, arity/type domains, qualifiers and target gates retain their contracts.
+The source clauses remain brace-only: no whole named vector or source sink grant.
+
+All 128 type/arity/layout branches accept floating immediate lanes, mixed with
+existing physical register carriers where appropriate. The 80 F16/BF16/F32 numeric
+branches reuse the existing logical converter; the 48 F16x2/BF16x2 branches accept
+bare unsigned direct `0f` exact32 words. Packed words retain every bit, including
+encoded sign and NaN payloads, with no quantization, splat or quieting. Integer
+literals/results remain excluded for all floating source lanes. Packed decimal,
+F64, unary/wrapped/operator or pair constructors remain reference-qualified
+unavailable; typed current-word capacity is not a numeric source constructor.
+
+Logical immediate type is separate from physical register type. Explicit Element
+allowlists retain B16/F16/U16/S16 for F16, B16 for BF16, B32/F16x2 for F16x2,
+B32 for BF16x2 and B32/F32/U32/S32 for F32. Membership cannot waive physical lane
+width, General/scalar class, intrinsic declaration eligibility, component, owner
+or provenance checks. Without an explicit list, existing compatibility applies.
+Bit register lanes are neutral; integer and floating register families cannot mix,
+and immediate Float lanes do not participate in that register-family test.
+Scalar operand compatibility is unchanged.
+
+Canonical current logical Float lanes are checked for in-width bits, absent
+integer origin (optional zero still counts as present), and clean negative metadata.
+This does not decide current Bit16/Bit32 arms for other logical formats from a
+scalar F16 rule; those cases need their own format-specific evidence. Coherent canonical edits need no erased floating lexical history.
+Source association separately checks provided AST identity. Actual ValueVector
+owner pointers and all shape/type/register/immediate/bit/range mirrors must agree;
+synchronous observers borrow that actual owner only during traversal. Real AST
+release, copy/assignment/function copy/clone preserve ownership. Register sinks,
+whole containers and stale mirrors cannot substitute for read-only scalar lanes.
+These frontend contracts do not execute atomic arithmetic, ordering, cache effects
+or runtime global-memory behavior.

@@ -1425,7 +1425,7 @@ TEST(AtomicReductionCoverage, KeepsStandaloneVectorLaneTypesUnknown) {
   for (const auto& lane : atom.dst.value.elements)
     ASSERT_FALSE(lane->declared_type.has_value());
   for (const auto& lane : atom.src.value.elements)
-    ASSERT_FALSE(lane->declared_type.has_value());
+    ASSERT_FALSE(std::get<ResolvedRegisterRef>(lane).declared_type.has_value());
   EXPECT_TRUE(atom.check(target).has_value());
 
   const auto red_ast = test_helpers::parseInstruction(
@@ -1435,7 +1435,7 @@ TEST(AtomicReductionCoverage, KeepsStandaloneVectorLaneTypesUnknown) {
   ASSERT_TRUE(red_resolved.has_value()) << red_resolved.error().message;
   const auto& red = dynamic_cast<const RedVectorAddF32&>(**red_resolved);
   for (const auto& lane : red.src.value.elements)
-    ASSERT_FALSE(lane->declared_type.has_value());
+    ASSERT_FALSE(std::get<ResolvedRegisterRef>(lane).declared_type.has_value());
   EXPECT_TRUE(red.check(target).has_value());
 }
 
@@ -1577,7 +1577,8 @@ TEST(AtomicReductionCoverage, ChecksVectorAtomicOwnedContracts) {
   hinted.cache_policy->value.declared_type = ScalarType::B32;
   EXPECT_FALSE(body[1]->check(supported).has_value());
   auto& integer_lanes = dynamic_cast<AtomVectorAddNoftzF16&>(*body[4]);
-  integer_lanes.src.value.elements[0]->declared_type = ScalarType::F16;
+  std::get<ResolvedRegisterRef>(integer_lanes.src.value.elements[0])
+      .declared_type = ScalarType::F16;
   EXPECT_FALSE(body[4]->check(supported).has_value());
 }
 

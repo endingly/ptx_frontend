@@ -1927,9 +1927,9 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
     if (!register_ref)
       return std::unexpected(register_ref.error());
     if (!allowed_register_types.empty() && register_ref->value.declared_type &&
-        std::ranges::find(allowed_register_types,
-                          *register_ref->value.declared_type) ==
-            allowed_register_types.end()) {
+        !detail::element_register_type_allowed(
+            *register_ref->value.declared_type, instruction_type,
+            register_width_policy, allowed_register_types)) {
       return std::unexpected(ResolveDiagnostic{
           .range = element_range,
           .message = fmt::format(
@@ -1962,8 +1962,9 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
           vector_type_policy == checker::VectorTypePolicy::Aggregate
               ? scalar_size_of(declared_type) != element_bytes
               : allowed_register_types.empty() &&
-                    !scalar_types_compatible(declared_type, instruction_type,
-                                             register_width_policy);
+                    !detail::element_register_type_allowed(
+                        declared_type, instruction_type, register_width_policy,
+                        allowed_register_types);
       if (type_mismatch) {
         return std::unexpected(ResolveDiagnostic{
             .range = element_range,
@@ -3195,6 +3196,7 @@ resolve_value_vector(const syntax_ast::AstOperand& operand,
   value.elements.reserve(arity);
   std::vector<SourceRange> ranges;
   ranges.reserve(arity);
+  std::optional<bool> floating_register_family;
   for (const auto& element : pack->elements) {
     const syntax_ast::AstOperand source = std::visit(
         [](const auto& item) -> syntax_ast::AstOperand { return item; },
@@ -3210,12 +3212,31 @@ resolve_value_vector(const syntax_ast::AstOperand& operand,
       if (reg->register_class != ResolvedRegisterClass::General ||
           reg->vector_width ||
           (reg->declared_type &&
-           !scalar_types_compatible(*reg->declared_type, *type,
-                                    binding.register_width_policy)))
+           ((!binding.allowed_register_types.empty() &&
+             scalar_size_of(*reg->declared_type) != scalar_size_of(*type)) ||
+            !detail::element_register_type_allowed(
+                *reg->declared_type, *type, binding.register_width_policy,
+                binding.allowed_register_types))))
         return std::unexpected(ResolveDiagnostic{
             .range = range,
             .message =
                 "Value-vector register lane has an incompatible scalar type."});
+      if (reg->declared_type && binding.require_uniform_register_family) {
+        const auto kind = scalar_kind(*reg->declared_type);
+        if (kind != base::ScalarKind::Bit) {
+          const bool floating = kind == base::ScalarKind::Float;
+          if ((kind != base::ScalarKind::Float &&
+               kind != base::ScalarKind::Signed &&
+               kind != base::ScalarKind::Unsigned) ||
+              (floating_register_family &&
+               *floating_register_family != floating))
+            return std::unexpected(ResolveDiagnostic{
+                .range = range,
+                .message = "A value vector cannot mix integer and floating "
+                           "register lanes."});
+          floating_register_family = floating;
+        }
+      }
     } else if (!valid_value_vector_immediate(
                    std::get<ResolvedImmediate>(lane->value),
                    binding.vector_signed_immediate_range)) {

@@ -15,6 +15,8 @@
 #include <utility>
 #include <variant>
 
+#include <ptx_frontend/base/ptx_integer.hpp>
+#include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/base/ptx_target.hpp>
 #include <ptx_frontend/cst/ptx_cst_parser.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
@@ -1843,29 +1845,69 @@ begin:
   return bool(ir::validateModule(assigned));
 }
 
-/** Verify installed owning locations retain full-width leaves and independent datasets. */
+/** Verify lawful owned locations and full-width leaves under finite string bounds. */
 bool checkInstalledDebugLocations() {
   namespace ir = ptx_frontend::resolved_ir;
   std::optional<ir::ResolvedModule> module;
-  {
+  // Retain the lexical offset and located diagnostics after the rejected AST dies.
+  std::string full_width_offset;
+  ptx_frontend::SourceRange full_width_offset_range;
+  ir::ModuleResolveDiagnostics module_only_errors, strict_errors;
+  for (const std::string_view offset : {"0", "18446744073709551615U"}) {
     const std::string source =
         ".version 9.3\n.target sm_90\n.address_size 64\n"
         ".file 18446744073709551615U \"a.cu\"\n"
         ".section .debug_str { name: .b8 0; }\n.entry loc_kernel() {\n"
         ".loc 18446744073709551615U 4294967296 0\n"
-        ".loc 18446744073709551615U 1 0, function_name name + "
-        "18446744073709551615U, "
+        ".loc 18446744073709551615U 1 0, function_name name + " +
+        std::string(offset) + ", "
         "inlined_at 18446744073709551615U 4294967296 0\nret;\n}\n";
     ptx_frontend::PtxSyntaxParser parser(source);
     const auto ast = parser.parseModule();
     if (!ast || !ast.diagnostics.empty())
       return false;
+    if (offset != "0") {
+      const auto bound = ptx_frontend::binding::bindSymbols(*ast);
+      const auto locations = bound.table.debugLocations();
+      if (locations.size() != 2 || !locations[1].inline_context ||
+          !locations[1].inline_context->function_name_offset)
+        return false;
+      const auto& leaf = *locations[1].inline_context->function_name_offset;
+      const auto magnitude = ptx_frontend::base::parseIntegerMagnitude(leaf.text);
+      if (leaf.text != offset || !magnitude || *magnitude != ~std::uint64_t{0})
+        return false;
+      full_width_offset = leaf.text;
+      full_width_offset_range = leaf.range;
+      auto lowered = ir::resolveModuleOnly(*ast);
+      auto strict = ir::resolveAndValidateModule(*ast);
+      if (lowered || strict)
+        return false;
+      module_only_errors = std::move(lowered.error());
+      strict_errors = std::move(strict.error());
+      continue;
+    }
     auto resolved = ir::resolveAndValidateModule(*ast);
     if (!resolved)
       return false;
     module.emplace(std::move(*resolved));
   }
+  if (full_width_offset != "18446744073709551615U" ||
+      full_width_offset_range != ptx_frontend::SourceRange{{8, 54}, {8, 75}})
+    return false;
+  for (const auto* errors : {&module_only_errors, &strict_errors}) {
+    bool located_bounds_rejection = false;
+    for (const auto& error : *errors)
+      if (error.stage() == ir::ResolveDiagnosticStage::Checking &&
+          error.checker_kind == ir::checker::CheckDiagnosticKind::RuleViolation &&
+          error.range == full_width_offset_range &&
+          error.message.find("byte bounds") != std::string::npos)
+        located_bounds_rejection = true;
+    if (!located_bounds_rejection)
+      return false;
+  }
   auto copied = *module;
+  copied.functions.front().body.front() =
+      module->functions.front().body.front()->clone();
   ir::ResolvedModule assigned;
   assigned = copied;
   auto moved = std::move(assigned);
@@ -1873,8 +1915,7 @@ bool checkInstalledDebugLocations() {
   if (records.size() != 2 || !records[1].inline_context ||
       records[0].base.file_index.text != "18446744073709551615U" ||
       records[0].base.line_number.text != "4294967296" ||
-      records[1].inline_context->function_name_offset->text !=
-          "18446744073709551615U" ||
+      records[1].inline_context->function_name_offset->text != "0" ||
       records[1].range.start.line <= 0 ||
       records[1].inline_context->target.column_position.text != "0" ||
       !ir::validateModule(moved) || !ir::validateModule(copied))

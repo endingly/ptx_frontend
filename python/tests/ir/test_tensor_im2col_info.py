@@ -100,8 +100,13 @@ class TensorIm2colInfoTests(unittest.TestCase):
                          {"ptx": "8.6", "sm": 90})
         self.assertEqual(availability("cp_async_bulk_tensor_3d_shared_cta_im2col_w"),
                          {"ptx": "8.6", "sm": 100})
-        wider = {"any_of": [
+        restricted = {"any_of": [
             {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+            {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+        ]}
+        wider = {"any_of": [
+            {"ptx": "8.6", "sm": 100,
+             "targets": ["sm_100a", "sm_101a", "sm_101f"]},
             {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
             {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
         ]}
@@ -109,7 +114,7 @@ class TensorIm2colInfoTests(unittest.TestCase):
             with self.subTest(rank=rank):
                 self.assertEqual(
                     availability(f"cp_async_bulk_tensor_{rank}d_shared_cluster_im2col_w"),
-                    {"any_of": wider["any_of"][:2]},
+                    restricted,
                 )
         for name in (
             "cp_async_bulk_tensor_3d_shared_cta_im2col_w128",

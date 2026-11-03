@@ -70,8 +70,13 @@ class TensorGatherScatterTests(unittest.TestCase):
 
     def test_exact_target_metadata(self) -> None:
         variants = {variant.name: variant for variant in self.cp.variants}
-        qualified = {"any_of": [
+        restricted = {"any_of": [
             {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+            {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+        ]}
+        qualified = {"any_of": [
+            {"ptx": "8.6", "sm": 100,
+             "targets": ["sm_100a", "sm_101a", "sm_101f"]},
             {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
             {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
         ]}
@@ -81,7 +86,7 @@ class TensorGatherScatterTests(unittest.TestCase):
         )
         self.assertEqual(
             variants["cp_async_bulk_tensor_2d_shared_cluster_tile_gather4"].availability,
-            {"any_of": qualified["any_of"][:2]},
+            restricted,
         )
         for name in (
             "cp_async_bulk_prefetch_tensor_2d_tile_gather4",

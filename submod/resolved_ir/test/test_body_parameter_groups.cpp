@@ -185,8 +185,11 @@ TEST(BodyParameterGroups, ValidatesOwnedMemberDomainAndCoherentSemanticEdits) {
     EXPECT_FALSE(validateModule(changed));
   }
   auto edited = *baseline;
-  groupCallArgument(*edited.functions.back().body.front()).parameterized_index =
-      1;
+  auto& edited_actual =
+      groupCallArgument(*edited.functions.back().body.front());
+  edited_actual.parameterized_index = 1;
+  EXPECT_FALSE(validateModule(edited));
+  edited_actual.spelling = "value1";
   EXPECT_TRUE(validateModule(edited));
 
   auto ordinary = resolveParameterGroup(

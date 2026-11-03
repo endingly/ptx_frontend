@@ -482,8 +482,11 @@ class GenerationPlanTests(unittest.TestCase):
         forms = tuple(
             variant for entry in context.entries for variant in entry.resolved.variants
         )
-        self.assertEqual((len(context.entries), len(forms)), (137, 5452))
-        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 7456)
+        self.assertEqual((len(context.entries), len(forms)), (137, 5453))
+        self.assertEqual(
+            sum(form.variant_id == "rcp_implicit_f64" for form in forms), 1
+        )
+        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 7457)
         self.assertEqual(sum(len(form.operand_layouts) > 1 for form in forms), 1232)
         for form in forms:
             slots = operand_slots(form, self.backend)

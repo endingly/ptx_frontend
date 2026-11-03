@@ -401,12 +401,19 @@ class GenerationPlanTests(unittest.TestCase):
         """Named-vector admission is confined to exact eligible data bindings."""
         from ptx_frontend.ir.resolved_ir import ResolvedVectorTypePolicy, ResolvedOperandRole
 
+        from tests.spec.test_matrix_named_fragments import EXPECTED as MATRIX_NAMED_EXPECTED
+
+        matrix_keys = {(opcode, variant, layout, field)
+                       for opcode, variant, layout, field, _, _ in MATRIX_NAMED_EXPECTED}
+        observed_matrix_keys = set()
         observed = set()
         quad_keys = {(name, "default", "src") for name in (
             "cvt_rs_satfinite_f4x4_f32", "cvt_rs_satfinite_f6x4_f32",
             "cvt_rs_satfinite_f8x4_f32")}
         seen_quad = set()
         aggregate_mov = set()
+        matrix_named = {"mma": 0, "wmma": 0, "wgmma": 0}
+        mask_named = set()
         inherited = {"multimem": 0, "suld": 0, "st": 0, "sust": 0}
         for entry in self.context.entries:
             opcode = entry.specification.opcode
@@ -415,9 +422,18 @@ class GenerationPlanTests(unittest.TestCase):
                     for binding in layout.bindings:
                         key = (variant.variant_id, layout.layout_id, binding.target_field_id)
                         quad_source = opcode == "cvt" and key in quad_keys
+                        matrix_key = (opcode, *key)
+                        matrix_source = matrix_key in matrix_keys
+                        if opcode in matrix_named and not matrix_source:
+                            self.assertFalse(binding.allow_named_vector)
+                        named_mask = (opcode == "tcgen05" and
+                                      binding.target_field_id == "disable_output_lane")
                         if binding.allow_named_vector:
+                            if opcode in matrix_named:
+                                observed_matrix_keys.add(matrix_key)
                             observed.add(opcode)
-                            self.assertTrue(quad_source or opcode in {"ld", "ldu", "st", "mov", "multimem", "suld", "sust"})
+                            self.assertTrue(quad_source or matrix_source or named_mask or
+                                            opcode in {"ld", "ldu", "st", "mov", "multimem", "suld", "sust"})
                             inherited_data = (opcode in {"multimem", "suld", "sust"} or
                                               (opcode == "st" and binding.target_field_id == "value"))
                             if quad_source:
@@ -427,6 +443,28 @@ class GenerationPlanTests(unittest.TestCase):
                                 self.assertEqual(binding.target_field_id, "src")
                                 self.assertIs(binding.role, ResolvedOperandRole.SOURCE)
                                 self.assertTrue(binding.source_value_vector)
+                            elif matrix_source:
+                                matrix_named[opcode] += 1
+                                self.assertIs(binding.vector_type_policy,
+                                              ResolvedVectorTypePolicy.ELEMENT)
+                                self.assertIn(binding.target_field_id,
+                                              {"a", "b", "c", "d", "dst"})
+                                self.assertFalse(binding.source_value_vector)
+                                if binding.allowed_vector_arities:
+                                    self.assertTrue(set(binding.allowed_vector_arities) <= {2, 4})
+                                else:
+                                    self.assertEqual(binding.minimum_elements,
+                                                     binding.maximum_elements)
+                                    self.assertIn(binding.minimum_elements, {2, 4})
+                            elif named_mask:
+                                mask_named.add(key)
+                                self.assertIs(binding.vector_type_policy,
+                                              ResolvedVectorTypePolicy.ELEMENT)
+                                self.assertEqual(binding.allowed_vector_arities,
+                                                 tuple(range(1, 9)))
+                                self.assertFalse(binding.allow_vector_sink)
+                                self.assertFalse(binding.source_value_vector)
+                                self.assertEqual(binding.type_expression.scalar_type, "b32")
                             elif (opcode == "mov" and binding.vector_type_policy
                                     is ResolvedVectorTypePolicy.AGGREGATE):
                                 aggregate_mov.add((variant.variant_id, binding.target_field_id))
@@ -449,12 +487,29 @@ class GenerationPlanTests(unittest.TestCase):
                                     field.name in {"async", "bulk"} and
                                     field.constant_value is True
                                     for field in variant.modifier_fields))
-                        if opcode not in {"ld", "ldu", "st", "mov", "multimem", "suld", "sust"} and not quad_source:
+                        if opcode not in {"ld", "ldu", "st", "mov", "multimem", "suld", "sust"} and not (quad_source or matrix_source or named_mask):
                             self.assertFalse(binding.allow_named_vector)
                         if opcode == "multimem" and 8 in binding.allowed_vector_arities:
                             self.assertFalse(binding.allow_named_vector)
         self.assertEqual(seen_quad, quad_keys)
-        self.assertEqual(observed, {"ld", "ldu", "st", "mov", "multimem", "suld", "sust", "cvt"})
+        self.assertEqual(observed, {"ld", "ldu", "st", "mov", "multimem", "suld", "sust", "cvt",
+                                    "mma", "wmma", "wgmma", "tcgen05"})
+        self.assertEqual(matrix_named, {"mma": 1374, "wmma": 112, "wgmma": 1176})
+        self.assertEqual(observed_matrix_keys, matrix_keys)
+        expected_masks = {
+            (variant, layout)
+            for variant in ("tcgen05_mma_f16", "tcgen05_mma_tf32",
+                            "tcgen05_mma_sp_f16", "tcgen05_mma_sp_tf32")
+            for layout in ("shared_mask_no_scale", "shared_mask_scale",
+                           "tensor_mask_no_scale", "tensor_mask_scale")
+        } | {
+            (variant, layout)
+            for variant in ("tcgen05_mma_i8", "tcgen05_mma_f8f6f4",
+                            "tcgen05_mma_sp_f8f6f4", "tcgen05_mma_sp_i8")
+            for layout in ("shared_mask", "tensor_mask")
+        }
+        self.assertEqual({(variant, layout) for variant, layout, _ in mask_named},
+                         expected_masks)
         self.assertEqual(inherited, {"multimem": 42, "suld": 60, "st": 4, "sust": 78})
         self.assertEqual(aggregate_mov, {
             ("mov_scalar", "src"), ("mov_scalar", "dst"),

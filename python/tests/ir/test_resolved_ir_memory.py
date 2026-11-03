@@ -1881,13 +1881,13 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                 "GlobalAddNoftzF16": ("6.3", 70, "f16", ResolvedRegisterWidthPolicy.SAME_WIDTH),
                 "GlobalAddNoftzF16x2": ("6.2", 60, "f16x2", ResolvedRegisterWidthPolicy.SAME_WIDTH),
                 "GlobalAddNoftzBf16": ("7.8", 90, "b16", ResolvedRegisterWidthPolicy.EXACT),
-                "GlobalAddNoftzBf16x2": ("7.8", 90, "b32", ResolvedRegisterWidthPolicy.EXACT),
+                "GlobalAddNoftzBf16x2": ("7.8", 90, "bf16x2", ResolvedRegisterWidthPolicy.SAME_WIDTH),
             },
             "red": {
                 "GlobalAddNoftzF16": ("6.3", 70, "f16", ResolvedRegisterWidthPolicy.SAME_WIDTH),
                 "GlobalAddNoftzF16x2": ("6.2", 60, "f16x2", ResolvedRegisterWidthPolicy.SAME_WIDTH),
                 "GlobalAddNoftzBf16": ("7.8", 90, "b16", ResolvedRegisterWidthPolicy.EXACT),
-                "GlobalAddNoftzBf16x2": ("7.8", 90, "b32", ResolvedRegisterWidthPolicy.EXACT),
+                "GlobalAddNoftzBf16x2": ("7.8", 90, "bf16x2", ResolvedRegisterWidthPolicy.SAME_WIDTH),
             },
         }
         for opcode, tuples in expected.items():
@@ -1949,6 +1949,12 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                                if field.name == "dst")
                     self.assertEqual(field_cpp_type(dst),
                                      "WithLocs<ResolvedRegisterOrSink>")
+                    if name == "GlobalAddNoftzBf16x2":
+                        dst_binding = next(binding for binding in variant.operand_layouts[0].bindings
+                                           if binding.target_field_id == "dst")
+                        self.assertEqual(dst_binding.type_expression.scalar_type, "b32")
+                        self.assertEqual(dst_binding.register_width_policy,
+                                         ResolvedRegisterWidthPolicy.EXACT)
                 if "Noftz" in name:
                     self.assertIn("noftz", (field.name for field in variant.modifier_fields))
                 if name in ("GlobalCasB128", "GlobalExchB128"):

@@ -76,7 +76,7 @@ native `.f32`/`.f64` or equal-width `.b32`/`.b64` registers, decimal floating
 literals, and `0f`/`0d` bit-pattern literals; integer literals are rejected.
 Half and bfloat `add` require the written `.noftz` suffix. Scalar `.f16`
 accepts `.f16` or `.b16` registers, and packed `.f16x2` accepts `.f16x2`
-or `.b32`. The BF16 forms retain exact `.b16`/`.b32` bit containers.
+or `.b32`. BF16 register carriers remain `.b16`/`.b32` physical storage; the packed BF16x2 source has the logical format described below.
 The `.b16` CAS form accepts compatible same-width registers for its destination
 and register sources; `.b128` CAS/exchange use exact `.b128` registers. CAS always has four
 operands and no cache hint. Addresses require natural two-, four-, eight-, or
@@ -262,3 +262,13 @@ cache remain valid; validation does not authenticate old operand spelling.
 Known reference contradictions are checked under partial context, while the
 existing whole-instruction deferral remains. Required delivery evidence includes
 actual generated views and real borrowed callbacks, not a manual projection.
+
+## Packed32 source words and member migration
+
+The scalar `atom` and `red` `add.noftz.f16x2` / `add.noftz.bf16x2` source slots accept compatible registers or a **bare unsigned direct `0f` word** in both `no_hint` and `with_policy` layouts. The eight source keys share four existing public `src` members. For example, `0f3e003e00` supplies the complete F16x2 word `0x3e003e00`, and `0f3fc03fc0` supplies the complete BF16x2 word `0x3fc03fc0`. All 32 bits are data, including encoded signs and NaNs: the frontend does not split, splat, quantize or quiet the word.
+
+This grant reuses the existing packed-literal helper. Integer literals and Integer-result expressions are incompatible with logical Float sources. Decimal numbers, numeric pairs/splats, unary `+`/`-`, parenthesized/wrapped/expression forms, new `0h` constructors and truncation from `0d` are not packed source constructors. Numeric packed construction remains **Source_N_A / reference-qualified**; it is not a positive producer or a reason to add a converter. The source converter produces the selected logical F16x2/BF16x2 type. Canonical current-word positives use that selected type, only low32 bits, no `integer_source_bits`, and false floating-negative metadata, without retained floating lexical history. Existing current Bit-carrier compatibility remains unchanged; these examples do not narrow the inherited `SameWidth` policy or establish a new B32 rule.
+
+The BF16x2 **source** is logically BF16x2 with `SameWidth`, replacing its previous B32/`Exact` projection. Its lawful physical register carrier remains B32: declaring a standalone `.bf16x2` register remains invalid. F16x2 sources retain their existing native F16x2/B32 carriers and logical `SameWidth` policy. General class, intrinsic declaration validity, scalar/component provenance, exact physical width and SymbolId binding remain checked. This is not permission for F32/U32/S32, whole vectors or predicate carriers. BF16x2 atomic destinations remain B32/`Exact`; the additional cache-policy operand remains a B64 register. Address qualifiers/alignment, modifier order, availability and scalar-half/vector/CAS/EXCH cohorts are unchanged.
+
+`AtomGlobalAddNoftzF16x2`, `AtomGlobalAddNoftzBf16x2`, `RedGlobalAddNoftzF16x2` and `RedGlobalAddNoftzBf16x2` keep their names and identities, but `src` changes from `WithLocs<ResolvedRegisterRef>` to `WithLocs<RegOrImm>`. Consumers must rebuild with matching generated headers and libraries and use `std::get_if<ResolvedRegisterRef>` / `std::get_if<ResolvedImmediate>` on `.value`. See the [IR migration](../resolved_ir_design.md#packed32-atomic-source-members). Views and observer callbacks borrow the actual owner only synchronously and must be reacquired after copying or cloning. Source association remains separate from current-word validity. These frontend checks do not execute atomics or certify runtime memory, ordering or floating results.

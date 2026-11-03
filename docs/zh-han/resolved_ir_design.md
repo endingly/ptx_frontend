@@ -1744,3 +1744,11 @@ availability，不执行 atomic update、memory ordering、cache 行为或 BF16 
 交付证据必须覆盖实际生成的视图及真实借用回调，手工投影视图不能替代这些检查。
 
 本来源许可不改变手工构造当前值的既有 Bit 容器兼容性。
+
+## Packed32 atomic source members
+
+恰有四个既有公开 `src` 成员从 `WithLocs<ResolvedRegisterRef>` 迁移为 `WithLocs<RegOrImm>`：`AtomGlobalAddNoftzF16x2`、`AtomGlobalAddNoftzBf16x2`、`RedGlobalAddNoftzF16x2` 和 `RedGlobalAddNoftzBf16x2`。每个成员同时服务于 `no_hint` 与 `with_policy`，共八个 source key。Consumer 必须用匹配的当前头文件与七个 frontend archive 重新构建；旧 prefix 不能认证这一生成成员变化。既有 class identity、factory、字段顺序及可选 cache-policy 存储保持不变。
+
+使用 `std::get_if<ResolvedRegisterRef>(&form.src.value)` 或 `std::get_if<ResolvedImmediate>(&form.src.value)`，读取实际 alternative。BF16x2 source 使用逻辑 BF16x2 / `SameWidth`，允许的声明寄存器仍是 B32；BF16x2 目标保留 B32 / `Exact`。Native F16x2 source 保留 F16x2/B32 兼容性。B64 cache-policy 寄存器、地址/target/modifier 规则、声明 guard 和 component 来源彼此独立。
+
+只有裸写、无符号、直接 `0f` 可以产生 packed word；全部 32 位（包括符号和 NaN）原样保留。Numeric pair/splat、新 `0h` 与截断 `0d` producer 为 Source_N_A / reference-qualified。源码 converter 产生选中的逻辑 packed 类型。Canonical 低 32 位 F16x2/BF16x2 current-word 正例在没有 integer origin 且 floating-negative metadata 为 false 时无需 lexical history 即可合法。既有 current Bit-carrier 兼容性保持不变；这些示例不收窄继承的 `SameWidth` 策略，也不制定新的 B32 规则。副本、赋值与 clone 拥有自己的 word、SymbolId 和位置。借用的 `OperandView` 与同步 `reg_or_imm` observer 值必须指向当前 owner；callback 不得保留这些值，也不得修改或重入 owner。Source/AST 生命周期和传入源码 identity 分别核对。参见 [atomic 覆盖](converage/atomic_reduction_coverage.md#packed32-source-words-and-member-migration)；本 payload 迁移不证明运行时 atomic 行为或 numeric packed construction。

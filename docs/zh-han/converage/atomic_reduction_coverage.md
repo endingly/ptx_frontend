@@ -66,7 +66,7 @@ shared 的 generic 地址均拒绝。`atom.cas` 没有 cache-hint 形式。无�
 `.f32`/`.f64` 或等宽 `.b32`/`.b64` 寄存器、十进制浮点字面量及 `0f`/`0d`
 位模式字面量，不接受整数立即数。Half 和 bfloat 的 `add` 必须写 `.noftz`；
 标量 `.f16` 可用 `.f16` 或 `.b16` 寄存器，打包 `.f16x2` 可用 `.f16x2` 或
-`.b32`；BF16 形式仍要求精确 `.b16`/`.b32` bit container。
+`.b32`；BF16 寄存器 carrier 保留 `.b16`/`.b32` 物理存储；packed BF16x2 source 使用下述逻辑 packed 类型。
 `.b16` CAS 的目标及寄存器源接受兼容的同宽寄存器，`.b128` CAS/交换使用精确
 `.b128` 寄存器。CAS 始终有四个操作数，不带 cache hint。地址必须按二、四、
 八或十六字节自然对齐。浮点加法
@@ -219,3 +219,13 @@ availability，不执行 atomic update、memory ordering、cache 行为或 BF16 
 交付证据必须覆盖实际生成的视图及真实借用回调，手工投影视图不能替代这些检查。
 
 本来源许可不改变手工构造当前值的既有 Bit 容器兼容性。
+
+## Packed32 source words and member migration
+
+标量 `atom` 与 `red` 的 `add.noftz.f16x2` / `add.noftz.bf16x2` source 在 `no_hint` 和 `with_policy` 两个布局中接受兼容寄存器或**裸写、无符号、直接 `0f` word**。八个 source key 共用四个既有公开 `src` 成员。例如，`0f3e003e00` 提供完整 F16x2 word `0x3e003e00`，`0f3fc03fc0` 提供完整 BF16x2 word `0x3fc03fc0`。全部 32 位都是数据，包括编码的符号位和 NaN；frontend 不拆分、splat、量化或 quiet 该 word。
+
+本权限复用既有 packed-literal helper。整数 literal 与 Integer-result expression 不兼容逻辑 Float source。十进制数、numeric pair/splat、一元 `+`/`-`、括号/wrapper/expression、新 `0h` constructor 以及截断 `0d` 都不是 packed source constructor。Numeric packed construction 仍为 **Source_N_A / reference-qualified**，既不是正向 producer，也不授权新增 converter。源码 converter 产生选中的逻辑 F16x2/BF16x2 类型。Canonical current-word 正例使用该选中类型、仅低 32 位有效、没有 `integer_source_bits` 且 floating-negative metadata 为 false，无需保留 floating lexical history。既有 current Bit-carrier 兼容性保持不变；这些示例不收窄继承的 `SameWidth` 策略，也不制定新的 B32 规则。
+
+BF16x2 **source** 的逻辑投影改为 BF16x2 / `SameWidth`，替换原先的 B32 / `Exact`。合法物理寄存器 carrier 仍为 B32；独立声明 `.bf16x2` 寄存器仍非法。F16x2 source 保留原有 native F16x2/B32 carrier 与逻辑 `SameWidth` 策略。General 类、声明本身有效性、标量/component 来源、精确物理位宽和 SymbolId binding 继续受检。这不授予 F32/U32/S32、whole vector 或 predicate carrier 权限。BF16x2 atomic 目标仍为 B32 / `Exact`，附加 cache-policy 操作数仍为 B64 寄存器。地址 qualifier/对齐、modifier 顺序、availability 以及标量 half、vector、CAS/EXCH cohort 都不变。
+
+`AtomGlobalAddNoftzF16x2`、`AtomGlobalAddNoftzBf16x2`、`RedGlobalAddNoftzF16x2` 和 `RedGlobalAddNoftzBf16x2` 保留名称和 identity，`src` 则从 `WithLocs<ResolvedRegisterRef>` 改为 `WithLocs<RegOrImm>`。Consumer 必须用匹配的生成头文件和库重新构建，并在 `.value` 上使用 `std::get_if<ResolvedRegisterRef>` / `std::get_if<ResolvedImmediate>`。参见 [IR 迁移](../resolved_ir_design.md#packed32-atomic-source-members)。View 与 observer callback 仅同步借用实际 owner，复制或 clone 后必须重新获取。Source association 与 current-word validity 分别核对。这些 frontend 检查不执行 atomic，也不认证运行时内存、顺序或浮点结果。

@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <algorithm>
 #include <array>
 #include <concepts>
@@ -19,6 +20,53 @@
 #include <ptx_frontend/resolved_ir/ptx_tcgen_descriptors.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+
+#ifdef PTX_PACKED_ATOMIC_CAPTURE_GENERATED_VIEWS
+namespace ptx_frontend::resolved_ir::packed_atomic_projection {
+/** Actual member borrowed only during the immediately enclosed generated check call. */
+const WithLocs<RegOrImm>* expected=nullptr;
+/** Logical format selected by that actual instruction, independent of current payload mutations. */
+ScalarType logical=ScalarType::Invalid;
+/** Count actual generated src views, never a hand-built or visitor projection. */
+unsigned observed=0;
+/** Accumulate exact pointer/value/location/descriptor mirror checks. */
+bool mirrors=true;
+#define PACKED_ATOMIC_OPERAND_PARAMETERS std::span<const checker::OperandDescriptor> descriptors, std::span<const checker::FieldView> fields, std::span<const checker::OperandView> views, std::span<const checker::OperandTypeCompatibilityDescriptor> compatibility, const checker::Context& context, const MatrixInstructionDescriptor* matrix
+/** Call the matching library checker after the test-only link wrapper observes its arguments. */
+extern "C" checker::CheckResult original_operands(PACKED_ATOMIC_OPERAND_PARAMETERS) asm("__real__ZN12ptx_frontend11resolved_ir7checker14check_operandsESt4spanIKNS1_17OperandDescriptorELm18446744073709551615EES2_IKNS1_9FieldViewELm18446744073709551615EES2_IKNS1_11OperandViewELm18446744073709551615EES2_IKNS1_34OperandTypeCompatibilityDescriptorELm18446744073709551615EERKNS1_7ContextEPKNS0_27MatrixInstructionDescriptorE");
+/** Intercept only the real generated checker call; production code and API remain untouched. */
+extern "C" checker::CheckResult generated_operands(PACKED_ATOMIC_OPERAND_PARAMETERS) asm("__wrap__ZN12ptx_frontend11resolved_ir7checker14check_operandsESt4spanIKNS1_17OperandDescriptorELm18446744073709551615EES2_IKNS1_9FieldViewELm18446744073709551615EES2_IKNS1_11OperandViewELm18446744073709551615EES2_IKNS1_34OperandTypeCompatibilityDescriptorELm18446744073709551615EERKNS1_7ContextEPKNS0_27MatrixInstructionDescriptorE");
+/** Consume borrowed views synchronously, then forward the real checker result unchanged. */
+checker::CheckResult generated_operands(PACKED_ATOMIC_OPERAND_PARAMETERS) {
+  if (expected) for (const auto& view:views) if (view.field_id=="src") {
+    ++observed;
+    const auto descriptor=std::ranges::find(descriptors,std::string_view("src"),&checker::OperandDescriptor::target_field_id);
+    bool valid=descriptor!=descriptors.end() &&
+        descriptor->type_expression.fixed_scalar_type==logical &&
+        descriptor->register_width_policy==base::ScalarTypeSizePolicy::SameWidth &&
+        view.locations.data()==expected->locs.data() &&
+        std::ranges::equal(view.locations,expected->locs);
+    if (const auto* reg=std::get_if<ResolvedRegisterRef>(&expected->value))
+      valid=valid && view.actual_shape==checker::OperandShape::Register &&
+          view.register_ref==reg && view.register_type==reg->declared_type &&
+          view.register_symbol_id==reg->symbol_id && view.register_class==reg->register_class &&
+          view.register_vector_width==reg->vector_width && !view.immediate_type &&
+          !view.immediate_bits && !view.integer_source_bits;
+    else if (const auto* word=std::get_if<ResolvedImmediate>(&expected->value))
+      valid=valid && view.actual_shape==checker::OperandShape::Immediate &&
+          !view.register_ref && !view.register_type && !view.register_symbol_id &&
+          !view.register_class && !view.register_vector_width &&
+          view.immediate_type==word->type && view.immediate_bits==word->bits &&
+          view.immediate_is_negative==word->is_negative &&
+          view.integer_source_bits==word->integer_source_bits;
+    else valid=false;
+    mirrors=mirrors && valid;
+  }
+  return original_operands(descriptors,fields,views,compatibility,context,matrix);
+}
+#undef PACKED_ATOMIC_OPERAND_PARAMETERS
+}  // namespace ptx_frontend::resolved_ir::packed_atomic_projection
+#endif
 
 /** Verify installed catalog metadata and owned header gates without source storage. */
 bool checkInstalledHeaderCompatibility() {
@@ -2306,7 +2354,191 @@ bool checkInstalledScalarAtomicBf16() {
 }
 
 /** Exercise exact-form and module resolution from the installed component. */
+/** Borrow one of the four migrated sources while its actual instruction owner survives. */
+ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>*
+installedPackedAtomicMember(ptx_frontend::resolved_ir::Instruction& instruction) {
+  namespace ir = ptx_frontend::resolved_ir;
+  if (auto* p = dynamic_cast<ir::AtomGlobalAddNoftzF16x2*>(&instruction)) return &p->src;
+  if (auto* p = dynamic_cast<ir::AtomGlobalAddNoftzBf16x2*>(&instruction)) return &p->src;
+  if (auto* p = dynamic_cast<ir::RedGlobalAddNoftzF16x2*>(&instruction)) return &p->src;
+  if (auto* p = dynamic_cast<ir::RedGlobalAddNoftzBf16x2*>(&instruction)) return &p->src;
+  return nullptr;
+}
+
+/** Consume current installed classes, factory, variants and observers using matching archives. */
+bool checkInstalledPackedAtomicSources() {
+  namespace ir = ptx_frontend::resolved_ir;
+  static_assert(std::same_as<decltype(ir::AtomGlobalAddNoftzF16x2{}.src.value), ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::AtomGlobalAddNoftzBf16x2{}.src.value), ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::RedGlobalAddNoftzF16x2{}.src.value), ir::RegOrImm>);
+  static_assert(std::same_as<decltype(ir::RedGlobalAddNoftzBf16x2{}.src.value), ir::RegOrImm>);
+  static_assert(std::variant_size_v<ir::RegOrImm> == 2);
+  static_assert(std::same_as<std::variant_alternative_t<0, ir::RegOrImm>, ir::ResolvedRegisterRef>);
+  static_assert(std::same_as<std::variant_alternative_t<1, ir::RegOrImm>, ir::ResolvedImmediate>);
+  const auto profile = ptx_frontend::base::find_target_profile("sm_90");
+  if (!profile) return false;
+  const ir::checker::Context context{
+      .target = {.ptx_version = {9,3},
+                 .sm_version = profile->identity.architecture.number,
+                 .enabled_family_features = profile->enabled_family_features,
+                 .identity = profile->identity,
+                 .capabilities = profile->capabilities}};
+  /** Observe real src values synchronously, with metadata confined to each bracket. */
+  struct Observer final : ir::detail::IReferenceObserver {
+    /** Actual owner member, retained only until the enclosing traversal returns. */
+    const ir::RegOrImm* expected;
+    /** Complete target context supplied by this installed consumer. */
+    const ir::checker::Context& context;
+    /** Required logical source format for this exact generated class. */
+    ir::ScalarType type;
+    /** Descriptor borrowed only between operand_context(d) and its nullptr reset. */
+    const ir::checker::OperandDescriptor* descriptor = nullptr;
+    /** Number of observed src fields, excluding the cache policy. */
+    unsigned count = 0;
+    /** Aggregate real value, pointer, location and OperandView checks. */
+    bool okay = true;
+    /** Bind a synchronous observer to an owner and a complete context. */
+    Observer(const ir::RegOrImm& value, const ir::checker::Context& target,
+              ir::ScalarType logical) : expected(&value), context(target), type(logical) {}
+    /** Preserve source-only metadata within the current operand bracket. */
+    void operand_context(const ir::checker::OperandDescriptor* value,
+                         std::optional<ir::MemoryStateSpace>) override {
+      descriptor = value && value->target_field_id == "src" ? value : nullptr;
+    }
+    /** Consume actual alternatives and values without retaining callback arguments. */
+    void reg_or_imm(const ir::RegOrImm& value,
+                    std::span<const ptx_frontend::SourceRange> locations,
+                    ir::checker::AddressSymbolResolutionPolicy) override {
+      if (&value != expected) return;
+      const ir::checker::OperandDescriptor projection{
+          .target_field_id="src",
+          .type_expression={.kind=ir::checker::OperandTypeExpressionKind::FixedScalar,
+                            .fixed_scalar_type=type},
+          .role=ir::checker::OperandRole::Source,
+          .access=ir::checker::OperandAccess::Read,
+          .allowed_shapes=ir::checker::OperandShape::Register|ir::checker::OperandShape::Immediate};
+      ++count;
+      okay &= &value == expected && !locations.empty();
+      ir::checker::OperandView view{.field_id = "src",
+                                    .actual_shape = ir::checker::OperandShape::Immediate};
+      view.locations = locations;
+      if (const auto* word = std::get_if<ir::ResolvedImmediate>(&value)) {
+        okay &= word->type == type && word->bits ==
+            (type == ir::ScalarType::BF16x2 ? 0x3fc03fc0u : 0x3e003e00u) &&
+            !word->integer_source_bits && !word->is_negative;
+        view.immediate_type = word->type;
+        view.immediate_bits = word->bits;
+        view.immediate_is_negative = word->is_negative;
+        view.integer_source_bits = word->integer_source_bits;
+      } else if (const auto* reg = std::get_if<ir::ResolvedRegisterRef>(&value)) {
+        okay &= reg->symbol_id.has_value() && reg->declared_type == ir::ScalarType::B32;
+        view.actual_shape = ir::checker::OperandShape::Register;
+        view.register_type = reg->declared_type;
+        view.register_symbol_id = reg->symbol_id;
+        view.register_class = reg->register_class;
+        view.register_ref = reg;
+        view.register_vector_width = reg->vector_width;
+      } else { okay = false; return; }
+      okay &= ir::checker::check_operands({&projection,1}, {}, {&view,1}, {}, context).has_value();
+    }
+  };
+  for (bool reduction : {false,true})
+    for (bool bfloat : {false,true})
+      for (bool policy : {false,true})
+        for (bool immediate : {false,true}) {
+          const auto logical = bfloat ? ir::ScalarType::BF16x2 : ir::ScalarType::F16x2;
+          const auto word = bfloat ? 0x3fc03fc0u : 0x3e003e00u;
+          const std::string statement = std::string(reduction ? "red" : "atom") +
+              ".global.add.noftz" + (policy ? ".L2::cache_hint" : "") +
+              (bfloat ? ".bf16x2 " : ".f16x2 ") + (reduction ? "" : "%dst,") +
+              "[cell]," + (immediate ? (bfloat ? "0f3fc03fc0" : "0f3e003e00") : "%bits") +
+              (policy ? ",%policy;" : ";");
+          const auto expected_kind = reduction
+              ? (bfloat ? ir::InstructionKind::RedGlobalAddNoftzBf16x2
+                         : ir::InstructionKind::RedGlobalAddNoftzF16x2)
+              : (bfloat ? ir::InstructionKind::AtomGlobalAddNoftzBf16x2
+                         : ir::InstructionKind::AtomGlobalAddNoftzF16x2);
+          {
+            std::string standalone=statement;
+            for (const auto& replacement : std::array<std::pair<std::string_view,std::string_view>,4>{{
+                {"%dst","%b0"},{"%bits","%b1"},{"[cell]","[%rd0]"},{"%policy","%rd1"}}}) {
+              const auto position=standalone.find(replacement.first);
+              if (position!=std::string::npos)
+                standalone.replace(position,replacement.first.size(),replacement.second);
+            }
+            ptx_frontend::PtxSyntaxParser factory_parser(standalone);
+            const auto syntax = factory_parser.parseInstruction();
+            if (!syntax || !syntax.diagnostics.empty()) return false;
+            const auto factory = ir::resolveInstruction(*syntax);
+            if (!factory || !*factory || (*factory)->instruction_kind() != expected_kind) return false;
+            auto* member = installedPackedAtomicMember(**factory);
+            if (!member || member->locs.empty()) return false;
+            if (immediate) {
+              const auto* value = std::get_if<ir::ResolvedImmediate>(&member->value);
+              if (!value || value->type != logical || value->bits != word) return false;
+            } else if (!std::get_if<ir::ResolvedRegisterRef>(&member->value)) return false;
+          }
+          std::optional<ir::ResolvedModule> module;
+          {
+            const std::string text = ".version 9.3\n.target sm_90\n.address_size 64\n"
+                ".global .align 4 .b32 cell;\n.entry k(){.reg .b32 %dst,%bits;"
+                ".reg .b64 %policy;" + statement + "}";
+            ptx_frontend::PtxSyntaxParser parser(text);
+            const auto ast = parser.parseModule();
+            if (!ast || !ast.diagnostics.empty()) return false;
+            auto result = ir::resolveAndValidateModule(*ast);
+            if (!result || !ir::validateModule(*ast,*result)) return false;
+            module.emplace(std::move(*result));
+          }
+          if (module->functions.size()!=1 || module->functions.front().body.size()!=1) return false;
+          auto copy = *module;
+          ir::ResolvedModule assigned;
+          assigned = copy;
+          auto moved = std::move(assigned);
+          ir::ResolvedFunction function_copy = moved.functions.front();
+          ir::ResolvedFunction function_assigned;
+          function_assigned = function_copy;
+          auto clone = moved.functions.front().body.front()->clone();
+          module.reset();
+          if (!ir::validateModule(moved) || function_assigned.body.size()!=1 || !clone) return false;
+          for (auto* instruction : {moved.functions.front().body.front().get(),
+                                    function_assigned.body.front().get(), clone.get()}) {
+            if (!instruction || instruction->instruction_kind()!=expected_kind ||
+                !instruction->check(context)) return false;
+            auto* member = installedPackedAtomicMember(*instruction);
+            if (!member || member->locs.empty()) return false;
+#ifdef PTX_PACKED_ATOMIC_CAPTURE_GENERATED_VIEWS
+            const auto generated_before=ir::packed_atomic_projection::observed;
+            ir::packed_atomic_projection::mirrors=true;
+            ir::packed_atomic_projection::logical=logical;
+            ir::packed_atomic_projection::expected=member;
+            const auto generated_check=instruction->check(context);
+            ir::packed_atomic_projection::expected=nullptr;
+            if (!generated_check || !ir::packed_atomic_projection::mirrors ||
+                ir::packed_atomic_projection::observed!=generated_before+1) return false;
+#endif
+            Observer observer(member->value, context, logical);
+            instruction->visit_references(observer);
+            if (!observer.okay || observer.count!=1 || observer.descriptor) return false;
+            if (immediate) {
+              auto* value = std::get_if<ir::ResolvedImmediate>(&member->value);
+              if (!value) return false;
+              const auto saved = *value;
+              *value = ir::ResolvedImmediate{.bits=word,.type=logical};
+              if (!instruction->check(context)) return false;
+              value->bits |= std::uint64_t{1}<<32;
+              if (instruction->check(context)) return false;
+              *value = saved;
+            }
+          }
+          if (!ir::validateModule(moved)) return false;
+        }
+  return true;
+}
+
 int main() {
+  if (!checkInstalledPackedAtomicSources())
+    return 1;
   if (!checkInstalledScalarAtomicBf16())
     return 1;
   if (!checkInstalledScalarAtomicF16Sources())

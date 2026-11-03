@@ -220,9 +220,10 @@ def _build_operand_binding(binding: ResolvedOperandBinding, name: str, backend: 
 
     if binding.integer_immediate_type is not None:
         expression = binding.type_expression
-        if (binding.integer_immediate_type != "b16"
-                or expression.kind is not ResolvedOperandTypeExpressionKind.FIXED_SCALAR
-                or expression.scalar_type not in ("f16", "bf16")
+        if (expression.kind is not ResolvedOperandTypeExpressionKind.FIXED_SCALAR
+                or (expression.scalar_type, binding.integer_immediate_type) not in (
+                    ("f16", "b16"), ("bf16", "b16"),
+                    ("f16x2", "b32"), ("bf16x2", "b32"))
                 or binding.role is not ResolvedOperandRole.SOURCE
                 or binding.access is not ResolvedOperandAccess.READ
                 or len(binding.allowed_shapes) != 2
@@ -231,7 +232,7 @@ def _build_operand_binding(binding: ResolvedOperandBinding, name: str, backend: 
                 or binding.source_value_vector
                 or (binding.minimum_elements, binding.maximum_elements)
                    not in ((None, None), (0, 0))):
-            raise ValueError("integer_immediate_type requires a read scalar half binding")
+            raise ValueError("integer_immediate_type requires a read scalar half or packed half binding")
 
     member = ResolvedBindingMemberModel
     vector: list[ResolvedBindingMemberModel] = []

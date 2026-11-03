@@ -164,24 +164,24 @@ operand_patterns:
 
   setp_f16x2_pair:
     - {name: dst, kind: pred_pair, role: dst, access: write, type: pred}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16x2, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16x2, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16x2, register_width: same_width, integer_immediate_type: b32}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16x2, register_width: same_width, integer_immediate_type: b32}
 
   setp_f16x2_pair_boolean:
     - {name: dst, kind: pred_pair, role: dst, access: write, type: pred}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16x2, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16x2, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16x2, register_width: same_width, integer_immediate_type: b32}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16x2, register_width: same_width, integer_immediate_type: b32}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   setp_packed_pair:
     - {name: dst, kind: pred_pair, role: dst, access: write, type: pred}
-    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
-    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: exact}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: bf16x2, register_width: same_width, integer_immediate_type: b32}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: bf16x2, register_width: same_width, integer_immediate_type: b32}
 
   setp_packed_pair_boolean:
     - {name: dst, kind: pred_pair, role: dst, access: write, type: pred}
-    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
-    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: exact}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: bf16x2, register_width: same_width, integer_immediate_type: b32}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: bf16x2, register_width: same_width, integer_immediate_type: b32}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   setp_bf16_single:

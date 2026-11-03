@@ -14,13 +14,13 @@ Every row is modelled through syntax, Resolved IR, and target-aware checking. Th
 | Ordinary `.f32` | 1.0 / all targets | `.eq/.ne/.lt/.le/.gt/.ge/.equ/.neu/.ltu/.leu/.gtu/.geu/.num/.nan`; optional Boolean form and `.ftz` | The ordinary single/pair sink and floating register-or-immediate source rules apply. |
 | Ordinary `.f64` | 1.0 / `sm_13` | The same floating comparison and optional Boolean form; `.ftz` is not legal | The ordinary single/pair sink and floating register-or-immediate source rules apply. |
 | `.f16` | 4.2 / `sm_53` | All floating comparisons, optional Boolean form, optional `.ftz` | Exactly one predicate result. Sources are `.f16` or same-width `.b16` registers, or numeric F16 floating constants; explicit raw B16 integer words are also accepted. `_` is not a destination. |
-| `.f16x2` | 4.2 / `sm_53` | All floating comparisons, optional Boolean form, optional `.ftz` | Exactly two predicate results and native `.f16x2` or `.b32` register sources; sink destinations are not legal. |
+| `.f16x2` | 4.2 / `sm_53` | All floating comparisons, optional Boolean form, optional `.ftz` | Exactly two predicate results; native `.f16x2` or `.b32` register sources. The prepared extension adds raw B32 and exact logical packed words below; sink destinations remain illegal. |
 | `.bf16` | 7.8 / `sm_90` | All floating comparisons and optional Boolean form; `.ftz` is not legal | Exactly one predicate result. Sources use actual `.b16` registers, numeric BF16 words or explicit raw B16 integer words; `_` is not a destination. |
-| `.bf16x2` | 7.8 / `sm_90` | All floating comparisons and optional Boolean form; `.ftz` is not legal | Exactly two predicate results and exact `.b32` register sources; sink destinations are not legal. |
+| `.bf16x2` | 7.8 / `sm_90` | All floating comparisons and optional Boolean form; `.ftz` is not legal | Exactly two predicate results and actual `.b32` registers. The prepared extension adds raw B32 and exact logical packed words below; sink destinations remain illegal. |
 
 ## Deliberate boundaries
 
-The ordinary syntax permits a single `_` destination or one `_` lane of a predicate pair. The frontend represents that explicitly, and checker revalidation rejects a public-IR pair edited to contain two sinks. Half and bfloat forms retain their required single or pair predicate destinations; native F16x2 sources admit only `.f16x2` or `.b32`, while nonfundamental BF16x2 sources retain exact `.b32` containers. Arbitrary same-width types remain excluded.
+The ordinary syntax permits a single `_` destination or one `_` lane of a predicate pair. The frontend represents that explicitly, and checker revalidation rejects a public-IR pair edited to contain two sinks. Half and bfloat forms retain their required single or pair predicate destinations; native F16x2 register sources admit only `.f16x2` or `.b32`, while nonfundamental BF16x2 sources retain exact `.b32` containers. Arbitrary same-width types remain excluded.
 
 The optional Boolean operand is a predicate source, not a predicate-register-only field. It accepts a plain or complemented predicate register and PTX integer predicate constants. Constants are canonicalized with C truth rules: zero is false, nonzero is true, and a leading `!` complements that truth value. Predicate special registers are not admitted by `setp`, even though `mov.pred` admits them.
 
@@ -51,8 +51,8 @@ The source is evaluated once. An integer result chooses the explicit raw B16 arm
 `1.0` gives F16 `0x3c00` or BF16 `0x3f80`. Direct unsigned `0f` keeps its existing
 root route and lexical precision; no wrapper or trial conversion classifies it.
 Ordinary logical floating operands with absent policy still reject integer
-origin, including the packed formats. This support does not extend packed
-SETP, atomic, storage, call or other scalar source permissions.
+origin, including the packed formats. The scalar B16 support does not itself extend atomic, storage, call or other
+scalar permissions. The separate packed SETP extension is described below.
 
 Current immediates select their arm by their actual type. Both words fit 16 bits;
 numeric logical words have no integer origin or integer negative flag. B16
@@ -63,3 +63,41 @@ existing separate source association. Complete target context is required for
 instruction-check proof; AvailableContext deferral is not a legality certificate.
 Actual F16 carriers remain B16 or F16; BF16 carriers remain actual B16, with the
 existing intrinsic declaration/class guards. No Base compatibility rule changes.
+
+
+## Packed SETP raw and exact words
+
+The prepared extension uses the existing trailing optional
+`integer_immediate_type`; its finite pairs are F16/BF16 with B16 and
+F16x2/BF16x2 with B32. It adds no descriptor field or immediate payload.
+Exactly src1/src2 of plain and Boolean `SetpF16x2`/`SetpBf16x2` become
+`WithLocs<RegOrImm>` (eight public members). The four BF16x2 bindings use
+logical BF16x2 and SameWidth instead of physical B32 and Exact. F16x2 logical
+type and width, predicate-pair destinations, Boolean combine operands,
+comparison domains, FTZ rules and target minima remain unchanged.
+
+A source is evaluated once: an Integer result takes raw B32 under the existing
+narrowing/range policy and retains evaluated 64-bit source/sign facts. `1` is
+word `0x00000001`, and narrowing `0x100000001` yields the same low word.
+A bare unsigned direct `0f3fc03fc0` takes logical F16x2 or BF16x2 and preserves
+all 32 bits through the shared packed-word helper. It performs no numeric
+packing, splat, rounding or NaN quieting. Decimal/F64 numeric packed
+constructors have no adopted producer; signed, wrapped or arithmetic `0f`,
+`0h`, and F64 truncation do not gain one through this policy.
+
+The Integer-source B32 arm retains source64/sign facts consistent with its low32 word.
+This preparation does not classify a cache-free current Bit32 word by analogy
+with the separate scalar F16/Bit16 decision: its exact current flags and outcomes
+remain pending bounded actual-parent evidence. Genuine logical packed-word
+current edits use independent direct-word producers. Logical packed words have
+no integer-origin cache (even optional zero) or integer-negative flag. Coherent
+current typed-word edits do not authenticate erased source history; supplied
+source association remains independent. Actual register carriers are B32 or
+native F16x2 for F16x2, and B32 for BF16x2; declaration/class/whole-container
+checks remain in force. Missing-context deferral does not certify legality.
+The existing eight scalar B16 policies and all absent-policy sources are unchanged.
+
+Focused checks cover the finite source-policy pairs, source categories, current
+values, declaration references, generated views, and owning copy/clone behavior.
+Consumers must rebuild against matching generated headers and libraries. These
+frontend checks do not establish GPU execution behavior or full PTX coverage.

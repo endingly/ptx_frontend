@@ -1941,15 +1941,16 @@ def _build_operand_layout(
         if operand.integer_immediate_type is None:
             continue
         expression = operand.type_expression
-        if (operand.integer_immediate_type != "b16"
-                or operand.kind is not OperandKind.REGISTER_OR_IMMEDIATE
+        if (operand.kind is not OperandKind.REGISTER_OR_IMMEDIATE
                 or field.value_kind is not ResolvedValueKind.REG_OR_IMM
                 or _require_operand_role(field) is not ResolvedOperandRole.SOURCE
                 or _require_operand_access(field) is not ResolvedOperandAccess.READ
                 or expression is None
                 or expression.kind is not OperandTypeExpressionKind.FIXED_SCALAR
-                or expression.scalar_type not in ("f16", "bf16")):
-            raise ValueError("integer_immediate_type requires a read scalar half RegOrImm binding")
+                or (expression.scalar_type, operand.integer_immediate_type) not in (
+                    ("f16", "b16"), ("bf16", "b16"),
+                    ("f16x2", "b32"), ("bf16x2", "b32"))):
+            raise ValueError("integer_immediate_type requires a read scalar half or packed half RegOrImm binding")
     return ResolvedOperandLayout(
         layout_id=layout_id,
         cpp_name=file_stem_to_pascal_case(layout_id),

@@ -68,10 +68,12 @@ std::vector<ResolvedRegisterRef*> packed_data(Instruction& instruction,
   }
   if (variant == 2) {
     auto& form = dynamic_cast<SetpF16x2&>(instruction);
-    return {&form.src1.value, &form.src2.value};
+    return {&std::get<ResolvedRegisterRef>(form.src1.value),
+            &std::get<ResolvedRegisterRef>(form.src2.value)};
   }
   auto& form = dynamic_cast<SetpF16x2Boolean&>(instruction);
-  return {&form.src1.value, &form.src2.value};
+  return {&std::get<ResolvedRegisterRef>(form.src1.value),
+          &std::get<ResolvedRegisterRef>(form.src2.value)};
 }
 
 TEST(NativeF16x2Carriers, AcceptsAllMixedNativeAndBitDataRoles) {
@@ -233,7 +235,10 @@ TEST(NativeF16x2Carriers,
         const auto ast = test_helpers::parseModule(packed_source(
             variant, std::vector<std::string>(count, "b32"), operands));
         ASSERT_TRUE(ast && ast.diagnostics.empty());
-        EXPECT_FALSE(resolveAndValidateModule(*ast));
+        const bool packed_setp_word =
+            variant >= 2 && (std::string_view(operand) == "0" ||
+                             std::string_view(operand) == "0f00000000");
+        EXPECT_EQ(resolveAndValidateModule(*ast).has_value(), packed_setp_word);
       }
     }
   }

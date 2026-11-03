@@ -1653,22 +1653,27 @@ CheckResult check_operands(
             operand->immediate_type == descriptor.integer_immediate_type;
         const bool numeric = operand->immediate_type == primary;
         if (operand->immediate_type && !raw && !numeric) {
-          diagnostics.push_back({CheckDiagnosticKind::OperandTypeMismatch,
-                                 diagnostic_range(operand->locations, context),
-                                 "Immediate type is neither the logical half "
-                                 "format nor its raw Bit16 alternative."});
+          diagnostics.push_back(
+              {CheckDiagnosticKind::OperandTypeMismatch,
+               diagnostic_range(operand->locations, context),
+               "Immediate type is neither the logical floating "
+               "format nor its raw Bit alternative."});
           continue;
         }
+        // The validated finite policy permits only a 16- or 32-bit word.
+        const auto word_bits =
+            base::scalar_size_of(*descriptor.integer_immediate_type) * 8;
+        const auto word_mask = (uint64_t{1} << word_bits) - 1;
         if (!operand->immediate_type || !operand->immediate_bits ||
-            *operand->immediate_bits > 0xffffU ||
+            *operand->immediate_bits > word_mask ||
             (numeric && (operand->integer_source_bits ||
                          operand->immediate_is_negative.value_or(false))) ||
             (raw && !operand->integer_source_bits &&
              operand->immediate_is_negative.value_or(false))) {
           diagnostics.push_back({CheckDiagnosticKind::ImmediateValueMismatch,
                                  diagnostic_range(operand->locations, context),
-                                 "Scalar half source requires a canonical "
-                                 "logical or raw Bit16 word."});
+                                 "Floating source requires a canonical "
+                                 "logical or raw Bit word."});
           continue;
         }
       }

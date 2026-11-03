@@ -27,14 +27,15 @@ class SetpExplicitBitSourceTests(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 normalize_operand(dict(raw, integer_immediate_type=invalid))
 
-    def test_raw_schema_accepts_only_the_engaged_b16_string(self):
+    def test_raw_schema_accepts_only_the_engaged_bit_strings(self):
         """Raw token validation remains separate from normalized semantic context."""
         schema = yaml.safe_load(packaged_spec_schema().read_text(encoding="utf-8"))
         validator = Draft202012Validator({"$ref": "#/$defs/operand", "$defs": schema["$defs"]})
         raw = dict(name="src1", kind="reg_or_imm", role="src1", access="read", type="f16")
         self.assertTrue(validator.is_valid(raw))
         self.assertTrue(validator.is_valid(dict(raw, integer_immediate_type="b16")))
-        for value in (None, False, True, 16, "unknown", "s16", "u16", "f16", "b8", "b32"):
+        self.assertTrue(validator.is_valid(dict(raw, type="f16x2", integer_immediate_type="b32")))
+        for value in (None, False, True, 16, "unknown", "s16", "u16", "f16", "b8"):
             with self.subTest(value=value):
                 self.assertFalse(validator.is_valid(dict(raw, integer_immediate_type=value)))
 
@@ -54,8 +55,8 @@ class SetpExplicitBitSourceTests(unittest.TestCase):
             normalize_operand(dict(original, integer_immediate_type=None))
         self.assertEqual(str(old.exception), str(extended.exception))
 
-    def test_full137_raw_defaults_and_exact_eight_engagements(self):
-        """Audit every serialized default separately from the eight semantic rows."""
+    def test_full137_raw_defaults_and_exact_sixteen_engagements(self):
+        """Audit every serialized default separately from the sixteen semantic rows."""
         database = get_packaged_spec_database()
         self.assertEqual(len(database.instructions), 137)
         engaged = set()
@@ -68,13 +69,14 @@ class SetpExplicitBitSourceTests(unittest.TestCase):
                             self.assertIsNone(asdict(operand)["integer_immediate_type"])
                             continue
                         engaged.add((instruction.opcode, variant.name, layout.name, operand.name))
-                        self.assertEqual(operand.integer_immediate_type, "b16")
+                        self.assertEqual(operand.integer_immediate_type, "b32" if "x2" in variant.name else "b16")
                         self.assertIs(operand.kind, OperandKind.REGISTER_OR_IMMEDIATE)
                         self.assertEqual(operand.register_width_policy.value, "same_width")
                         self.assertEqual(operand.type_expression.scalar_type,
-                                         "bf16" if "bf16" in variant.name else "f16")
+                                         ("bf16" if "bf16" in variant.name else "f16") + ("x2" if "x2" in variant.name else ""))
         self.assertEqual(engaged, {("setp", variant, "default", source)
-            for variant in ("setp_f16", "setp_f16_boolean", "setp_bf16", "setp_bf16_boolean")
+            for variant in ("setp_f16", "setp_f16_boolean", "setp_bf16", "setp_bf16_boolean",
+                            "setp_f16x2", "setp_f16x2_boolean", "setp_bf16x2", "setp_bf16x2_boolean")
             for source in ("src1", "src2")})
 
     def test_derived_boundary_rejects_manually_forged_normalized_context(self):

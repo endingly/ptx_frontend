@@ -40,13 +40,13 @@ class DescriptorRenderModelTests(unittest.TestCase):
         cls.mov = next(spec for spec in cls.specifications if spec.opcode == "mov")
 
     def test_integer_alternative_is_a_trailing_typed_optional(self) -> None:
-        """Default bindings stay absent; only eight half sources render B16."""
+        """Default bindings stay absent; eight scalar and eight packed sources render B16/B32."""
         specification = next(s for s in self.specifications if s.opcode == "setp")
         storage = build_resolved_descriptor_storage(from_instruction_spec(specification), self.backend)
         policies = [binding.integer_immediate_type for group in storage.binding_groups
                     for binding in group.bindings if binding.integer_immediate_type is not None]
         self.assertTrue(policies)
-        self.assertTrue(all(value == "ScalarType::B16" for value in policies))
+        self.assertEqual(set(policies), {"ScalarType::B16", "ScalarType::B32"})
         variant = next(v for v in from_instruction_spec(specification).variants
                        if v.variant_id == "setp_f16")
         layout = variant.operand_layouts[0]
@@ -111,6 +111,31 @@ class DescriptorRenderModelTests(unittest.TestCase):
         omitted = _build_operand_binding(replace(binding, allow_named_vector=False),
                                          "brace_only", self.backend)
         self.assertNotIn("allow_named_vector", {member.name for member in omitted.vector_members})
+
+    def test_packed_integer_policy_manual_render_pairs_and_shapes(self) -> None:
+        """Derived bindings must satisfy the same finite pairs before emission."""
+        instruction = from_instruction_spec(next(s for s in self.specifications if s.opcode == "setp"))
+        for logical, variant_id in (("f16x2", "setp_f16x2"), ("bf16x2", "setp_bf16x2")):
+            binding = next(b for v in instruction.variants if v.variant_id == variant_id
+                           for layout in v.operand_layouts for b in layout.bindings
+                           if b.target_field_id == "src1")
+            self.assertEqual(_build_operand_binding(binding, "packed", self.backend).integer_immediate_type,
+                             "ScalarType::B32")
+            self.assertIsNone(_build_operand_binding(replace(binding, integer_immediate_type=None),
+                                                   "packed", self.backend).integer_immediate_type)
+            invalid = [replace(binding, integer_immediate_type=word) for word in ("b16", "b64", "u32")]
+            invalid += [replace(binding, type_expression=replace(binding.type_expression,
+                            scalar_type=wrong)) for wrong in ("f16", "bf16", "b32", "e4m3x4")]
+            invalid += [replace(binding, role=ResolvedOperandRole.DESTINATION),
+                        replace(binding, access=ResolvedOperandAccess.WRITE),
+                        replace(binding, source_value_vector=True),
+                        replace(binding, minimum_elements=2, maximum_elements=2),
+                        replace(binding, allowed_shapes=(ResolvedOperandShape.REGISTER,)),
+                        replace(binding, allowed_shapes=(ResolvedOperandShape.VECTOR,
+                                                        ResolvedOperandShape.IMMEDIATE))]
+            for candidate in invalid:
+                with self.subTest(logical=logical, binding=candidate), self.assertRaises(ValueError):
+                    _build_operand_binding(candidate, "packed", self.backend)
 
     def test_storage_builders_do_not_render_nested_fragments(self) -> None:
         """All storage builders work while the shared renderer is unavailable."""

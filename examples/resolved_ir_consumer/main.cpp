@@ -1,5 +1,7 @@
 #include <cstdint>
 #include <algorithm>
+#include <type_traits>
+#include <algorithm>
 #include <array>
 #include <concepts>
 #include <iostream>
@@ -66,6 +68,157 @@ checker::CheckResult generated_operands(PACKED_ATOMIC_OPERAND_PARAMETERS) {
 }
 #undef PACKED_ATOMIC_OPERAND_PARAMETERS
 }  // namespace ptx_frontend::resolved_ir::packed_atomic_projection
+#endif
+
+#if defined(PTX_PACKED_SETP_CHECKER_WRAP)
+namespace ptx_frontend::resolved_ir::packed_setp_test_wrap {
+/** Expected values own no library borrows except the explicit member during one check. */
+struct Capture {
+  /** The current instruction keeps this direct member alive for the synchronous check. */
+  const WithLocs<RegOrImm>* member = nullptr;
+  /** Existing direct source field and independently known logical format. */
+  std::string_view field;
+  ScalarType logical = ScalarType::Invalid;
+  /** Independent complete ASCII token range; end is exclusive. */
+  SourceRange range;
+  /** Expected source arm/type/word/origin, derived from the case rather than the view. */
+  bool immediate = false;
+  ScalarType type = ScalarType::Invalid;
+  uint64_t bits = 0;
+  std::optional<uint64_t> source_bits;
+  bool negative = false;
+  /** Register spelling is a case literal; no callback-supplied pointer is retained. */
+  std::string_view spelling;
+  /** Only value results escape interception; incoming views/spans never do. */
+  unsigned calls = 0;
+  bool valid = true;
+};
+/** One thread's synchronous observation; cleared before the owner can move or die. */
+thread_local Capture* active = nullptr;
+/** Restore any outer observation even if the real checker exits exceptionally. */
+struct Scope {
+  /** Previous test-owned capture; never a callback-owned borrow. */
+  Capture* previous;
+  /** Install an observation only for the surrounding check expression. */
+  explicit Scope(Capture& value) : previous(active) { active = &value; }
+  /** End interception before any caller destroys or reassigns an owner. */
+  ~Scope() { active = previous; }
+};
+/** Compute an expected source-token range independently of parser/IR locations. */
+SourceRange token_range(std::string_view text, bool first) {
+  const auto operation = text.find("setp.eq");
+  const auto comma = text.find(',', operation);
+  const auto sibling =
+      text.find(',', comma == std::string_view::npos ? comma : comma + 1);
+  const auto start =
+      first ? (comma == std::string_view::npos ? comma : comma + 1)
+            : (sibling == std::string_view::npos ? sibling : sibling + 1);
+  const auto end = text.find_first_of(",;", start);
+  if (operation == std::string_view::npos || start == std::string_view::npos ||
+      end == std::string_view::npos)
+    throw std::logic_error("Expected complete packed SETP source token.");
+  SourcePos position{1, 1};
+  for (const char character : text.substr(0, start)) {
+    if (character == '\n') {
+      ++position.line;
+      position.column = 1;
+    } else
+      ++position.column;
+  }
+  return {position,
+          {position.line, position.column + static_cast<int32_t>(end - start)}};
+}
+}  // namespace ptx_frontend::resolved_ir::packed_setp_test_wrap
+#define PACKED_SETP_PARAMS                                                    \
+  std::span<const ptx_frontend::resolved_ir::checker::OperandDescriptor>      \
+      descriptors,                                                            \
+      std::span<const ptx_frontend::resolved_ir::checker::FieldView> fields,  \
+      std::span<const ptx_frontend::resolved_ir::checker::OperandView> views, \
+      std::span<const ptx_frontend::resolved_ir::checker::                    \
+                    OperandTypeCompatibilityDescriptor>                       \
+          compatibility,                                                      \
+      const ptx_frontend::resolved_ir::checker::Context &context,             \
+      const ptx_frontend::resolved_ir::MatrixInstructionDescriptor *matrix
+/** Original checker selected by the test-only linker wrap, with identical arguments/result. */
+extern "C" ptx_frontend::resolved_ir::checker::CheckResult
+    packed_setp_real_operands(PACKED_SETP_PARAMS) asm(
+        "__real__ZN12ptx_frontend11resolved_ir7checker14check_"
+        "operandsESt4spanIKNS1_17OperandDescriptorELm18446744073709551615EES2_"
+        "IKNS1_9FieldViewELm18446744073709551615EES2_IKNS1_"
+        "11OperandViewELm18446744073709551615EES2_IKNS1_"
+        "34OperandTypeCompatibilityDescriptorELm18446744073709551615EERKNS1_"
+        "7ContextEPKNS0_27MatrixInstructionDescriptorE");
+/** Inspect actual generated OperandViews, then forward without changing checker behavior. */
+extern "C" ptx_frontend::resolved_ir::checker::CheckResult
+    packed_setp_wrap_operands(PACKED_SETP_PARAMS) asm(
+        "__wrap__ZN12ptx_frontend11resolved_ir7checker14check_"
+        "operandsESt4spanIKNS1_17OperandDescriptorELm18446744073709551615EES2_"
+        "IKNS1_9FieldViewELm18446744073709551615EES2_IKNS1_"
+        "11OperandViewELm18446744073709551615EES2_IKNS1_"
+        "34OperandTypeCompatibilityDescriptorELm18446744073709551615EERKNS1_"
+        "7ContextEPKNS0_27MatrixInstructionDescriptorE");
+ptx_frontend::resolved_ir::checker::CheckResult packed_setp_wrap_operands(
+    PACKED_SETP_PARAMS) {
+  using namespace ptx_frontend::resolved_ir;
+  if (auto* capture = packed_setp_test_wrap::active) {
+    for (const auto& view : views)
+      if (view.field_id == capture->field) {
+        ++capture->calls;
+        const auto descriptor = std::find_if(
+            descriptors.begin(), descriptors.end(), [&](const auto& item) {
+              return item.target_field_id == capture->field;
+            });
+        bool valid = capture->member && capture->member->locs.size() == 1 &&
+                     view.locations.size() == 1;
+        valid =
+            valid && view.locations.data() == capture->member->locs.data() &&
+            view.locations.front() == capture->range &&
+            descriptor != descriptors.end() &&
+            descriptor->integer_immediate_type == ScalarType::B32 &&
+            descriptor->type_expression.kind ==
+                checker::OperandTypeExpressionKind::FixedScalar &&
+            descriptor->type_expression.fixed_scalar_type == capture->logical &&
+            descriptor->register_width_policy ==
+                ptx_frontend::base::ScalarTypeSizePolicy::SameWidth &&
+            descriptor->role == checker::OperandRole::Source &&
+            descriptor->access == checker::OperandAccess::Read &&
+            descriptor->allowed_shapes == (checker::OperandShape::Register |
+                                           checker::OperandShape::Immediate);
+        if (valid && capture->immediate) {
+          const auto* actual =
+              std::get_if<ResolvedImmediate>(&capture->member->value);
+          valid = actual &&
+                  view.actual_shape == checker::OperandShape::Immediate &&
+                  !view.register_ref && actual->type == capture->type &&
+                  actual->bits == capture->bits &&
+                  actual->integer_source_bits == capture->source_bits &&
+                  actual->is_negative == capture->negative &&
+                  view.immediate_type == actual->type &&
+                  view.immediate_bits == actual->bits &&
+                  view.integer_source_bits == actual->integer_source_bits &&
+                  view.immediate_is_negative == actual->is_negative;
+        } else if (valid) {
+          const auto* actual =
+              std::get_if<ResolvedRegisterRef>(&capture->member->value);
+          valid = actual && actual->spelling == capture->spelling &&
+                  actual->declared_type == capture->type && actual->symbol_id &&
+                  actual->register_class == ResolvedRegisterClass::General &&
+                  !actual->vector_width &&
+                  view.actual_shape == checker::OperandShape::Register &&
+                  view.register_ref == actual &&
+                  view.register_type == actual->declared_type &&
+                  view.register_symbol_id == actual->symbol_id &&
+                  view.register_class == actual->register_class &&
+                  view.register_vector_width == actual->vector_width &&
+                  !view.immediate_type;
+        }
+        capture->valid = capture->valid && valid;
+      }
+  }
+  return packed_setp_real_operands(descriptors, fields, views, compatibility,
+                                   context, matrix);
+}
+#undef PACKED_SETP_PARAMS
 #endif
 
 /** Verify installed catalog metadata and owned header gates without source storage. */
@@ -2353,6 +2506,318 @@ bool checkInstalledScalarAtomicBf16() {
          require(ir::validateModule(assigned).has_value(), "assigned owner validates after producer death");
 }
 
+/** Exercise installed packed SETP fields with real source-dead nonempty payloads. */
+bool checkInstalledPackedSetpSources() {
+  namespace ir = ptx_frontend::resolved_ir;
+  static_assert(std::same_as<decltype(ir::SetpF16x2{}.src1),
+                             ptx_frontend::WithLocs<ir::RegOrImm>>);
+  static_assert(std::same_as<decltype(ir::SetpF16x2{}.src2),
+                             ptx_frontend::WithLocs<ir::RegOrImm>>);
+  static_assert(std::same_as<decltype(ir::SetpF16x2Boolean{}.src1),
+                             ptx_frontend::WithLocs<ir::RegOrImm>>);
+  static_assert(std::same_as<decltype(ir::SetpF16x2Boolean{}.src2),
+                             ptx_frontend::WithLocs<ir::RegOrImm>>);
+  static_assert(std::same_as<decltype(ir::SetpBf16x2{}.src1),
+                             ptx_frontend::WithLocs<ir::RegOrImm>>);
+  static_assert(std::same_as<decltype(ir::SetpBf16x2{}.src2),
+                             ptx_frontend::WithLocs<ir::RegOrImm>>);
+  static_assert(std::same_as<decltype(ir::SetpBf16x2Boolean{}.src1),
+                             ptx_frontend::WithLocs<ir::RegOrImm>>);
+  static_assert(std::same_as<decltype(ir::SetpBf16x2Boolean{}.src2),
+                             ptx_frontend::WithLocs<ir::RegOrImm>>);
+  if (ir::checker::OperandDescriptor{}.integer_immediate_type)
+    return false;
+  /** Compare actual callback fields with independent case expectations synchronously. */
+  struct PackedObserver final : ir::detail::IReferenceObserver {
+    /** Field addresses borrow the current instruction only for the following visit. */
+    std::array<const ir::RegOrImm*, 2> members{};
+    /** Exact written operand ranges, computed before source/AST destruction. */
+    std::array<ptx_frontend::SourceRange, 2> ranges{};
+    /** Selected operand, producer arm and logical format are independent case inputs. */
+    size_t selected = 0;
+    unsigned mode = 0;
+    ir::ScalarType logical = ir::ScalarType::F16x2;
+    /** Accumulated validity and descriptor-order callback count. */
+    bool valid = true;
+    size_t count = 0;
+    /** Inspect the original member address and exact typed payload during the callback. */
+    void reg_or_imm(const ir::RegOrImm& value,
+                    std::span<const ptx_frontend::SourceRange> locations,
+                    ir::checker::AddressSymbolResolutionPolicy) override {
+      if (count >= members.size()) {
+        valid = false;
+        return;
+      }
+      valid = valid && &value == members[count] && locations.size() == 1 &&
+              locations.front() == ranges[count];
+      const unsigned expected_mode = count == selected ? mode : 0;
+      if (expected_mode == 0) {
+        const auto* reg = std::get_if<ir::ResolvedRegisterRef>(&value);
+        valid = valid && reg && reg->spelling == "b" && reg->symbol_id &&
+                reg->declared_type == ir::ScalarType::B32 &&
+                reg->register_class == ir::ResolvedRegisterClass::General &&
+                !reg->vector_width && !reg->component;
+      } else {
+        const auto* word = std::get_if<ir::ResolvedImmediate>(&value);
+        const auto expected_type =
+            expected_mode == 1 ? ir::ScalarType::B32 : logical;
+        const uint64_t expected_bits =
+            expected_mode == 1 ? uint64_t{1} : uint64_t{0x7f817c01};
+        const auto expected_origin =
+            expected_mode == 1 ? std::optional<uint64_t>{1} : std::nullopt;
+        valid = valid && word && word->type == expected_type &&
+                word->bits == expected_bits &&
+                word->integer_source_bits == expected_origin &&
+                !word->is_negative;
+      }
+      ++count;
+    }
+  };
+  /** Return actual source members without retaining transient factory or observer values. */
+  const auto sources = [](const ir::Instruction& instruction)
+      -> std::array<const ptx_frontend::WithLocs<ir::RegOrImm>*, 2> {
+    if (const auto* form = dynamic_cast<const ir::SetpF16x2*>(&instruction))
+      return {&form->src1, &form->src2};
+    if (const auto* form =
+            dynamic_cast<const ir::SetpF16x2Boolean*>(&instruction))
+      return {&form->src1, &form->src2};
+    if (const auto* form = dynamic_cast<const ir::SetpBf16x2*>(&instruction))
+      return {&form->src1, &form->src2};
+    if (const auto* form =
+            dynamic_cast<const ir::SetpBf16x2Boolean*>(&instruction))
+      return {&form->src1, &form->src2};
+    return {};
+  };
+  for (const bool bf16 : {false, true})
+    for (const bool boolean : {false, true})
+      for (size_t selected = 0; selected < 2; ++selected)
+        for (unsigned mode = 0; mode < 3; ++mode) {
+          const std::string_view spelling = mode == 0   ? "b"
+                                            : mode == 1 ? "1"
+                                                        : "0f7f817c01";
+          const auto logical =
+              bf16 ? ir::ScalarType::BF16x2 : ir::ScalarType::F16x2;
+          std::optional<ir::ResolvedModule> owned;
+          std::array<ptx_frontend::SourceRange, 2> expected_ranges{};
+          {
+            std::string text =
+                ".version 9.3\n.target sm_90\n.entry kernel(){"
+                ".reg .pred p,q,r; .reg .b32 b; setp.eq";
+            text += boolean ? ".and" : "";
+            text += bf16 ? ".bf16x2 p|q," : ".f16x2 p|q,";
+            // Both operands are on the third line; end columns are exclusive.
+            const auto line_start = text.rfind('\n') + 1;
+            for (size_t index = 0; index < 2; ++index) {
+              if (index != 0)
+                text += ',';
+              const auto operand =
+                  index == selected ? spelling : std::string_view{"b"};
+              const auto start_column =
+                  static_cast<int32_t>(text.size() - line_start + 1);
+              expected_ranges[index] = {
+                  {3, start_column},
+                  {3, start_column + static_cast<int32_t>(operand.size())}};
+              text += operand;
+            }
+            text += boolean ? ",r; }" : "; }";
+            ptx_frontend::PtxSyntaxParser parser(text);
+            const auto ast = parser.parseModule();
+            if (!ast || !ast.diagnostics.empty())
+              return false;
+            auto resolved = ir::resolveAndValidateModule(*ast);
+            if (!resolved)
+              return false;
+            owned.emplace(std::move(*resolved));
+          }
+          if (owned->functions.size() != 1 ||
+              owned->functions.front().body.size() != 1)
+            return false;
+          auto copied = *owned;
+          ir::ResolvedModule assigned;
+          assigned = copied;
+          auto function = copied.functions.front();
+          assigned.functions.front() = function;
+          assigned.functions.front().body.front() =
+              function.body.front()->clone();
+          owned.reset();
+          for (const auto* module : {&copied, &assigned}) {
+            const auto& instruction = *module->functions.front().body.front();
+            const bool correct_class =
+                bf16 ? (boolean ? dynamic_cast<const ir::SetpBf16x2Boolean*>(
+                                      &instruction) != nullptr
+                                : dynamic_cast<const ir::SetpBf16x2*>(
+                                      &instruction) != nullptr)
+                     : (boolean ? dynamic_cast<const ir::SetpF16x2Boolean*>(
+                                      &instruction) != nullptr
+                                : dynamic_cast<const ir::SetpF16x2*>(
+                                      &instruction) != nullptr);
+            if (!correct_class)
+              return false;
+            const auto fields = sources(instruction);
+            if (!fields[0] || !fields[1])
+              return false;
+            PackedObserver observer;
+            observer.selected = selected;
+            observer.mode = mode;
+            observer.logical = logical;
+            observer.ranges = expected_ranges;
+            for (size_t index = 0; index < 2; ++index) {
+              if (fields[index]->locs.size() != 1 ||
+                  fields[index]->locs.front() != expected_ranges[index])
+                return false;
+              observer.members[index] = &fields[index]->value;
+            }
+            instruction.visit_references(observer);
+            if (!observer.valid || observer.count != 2 ||
+                !ir::validateModule(*module))
+              return false;
+          }
+        }
+  return true;
+}
+
+#if defined(PTX_PACKED_SETP_CHECKER_WRAP)
+/** Reacquire the selected migrated member from the real current exact class. */
+ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>&
+installedPackedSetpField(ptx_frontend::resolved_ir::Instruction& instruction,
+                         bool first) {
+  namespace ir = ptx_frontend::resolved_ir;
+  if (auto* value = dynamic_cast<ir::SetpF16x2*>(&instruction))
+    return first ? value->src1 : value->src2;
+  if (auto* value = dynamic_cast<ir::SetpF16x2Boolean*>(&instruction))
+    return first ? value->src1 : value->src2;
+  if (auto* value = dynamic_cast<ir::SetpBf16x2*>(&instruction))
+    return first ? value->src1 : value->src2;
+  if (auto* value = dynamic_cast<ir::SetpBf16x2Boolean*>(&instruction))
+    return first ? value->src1 : value->src2;
+  throw std::logic_error("Expected current packed SETP class.");
+}
+/** Verify real generated projections and the contextual source factory using only installed interfaces. */
+bool checkInstalledPackedSetpGeneratedViews() {
+  namespace ir = ptx_frontend::resolved_ir;
+  static_assert(std::is_copy_constructible_v<ir::SetpF16x2> &&
+                std::is_copy_assignable_v<ir::SetpF16x2Boolean>);
+  static_assert(std::is_base_of_v<ir::Instruction, ir::SetpBf16x2> &&
+                std::is_default_constructible_v<ir::SetpBf16x2Boolean>);
+  ir::SetpF16x2 default_form;
+  if (!std::holds_alternative<ir::ResolvedRegisterRef>(default_form.src1.value))
+    return false;
+  for (bool bf16 : {false, true})
+    for (bool boolean : {false, true})
+      for (bool first : {false, true})
+        for (const auto spelling :
+             {"b", "h", "1", "-1", "0x100000001", "0f7f817c01"}) {
+          const std::string_view word(spelling);
+          if (bf16 && word == "h")
+            continue;
+          const std::string source =
+              ".version 9.3\n.target sm_90\n.entry kernel(){.reg .pred p,q,r; "
+              ".reg .b32 b; .reg .f16x2 h;\nsetp.eq" +
+              std::string(boolean ? ".and" : "") +
+              (bf16 ? ".bf16x2 p|q," : ".f16x2 p|q,") +
+              (first ? std::string(word) : "b") + "," +
+              (first ? "b" : std::string(word)) + (boolean ? ",r;" : ";") +
+              "\n}";
+          std::optional<ir::ResolvedModule> owner;
+          {
+            ptx_frontend::PtxSyntaxParser parser(source);
+            const auto ast = parser.parseModule();
+            if (!ast || !ast.diagnostics.empty())
+              return false;
+            auto produced = ir::resolveAndValidateModule(*ast);
+            if (!produced || !ir::validateModule(*ast, *produced))
+              return false;
+            owner.emplace(std::move(*produced));
+          }
+          if (owner->functions.size() != 1 ||
+              owner->functions.front().body.size() != 1 ||
+              owner->functions.front().instruction_ranges.size() != 1)
+            return false;
+          auto copied = *owner;
+          ir::ResolvedModule assigned;
+          assigned = copied;
+          auto function = copied.functions.front();
+          assigned.functions.front() = function;
+          assigned.functions.front().body.front() =
+              function.body.front()->clone();
+          for (auto* current : {&copied, &assigned}) {
+            auto& instruction = *current->functions.front().body.front();
+            auto& member = installedPackedSetpField(instruction, first);
+            ir::packed_setp_test_wrap::Capture capture;
+            capture.member = &member;
+            capture.field = first ? "src1" : "src2";
+            capture.logical =
+                bf16 ? ir::ScalarType::BF16x2 : ir::ScalarType::F16x2;
+            capture.range =
+                ir::packed_setp_test_wrap::token_range(source, first);
+            capture.immediate = word != "b" && word != "h";
+            capture.type =
+                word == "h" ? ir::ScalarType::F16x2 : ir::ScalarType::B32;
+            capture.spelling = capture.immediate ? std::string_view{} : word;
+            if (word == "1") {
+              capture.bits = 1;
+              capture.source_bits = 1;
+            }
+            if (word == "-1") {
+              capture.bits = 0xffffffff;
+              capture.source_bits = UINT64_MAX;
+              capture.negative = true;
+            }
+            if (word == "0x100000001") {
+              capture.bits = 1;
+              capture.source_bits = 0x100000001;
+            }
+            if (word == "0f7f817c01") {
+              capture.type = capture.logical;
+              capture.bits = 0x7f817c01;
+            }
+            ir::checker::CheckResult checked;
+            {
+              ir::packed_setp_test_wrap::Scope observe(capture);
+              checked = instruction.check(
+                  {.target = {.ptx_version = {9, 3}, .sm_version = 90},
+                   .instruction_range =
+                       current->functions.front().instruction_ranges.front()});
+            }
+            if (!checked || !capture.valid || capture.calls != 1 ||
+                !ir::validateModule(*current))
+              return false;
+          }
+          auto operation = source.substr(source.find("setp.eq"));
+          operation.erase(operation.rfind(';') + 1);
+          ptx_frontend::PtxSyntaxParser single_parser(operation);
+          const auto single = single_parser.parseInstruction();
+          if (!single || !single.diagnostics.empty())
+            return false;
+          auto& instruction = *owner->functions.front().body.front();
+          const auto* sibling = std::get_if<ir::ResolvedRegisterRef>(
+              &installedPackedSetpField(instruction, !first).value);
+          if (!sibling || !sibling->symbol_id)
+            return false;
+          const auto& function_owner = owner->functions.front();
+          const ir::ResolveContext context{
+              .symbols = owner->symbols,
+              .scope = owner->symbols.symbol(*sibling->symbol_id).scope,
+              .function_scope =
+                  owner->symbols.symbol(function_owner.symbol_id).owned_scope,
+              .function_is_entry = true};
+          auto factory = ir::resolveInstruction(*single, context);
+          if (!factory ||
+              (*factory)->instruction_kind() != instruction.instruction_kind())
+            return false;
+          auto clone = (*factory)->clone();
+          if (!clone ||
+              clone->instruction_kind() != instruction.instruction_kind())
+            return false;
+          const auto& actual = installedPackedSetpField(*clone, first).value;
+          if ((word == "b" || word == "h") !=
+              std::holds_alternative<ir::ResolvedRegisterRef>(actual))
+            return false;
+        }
+  return true;
+}
+#endif
+
 /** Exercise exact-form and module resolution from the installed component. */
 /** Borrow one of the four migrated sources while its actual instruction owner survives. */
 ptx_frontend::WithLocs<ptx_frontend::resolved_ir::RegOrImm>*
@@ -2537,6 +3002,12 @@ bool checkInstalledPackedAtomicSources() {
 }
 
 int main() {
+  if (!checkInstalledPackedSetpSources())
+    return 1;
+#if defined(PTX_PACKED_SETP_CHECKER_WRAP)
+  if (!checkInstalledPackedSetpGeneratedViews())
+    return 1;
+#endif
   if (!checkInstalledPackedAtomicSources())
     return 1;
   if (!checkInstalledScalarAtomicBf16())

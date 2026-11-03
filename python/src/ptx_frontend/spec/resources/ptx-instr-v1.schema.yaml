@@ -834,9 +834,9 @@ $defs:
           - $ref: "#/$defs/type_expr"
 
       integer_immediate_type:
-        description: Explicit raw integer alternative for a read scalar half source.
+        description: "Explicit raw integer alternative: B16 for F16/BF16, B32 for F16x2/BF16x2."
         type: string
-        enum: [b16]
+        enum: [b16, b32]
 
       register_width:
         description: >

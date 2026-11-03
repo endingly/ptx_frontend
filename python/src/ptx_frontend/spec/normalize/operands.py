@@ -230,8 +230,8 @@ def _normalize_integer_immediate_type(
     if "integer_immediate_type" not in raw:
         return None
     value = raw["integer_immediate_type"]
-    if type(value) is not str or value != "b16":
-        raise ValueError("integer_immediate_type requires the explicit Bit type b16")
+    if type(value) is not str or value not in ("b16", "b32"):
+        raise ValueError("integer_immediate_type requires the explicit Bit type b16 or b32")
     if (raw["kind"] is not OperandKind.REGISTER_OR_IMMEDIATE
             or raw["access"] is not OperandAccess.READ
             or raw["role"] not in (OperandRole.SOURCE, OperandRole.SOURCE_1, OperandRole.SOURCE_2,
@@ -239,8 +239,10 @@ def _normalize_integer_immediate_type(
                                    OperandRole.MASK, OperandRole.IMMEDIATE)
             or expression is None
             or expression.kind is not OperandTypeExpressionKind.FIXED_SCALAR
-            or expression.scalar_type not in ("f16", "bf16")):
-        raise ValueError("integer_immediate_type requires a read scalar half reg_or_imm source")
+            or (expression.scalar_type, value) not in (
+                ("f16", "b16"), ("bf16", "b16"),
+                ("f16x2", "b32"), ("bf16x2", "b32"))):
+        raise ValueError("integer_immediate_type requires a read scalar half or packed half reg_or_imm source")
     return value
 
 

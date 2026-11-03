@@ -14,11 +14,15 @@ inline bool valid_integer_immediate_type_policy(
     const checker::OperandDescriptor& binding) {
   if (!binding.integer_immediate_type)
     return true;
-  return *binding.integer_immediate_type == ScalarType::B16 &&
-         binding.type_expression.kind ==
+  return binding.type_expression.kind ==
              checker::OperandTypeExpressionKind::FixedScalar &&
-         (binding.type_expression.fixed_scalar_type == ScalarType::F16 ||
-          binding.type_expression.fixed_scalar_type == ScalarType::BF16) &&
+         ((*binding.integer_immediate_type == ScalarType::B16 &&
+           (binding.type_expression.fixed_scalar_type == ScalarType::F16 ||
+            binding.type_expression.fixed_scalar_type == ScalarType::BF16)) ||
+          (*binding.integer_immediate_type == ScalarType::B32 &&
+           (binding.type_expression.fixed_scalar_type == ScalarType::F16x2 ||
+            binding.type_expression.fixed_scalar_type ==
+                ScalarType::BF16x2))) &&
          binding.role == checker::OperandRole::Source &&
          binding.access == checker::OperandAccess::Read &&
          binding.allowed_shapes == (checker::OperandShape::Register |

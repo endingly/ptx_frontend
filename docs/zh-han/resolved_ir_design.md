@@ -1603,8 +1603,8 @@ Descriptor ABI 变化要求重新编译所有 consumer。
 `0x10001` 窄化为同一 word 并保留 64-bit integer origin。浮点结果沿用既有 logical
 converter：`1.0` 为 F16 `0x3c00` 或 BF16 `0x3f80`。直接 unsigned `0f` 保留
 既有 root route 和 lexical precision，不通过包装或试转换分类。缺省 policy 的普通
-logical floating operand 仍拒绝 integer origin，packed format 也不变。本支持不扩展
-packed SETP、atomic、storage、call 或其他 scalar source 权限。
+logical floating operand 仍拒绝 integer origin，packed format 也不变。此 scalar B16 支持本身不扩展
+atomic、storage、call 或其他 scalar 权限；独立 packed SETP 扩展见下文。
 
 当前 immediate 由实际 type 选择 arm，两个 word 都限制在 16 bit。Logical numeric
 word 没有 integer origin 或 integer negative flag；B16 origin 可以缺省，存在时仍检查
@@ -1613,6 +1613,37 @@ mask/sign 一致性，cache-free word 要求 negative flag 为 false。合法 wo
 Instruction check 的证明使用完整 target context，AvailableContext 延后不构成合法性证书。
 F16 实际 carrier 仍为 B16 或 F16，BF16 仍为实际 B16，并保留 intrinsic declaration/class
 检查；不改变 Base compatibility。
+
+
+## Packed SETP raw 与 exact word
+
+扩展复用既有尾部 optional `integer_immediate_type`，有限配对仅为
+F16/BF16 对 B16，以及 F16x2/BF16x2 对 B32，不新增 descriptor field 或 immediate
+payload。普通和 Boolean `SetpF16x2`/`SetpBf16x2` 的 src1/src2 共八个公开 member
+变为 `WithLocs<RegOrImm>`。四个 BF16x2 binding 从 physical B32/Exact 改为 logical
+BF16x2/SameWidth；F16x2 logical type/width、predicate-pair destination、Boolean
+combine、comparison domain、FTZ 与 target minimum 均不变。
+
+来源只求值一次：Integer 结果按既有 narrowing/range policy 选择 raw B32，保留
+求值后的 64-bit source/sign 信息。`1` 是 `0x00000001`，`0x100000001` 窄化为同一
+low word。bare unsigned direct `0f3fc03fc0` 经公共 packed-word helper 选择 logical
+F16x2 或 BF16x2，完整保留 32 bit，不执行 numeric packing、splat、rounding 或 NaN
+quieting。Decimal/F64 numeric packed constructor 尚无采用的 producer；signed、
+wrapped、arithmetic `0f`、`0h` 或 F64 truncation 不因本 policy 获得来源权限。
+
+Integer-source B32 arm 保留与 low32 一致的 source64/sign 信息。本准备不从独立
+scalar F16/Bit16 决定推导 cache-free current Bit32 word 的接纳或拒绝；其确切
+current flags 与结果等待有界实际父版本证据。合法 logical packed-word current
+修改使用独立的 direct-word producer。Logical packed word 不带 integer-origin cache（包括 optional
+zero）或 integer-negative flag。合法 current typed-word 修改不认证已擦除的源码
+历史；supplied source association 仍独立检查。F16x2 的实际 register carrier 为 B32
+或 native F16x2，BF16x2 仅为 B32；保留 declaration/class/whole-container 检查。
+缺失 context 的延后不构成合法性证明。既有八个 scalar B16 policy 与缺省 policy
+来源均不变。
+
+定向检查覆盖有限 source-policy 配对、源码类别、当前值、声明引用、generated view
+及 owning copy/clone 行为。Consumer 必须使用匹配的 generated header/library 重建。
+这些前端检查不证明 GPU 执行行为或完整 PTX 覆盖。
 
 ### 命名矩阵片段
 

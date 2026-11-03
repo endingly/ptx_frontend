@@ -82,3 +82,19 @@ selected tensor forms and remain independent of descriptor facts. See the
 [tensor async coverage](converage/tensor_async_coverage.md) and
 [frontend closeout matrix](converage/tensor_async_closeout.md) for exact forms, evidence,
 and remaining obligations.
+
+## Conservative whole-relation boundary
+
+The following five rule IDs deliberately keep `Unresolved` after their local checks pass, even when every relevant field supported by this caller-facts API has a known value. Supplying values does not supply the missing mathematical relationship or authenticate their provenance. A report can have no malformed-claim diagnostics and no `Violated` rows while still containing these unresolved obligations. There is no aggregate descriptor-verification result.
+
+| Rule ID | Implemented local checks | Whole relation that remains `Unresolved` | Relevant supported caller values |
+| --- | --- | --- | --- |
+| 17 `STORE_BOUNDS` | Store/reduce scope, nonnegative converted coordinates, lower-edge offsets nonnegative and upper-edge offsets nonpositive; no-offset im2col stores require both edge arrays. | Whole tiled/store box containment within the full tensor and the opposite-edge transform. | Full/tiled dimensions, traversal and coordinates; applicable edge arrays. |
+| 18 `IM2COL_SHAPE` | Im2col scope, rank 3–5, spatial arity rank−2, rank-specific signed edge-offset ranges. | Filter-base/spatial-box opposite-edge relation, including selected spatial-coordinate provenance. | Full/tiled dimensions, traversal, known coordinates, spatial box and both edge arrays. Coordinate values alone do not establish that provenance. |
+| 19 `IM2COL_INFO` | General-im2col scope, rank 3–5, rank-specific information arity and converted U16 bounds; unknown fill leaves excess requested pixels unresolved. | Pixels/traversal/available-NDHW/fill relationship. | Dimensions, traversal, coordinates, information, pixels per column, channels per pixel, available NDHW count and fill. |
+| 20 `W_PROFILE` | W/W128 scope, rank 3–5, no interleave, required swizzle, active 128-byte/flip8 exclusion, D/H extents one and accepted information bounds. | W/W128 full width, opposite-edge, bounds and count relationship. | Dimensions, traversal, coordinates, spatial box, information, W width and edge offsets, counts, fill and layout claims. |
+| 21 `GATHER_SCATTER` | Gather4/scatter4 scope, rank two, five coordinate roles, no interleave and tiled-box height one. | Per-selected-row full bounds/extent relationship. | Full/tiled dimensions, traversal and all five known coordinate roles. The API does not add a separate per-row extent or provenance fact. |
+
+Known local counterexamples remain `Violated`; structural inapplicability remains `NotApplicable`. Absent or unknown fields remain unknown, never known zero. These whole-relation limits do not alter any of the 22 stable IDs, dependency masks or malformed-claim quarantine rules. A field mentioned in an unresolved detail is not automatically a new metadata dependency.
+
+This is a documented scope boundary, not five implemented solvers. Neither complete caller-supported values nor passing local checks certify tensor-map bytes, actual GPU bounds, address ownership, synchronization or runtime protocol completion. The existing local `Checked` outcomes retain only their stated conditional meaning.

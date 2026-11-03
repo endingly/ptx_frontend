@@ -1461,6 +1461,8 @@ Legacy SHFL availability uses the complete PTX/SM removal window: PTX >=3.0 and 
 
 Historical101/101A source profiles begin at8.6,101F at8.8, including9.0/9.3. Their exact source identities remain101 while explicit catalog feature correspondence is110. The bounded231 historical metadata operations preserve854 original110 conditions and25 restricted parents; public consumers link the additive feature helper. This does not claim GPU execution or complete historical target coverage.
 
+Caller-known tensor-map 的 `STORE_BOUNDS`、`IM2COL_SHAPE`、`IM2COL_INFO`、`W_PROFILE` 与 `GATHER_SCATTER` 保留完整关系的保守 `Unresolved` 边界；局部反例、缺失值和结构不适用仍独立报告。相关受支持事实全部提供也不代表五个数学关系已实现，不证明 descriptor 字节、GPU 边界或同步。配套文档与 Python/C++ 完整事实回归明确这一现有保守边界；此项为边界说明与回归覆盖，不是五个完整关系 solver 的实现或运行时合法性证明。
+
 备用标量转换提供 BF16/E4M3/E5M2 的 binary64 整数位单次 RNE 与 low16/low8 当前字检查，仅作用于现有五个 BF16 源字段；E4/E5 仅有 helper 与通用 checker 能力。公共 API、模型及生成字段不变，其他源权限、packed、call/storage 与完整目标验收仍独立待办。
 
 Scalar SETP explicit Bit16 implementation (independent final acceptance pending): one optional trailing descriptor

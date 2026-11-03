@@ -17,9 +17,12 @@
 namespace ptx_frontend::resolved_ir {
 namespace {
 
-/** Locate one result in the generated catalog's stable numeric order. */
+/** Require all stable catalog IDs before locating one independently reported row. */
 const TensorKnownFactOutcome* outcome(const TensorKnownFactsReport& report,
                                       uint8_t rule_id) {
+  EXPECT_EQ(report.outcomes.size(), 22u);
+  for (size_t index = 0; index < report.outcomes.size(); ++index)
+    EXPECT_EQ(report.outcomes[index].rule_id, index + 1);
   const auto selected =
       std::find_if(report.outcomes.begin(), report.outcomes.end(),
                    [rule_id](const TensorKnownFactOutcome& item) {

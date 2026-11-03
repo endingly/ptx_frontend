@@ -411,15 +411,23 @@ TEST(DeclarationIdentifiers, RevalidatesOwnedAndReplacementNames) {
         expected = symbol->declaration_range;
         const auto validation = validateModule(*replacement_ast, *module);
         ASSERT_FALSE(validation);
-        EXPECT_EQ(validation.error().front().kind,
-                  checker::CheckDiagnosticKind::RuleViolation);
-        EXPECT_EQ(validation.error().front().range, expected);
+        const auto identifier = std::ranges::find(
+            validation.error(),
+            "Invalid declaration identifier '" + std::string(name) + "'.",
+            &checker::CheckDiagnostic::message);
+        ASSERT_NE(identifier, validation.error().end());
+        EXPECT_EQ(identifier->kind, checker::CheckDiagnosticKind::RuleViolation);
+        EXPECT_EQ(identifier->range, expected);
       }
       const auto validation = validateModule(*module);
       ASSERT_FALSE(validation);
-      EXPECT_EQ(validation.error().front().kind,
-                checker::CheckDiagnosticKind::RuleViolation);
-      EXPECT_EQ(validation.error().front().range, expected);
+      const auto identifier = std::ranges::find(
+          validation.error(),
+          "Invalid declaration identifier '" + std::string(name) + "'.",
+          &checker::CheckDiagnostic::message);
+      ASSERT_NE(identifier, validation.error().end());
+      EXPECT_EQ(identifier->kind, checker::CheckDiagnosticKind::RuleViolation);
+      EXPECT_EQ(identifier->range, expected);
     }
   }
 }

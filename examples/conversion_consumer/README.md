@@ -2,7 +2,7 @@
 
 This example consumes the installed `ptx_frontend` package through its public
 CMake target `ptx_frontend::resolved_ir` and the `ptx_spec` data component,
-requesting package version `0.7.0`. Configuration checks that the installed PTX
+requesting package version `0.8.0`. Configuration checks that the installed PTX
 and C++ backend YAML/schema paths all exist.
 The source covers a targeted module with these representative forms:
 

@@ -56,7 +56,7 @@ the needed component:
 ```cmake
 cmake_minimum_required(VERSION 3.28)
 project(ptx_example LANGUAGES CXX)
-find_package(ptx_frontend 0.7.0 CONFIG REQUIRED COMPONENTS resolved_ir)
+find_package(ptx_frontend 0.8.0 CONFIG REQUIRED COMPONENTS resolved_ir)
 
 add_executable(example main.cpp)
 target_compile_features(example PRIVATE cxx_std_23)

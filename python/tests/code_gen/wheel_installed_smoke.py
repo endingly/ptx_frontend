@@ -243,7 +243,10 @@ def check_packaged_spec_model() -> None:
                  if item.opcode == "tcgen05")
     f8 = next(item for item in tcgen.variants
               if item.name == "tcgen05_mma_f8f6f4")
-    assert len(f8.operand_layouts) == 4
+    assert len(f8.operand_layouts) == 2
+    assert {layout.name for layout in f8.operand_layouts} == {
+        "shared_mask", "tensor_mask"
+    }
     assert f8.modifier_order_aliases == ()
     assert all("scale_input_d" not in {operand.name for operand in layout.operands}
                for layout in f8.operand_layouts)
@@ -296,8 +299,8 @@ def check_packaged_spec_model() -> None:
 
         assert [operand.kind for operand in operands] == [
             OperandKind.REGISTER,
-            OperandKind.REGISTER,
-            OperandKind.REGISTER,
+            OperandKind.REGISTER_OR_IMMEDIATE,
+            OperandKind.REGISTER_OR_IMMEDIATE,
             OperandKind.REGISTER_OR_IMMEDIATE,
         ]
 
@@ -321,12 +324,14 @@ def check_packaged_spec_model() -> None:
         == "input_type"
     )
 
-    assert (
-        layouts["fma_mixed_f32_bf16"][
-            1
-        ].type_expression.scalar_type  # pyright: ignore[reportOptionalMemberAccess]
-        == "b16"
+    assert all(
+        operand.type_expression.modifier_name == "input_type"
+        for operand in layouts["fma_mixed_f32_bf16"][1:3]
     )
+    bf16 = next(variant for variant in fma.variants
+                if variant.name == "fma_mixed_f32_bf16")
+    assert {modifier.value for modifier in bf16.modifiers
+            if modifier.name == "input_type"} == {"bf16"}
 
 
 def check_packaged_backend_model() -> None:

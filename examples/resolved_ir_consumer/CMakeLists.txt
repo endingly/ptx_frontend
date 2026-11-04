@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(ptx_frontend 0.7.0 CONFIG REQUIRED
+find_package(ptx_frontend 0.8.0 CONFIG REQUIRED
     COMPONENTS resolved_ir semantic ptx_spec)
 
 foreach(resource IN ITEMS PTX_SPEC_SCHEMA PTX_CPP_BACKEND_SPEC PTX_CPP_BACKEND_SCHEMA)

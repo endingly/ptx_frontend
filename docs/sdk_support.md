@@ -8,6 +8,11 @@ ownership, algorithms, rationale and test evidence; historical records describe
 their pinned revisions. A planning checkbox, opcode inventory, successful parse,
 or tool observation does not independently enlarge this contract.
 
+<a id="package-version"></a>
+
+The current C++ package and Python wheel versions are both `0.8.0`. CMake package
+compatibility remains `SameMinorVersion`.
+
 The SDK remains pre-1.0. Generated C++ layouts, enum ordinals and binary ABI are
 not frozen; consumers must rebuild against matching headers and libraries when
 public members change.
@@ -673,7 +678,7 @@ std::get<ResolvedRegisterRef>(mixed.addend.value).spelling;  // after, register 
 std::get<ResolvedImmediate>(mixed.addend.value).bits;        // after, immediate payload
 ```
 
-These public member changes defined an explicit API break in the installed C++ package at version `0.1.0`; its CMake package compatibility is `SameMinorVersion`. Consumers must migrate to the register-or-immediate variant access shown above. No compatibility shim or parallel representation was introduced: the change reuses the same typed register/immediate path that scalar `add`/`sub` and the DIV cohorts already use. The destination keeps its register payload; the narrow source now uses RegOrImm as described below. The Python wheel version is `0.1.0b0`, a beta prerelease; the installed C++ package is now `0.2.0`. These are independent package versions with no lockstep requirement.
+These public member changes introduced an explicit API break in the installed C++ package; see the [current package version](#package-version). Consumers must migrate to the register-or-immediate variant access shown above. No compatibility shim or parallel representation was introduced: the change reuses the same typed register/immediate path that scalar `add`/`sub` and the DIV cohorts already use. The destination keeps its register payload; the narrow source now uses RegOrImm as described below.
 
 
 <a id="add-sub-coverage--evidence"></a>
@@ -883,8 +888,8 @@ Other synchronous scalar operation/type pairs, including `.add.s64`, 64-bit `.in
 typed 64-bit bitwise suffixes, scalar float `.min/.max`, and `red.cas`/`red.exch`,
 remain unsupported. Multimem forms are outside this coverage.
 
-The C++ package version is 0.7.0. Consumers must rebuild against matching
-installed headers and library. The 83 synchronous operation/type and vector-cohort alternatives replace the
+For the [current package version](#package-version), consumers must rebuild
+against matching installed headers and library. The 83 synchronous operation/type and vector-cohort alternatives replace the
 former 92 legacy/`.relaxed.cta` alternatives. For example, both
 `atom.global.add.u32` and `atom.relaxed.cta.global.add.u32` now use
 `Atom::GlobalAddU32`; inspect its `semantics`, `scope`, and `state_space`
@@ -896,8 +901,8 @@ reductions have separate `Red::AsyncShared...` and `Red::AsyncRelease...`
 alternatives with three and two operands respectively; inspect the retained
 address qualifier, completion, scope, and MMIO fields instead of assuming a
 synchronous layout. The 16 asynchronous alternatives are appended under `Red`.
-The Python wheel version is 0.1.0b3 because its packaged YAML and generated
-model contract changed.
+The Python wheel includes the matching packaged YAML and generated model
+contract.
 
 The twelve shared classes (`RedAsyncSharedIncU32`, `RedAsyncSharedDecU32`,
 `RedAsyncSharedMinU32`, `RedAsyncSharedMinS32`, `RedAsyncSharedMaxU32`,
@@ -2757,7 +2762,7 @@ const auto& binary_operands = std::get<Min::F32::BinaryOperands>(value.operands)
 const auto& ternary_operands = std::get<Min::F32::TernaryOperands>(value.operands);
 ```
 
-These public shape changes defined an explicit API break in the installed C++ package at version `0.1.0`; its CMake package compatibility is `SameMinorVersion`. No compatibility shim or parallel legacy representation is provided, so consumers must migrate to the renamed cohort and operand variant. The Python wheel version is `0.1.0b0`, a beta prerelease; the installed C++ package is now `0.2.0`. These are independent package versions with no lockstep requirement. The repository has no dedicated migration or changelog document, so this migration note stays here.
+These public shape changes introduced an explicit API break in the installed C++ package; see the [current package version](#package-version). No compatibility shim or parallel legacy representation is provided, so consumers must migrate to the renamed cohort and operand variant. The repository has no dedicated migration or changelog document, so this migration note stays here.
 
 Additions to shared checker structures are **appended** rather than inserted, so existing aggregate initializers keep compiling: `checker::ModifierValueView` gains `slot` as its final member, and `checker::OperandLayoutDescriptor` gains `forbidden_modifiers` alongside the new `CheckDiagnosticKind::ModifierNotAllowedForLayout`. The modifier diagnostic also reports the offending modifier's own source range when it is still retained, falling back to the context range otherwise.
 
@@ -3156,7 +3161,7 @@ Every form requires PTX 1.0. The `.f64` type additionally requires `sm_13`; the 
 
 [The C++ SELP tests](../submod/resolved_ir/test/test_selp_completeness.cpp) cover all listed types in a validated module, the existing U32 variant, malformed modifiers and operands, declared-type mismatches, the `.f64` target boundary, and mutated public IR. [The focused Python specification test](../python/tests/spec/test_selp_completeness.py) checks the disjoint type domains, value availability, and operand descriptors. Related [SET](#set-coverage) and [SLCT](#slct-coverage) forms have their own coverage contracts.
 
-The C++ package version advances from 0.1.0 to 0.2.0 because `Selp::U32::predicate.value` now holds `ResolvedPredicateSource` instead of `ResolvedPredicate`. Consumers reading a register predicate use `std::get<ResolvedPredicate>(value)` after checking the alternative, and must also handle `ResolvedPredicateConstant` where source text supplies an integer predicate. The `Selp::U32` variant identity remains unchanged. This is a source and binary API change; rebuild installed C++ consumers against the new headers and library.
+The historical C++ package change from 0.1.0 to 0.2.0 introduced this API break: `Selp::U32::predicate.value` now holds `ResolvedPredicateSource` instead of `ResolvedPredicate`. Consumers reading a register predicate use `std::get<ResolvedPredicate>(value)` after checking the alternative, and must also handle `ResolvedPredicateConstant` where source text supplies an integer predicate. The `Selp::U32` variant identity remains unchanged. This is a source and binary API change; rebuild installed C++ consumers against the new headers and library.
 
 
 <a id="set-coverage"></a>
@@ -3211,7 +3216,7 @@ For scalar `.f16` sources, the frontend accepts `.f16` or compatible `.b16` regi
 
 The [half/bfloat C++ tests](../submod/resolved_ir/test/test_set_half_completeness.cpp) cover every generated alternative, target boundaries, invalid controls and containers, numeric immediates, owned IR, and mutated typed fields. The [Python spec test](../python/tests/spec/test_set_completeness.py) checks both ordinary and half/bfloat descriptor domains. The installed [consumer](../examples/conversion_consumer/main.cpp) exercises the public generated representation.
 
-The C++ package version 0.2.0 replaces the former generated `Set::EqU32U32` and `Set::LtAndF32S32` alternatives with the typed ordinary families `Bit`, `Signed`, `Unsigned`, `Float`, `FloatF64` and their `Boolean` counterparts. Consumers should select the new alternatives and read `dtype`/`stype` fields to determine the exact type. This is a source and binary API change; rebuild installed C++ consumers with the new headers and library.
+The historical C++ package version 0.2.0 replaced the former generated `Set::EqU32U32` and `Set::LtAndF32S32` alternatives with the typed ordinary families `Bit`, `Signed`, `Unsigned`, `Float`, `FloatF64` and their `Boolean` counterparts. Consumers should select the new alternatives and read `dtype`/`stype` fields to determine the exact type. This is a source and binary API change; rebuild installed C++ consumers with the new headers and library.
 
 Scalar F16 source fields accept numeric floating constants converted to binary16 as well as their existing F16/B16 registers. Boolean predicate sources and all result carriers retain their contracts; scalar BF16 integer-result sources also accept numeric floating constants; packed conversion boundaries remain separate. Integer-origin constants are not numeric F16 sources.
 
@@ -3398,7 +3403,7 @@ All four operands are required. Register compatibility follows the nominal `.dty
 
 The [C++ tests](../submod/resolved_ir/test/test_slct_completeness.cpp) exercise all 22 type/selector combinations, literals, declared register containers, invalid modifiers and immediates, target boundaries, owned lifetime, and mutated public IR. The [Python spec tests](../python/tests/spec/test_slct_completeness.py) check exact type domains, operand descriptors, and the `.f64` value gate. The installed [consumer](../examples/conversion_consumer/main.cpp) uses both public variants and revalidates owned instructions.
 
-In the 0.2.0 C++ package, the earlier fixed `Slct::U32S32` and `Slct::FtzU64F32` alternatives are replaced by `Slct::S32` and `Slct::F32`. Consumers should inspect `dtype.value` to distinguish selected data types and `ftz.value` in `Slct::F32`. `src_true`, `src_false`, and `selector` now carry `RegOrImm`; use `std::get_if<ResolvedRegisterRef>` or `std::get_if<ResolvedImmediate>` as appropriate. This changes the public source and binary contract; rebuild installed consumers with the matching headers and library.
+In the historical 0.2.0 C++ package, the earlier fixed `Slct::U32S32` and `Slct::FtzU64F32` alternatives were replaced by `Slct::S32` and `Slct::F32`. Consumers should inspect `dtype.value` to distinguish selected data types and `ftz.value` in `Slct::F32`. `src_true`, `src_false`, and `selector` now carry `RegOrImm`; use `std::get_if<ResolvedRegisterRef>` or `std::get_if<ResolvedImmediate>` as appropriate. This changes the public source and binary contract; rebuild installed consumers with the matching headers and library.
 
 
 <a id="st-coverage"></a>

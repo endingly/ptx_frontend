@@ -1,38 +1,5 @@
 # Floating `div` coverage
 
-`div.f32` and `div.f64` additionally support PTX 1.0–1.3 as exact omitted-control forms. The former means approximate+FTZ; the latter means round-to-nearest-even without FTZ and accepts SM >=13 or exact generic SM10/11/12 with `map_f64_to_f32`. Both reject PTX >=1.4 and omitted mode combined with written `.ftz`. Source omission and typed interpretation are separate; see [the public contract](../resolved_ir_design.md#historical-omitted-floating-controls).
+Current source forms, type/target restrictions and retained limitations are maintained in the [SDK support contract](../../sdk_support.md#div-coverage). This page retains technical reference material and evidence.
 
-The generated model preserves the existing integer and round-to-nearest floating
-division forms, then extends them with the explicit modes in [PTX 9.3 §9.7.3.8](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-div).
-Each mode is a typed Resolved IR variant, so `.approx`, `.full`, and `.rnd` cannot
-be combined as unchecked spelling flags. The frontend models parsing, owned
-resolution, and target validation; it does not execute division.
-
-| Form | Minimum | Contract |
-| --- | --- | --- |
-| `div.approx{.ftz}.f32`, `div.full{.ftz}.f32` | PTX 1.4 / all target architectures | Fixed typed `.approx` or `.full`; optional `.ftz`; no rounding modifier. |
-| `div.{rn,rz,rm,rp}{.ftz}.f32` | PTX 1.4 / SM 20 | Required typed rounding; optional `.ftz`. |
-| `div.rn.f64` | PTX 1.4 / SM >=13, or exact generic SM10/11/12 with `map_f64_to_f32` | Fixed round-to-nearest; no `.ftz`. |
-| `div.{rz,rm,rp}.f64` | PTX 1.4 / SM 20 | Required directed rounding; no `.ftz`. |
-
-Every floating source accepts a floating literal or a same-width native floating
-or bit register container; the destination accepts the corresponding native or
-bit register container. Integer literals and integer register containers, wrong
-widths, sinks, omitted modes at PTX >=1.4, mixed `.approx`/`.full`/rounding forms,
-and FP64 `.ftz` are rejected.
-
-Historical CUDA 13.3.73 evidence used `/usr/local/cuda/bin/ptxas -arch=sm_90
-<module>.ptx -o <temporary>.o`. Its 60-module matrix had 39 expected accepts,
-20 rejects, and one permissive assembler acceptance: `rcp.rn.ftz.f64`. That
-unrelated noncanonical spelling remains rejected by the frontend. The DIV rows
-confirm all four rounded directions, both source positions, literals, and bit
-containers.
-
-[Explicit reciprocal and square-root forms](unary_float_coverage.md), [floating transcendentals](transcendental_coverage.md), and [floating MIN/MAX](min_max_coverage.md) are now modelled separately. [Floating and mixed ADD/SUB](add_sub_coverage.md) completes the reconciliation; see that document for the ADD/SUB contracts.
-
-The implemented mapped-FP64 availability alternative
-([#287](https://github.com/endingly/ptx_frontend/issues/287)) is narrowly limited
-to the explicit `div.rn.f64`, `rcp.rn.f64`, and `sqrt.rn.f64` forms at PTX >=1.4
-on exact generic SM10/11/12 with `map_f64_to_f32`. Native availability remains
-SM >=13 without requiring that option. Directed rounding, approximate-FTZ
-forms, and other FP64 instruction families do not gain this alternative.
+[SDK support: Floating `div` coverage](../../sdk_support.md#div-coverage--floating-div-coverage).

@@ -1,63 +1,10 @@
 # Register declaration compatibility
 
+Current source forms, type/target restrictions and retained limitations are maintained in the [SDK support contract](../sdk_support.md#register-type-policy). This page retains technical reference material and evidence.
+
 ## Contract
 
-`register_width: same_width` checks both width and fundamental-type
-compatibility. It is not enum identity: bit-size registers can carry compatible
-same-width integer or floating operands, and signed/unsigned integer declarations
-can be interchanged at the same width. Integer/float substitutions remain errors.
-`mul.wide.u32` and `mad.wide.u32` still require 32-bit multiplicands and a 64-bit
-result (and 64-bit addend for `mad`). These same-width operands reject wider
-registers.
-
-`exact` retains its existing enum-identity meaning. It is appropriate for
-explicit declaration-format requirements, not ordinary arithmetic merely because
-its width is fixed. `equal_or_wider` admits compatible wider bit carriers through
-`.b128` for applicable `ld`/`st`/`cvt` operands under PTX ISA 9.3 Tables 27/28.
-Declaration eligibility is checked centrally; instruction, format, PTX-version,
-and SM gates still apply. Immediate conversion is unchanged.
-Resolution still builds the same IR; generated checking applies the descriptor
-policy to bound register declarations. Resolving a module alone is not a claim
-that its instructions pass checking.
-
-Declaration semantics separately validates every `.reg` type token, including
-an unused register. Its fundamental declaration types are `.s8/.s16/.s32/.s64`,
-`.u8/.u16/.u32/.u64`, `.b8/.b16/.b32/.b64/.b128`, `.f16`, `.f16x2`, `.f32`,
-`.f64`, and scalar `.pred`. A recognized packed or alternate instruction format
-(`.bf16`, `.tf32`, and the modeled packed spellings, for example) is diagnosed
-as instruction-only; an unrecognized spelling is diagnosed as unknown. This
-does not make the CST restrictive. Non-predicate `.v2`/`.v4` registers are
-limited to 128 bits, while predicate registers are scalar. These declaration
-rules preserve valid `.reg` function formals and parameterized register groups.
-
-`base::ScalarTypeMetadata` is the canonical source for every modeled scalar's
-PTX spelling, kind, byte width, and `.reg` declaration usage. Declaration
-semantics uses that metadata; the generated resolver suffix table remains a
-mechanical instruction-modifier mapping. `.param` deliberately retains its
-separate storage-type contract.
-
-
-Bracket arrays are forbidden in `.reg` declarations, including unused registers,
-unsized or multidimensional arrays, and arrays of vector registers. Declaration
-semantics reports `InvalidRegisterDeclarationShape` at the first bracket
-dimension. This is separate from legal compact register groups such as
-`.reg .u32 r<2>` and legal `.v2`/`.v4` register declarations. Arrays in `.param`,
-`.global`, `.const`, `.shared`, and `.local` retain their existing rules.
-This follows [PTX ISA 9.3 register state space](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#register-state-space).
-
-`binding::Symbol::is_array` retains whether any declaration occurrence writes bracket
-dimensions (or a formal parameter is an array), independently of `vector_width`
-and `parameterized_count`. Owned validation checks every register symbol even
-when it is unused and has no storage record; an illegal array reports
-`RuleViolation` at the retained identifier range. Array-bearing storage or
-parameter records bound to a register are also rejected. These checks remain
-available after source and AST destruction; AST-backed validation also checks
-replacement source declarations.
-
-Module placement of `.reg` and `.local` follows the source-target ABI boundary
-(PTX >= 3.0 and recognized SM >= 20); historical versions and SM 1.x remain
-separate. See [declaration semantics](declaration_semantics_design.md) for source
-occurrence, owned lifetime and incomplete-context behavior.
+[SDK support: Contract](../sdk_support.md#register-type-policy--contract).
 
 ## Normative source ledger
 
@@ -69,6 +16,10 @@ alternate and packed declaration formats. The moving unversioned manual is not
 used as a frozen edition.
 
 ## Verification boundary
+
+This section preserves the historical audit at the revision below. Its policy
+table and tool results are not the current source-permission matrix; see the
+[SDK support contract](../sdk_support.md#register-type-policy).
 
 The audit starts from `c6e5e2d5503b6f8a7d01dca7e7cb43e33f78719a`:
 106 explicit `exact` declarations across three specification files. The scoped
@@ -139,13 +90,6 @@ out/build/ci-linux-gcc-debug/submod/resolved_ir/test_modern_operand_codegen --gt
 PYTHONPATH=python .venv/bin/python -m unittest discover -s python/tests -t python -p 'test_*.py' -q
 ```
 
-Native packed `.f16x2` is a fundamental 32-bit floating value. Table 9's explicit
-`.f16x2`/`.b32` declaration alternatives apply to the register data roles of
-`mul.f16x2`, `neg.f16x2` and both predicate-pair `setp.f16x2` forms. Mixed native
-and bit carriers are legal; same-width `.f32/.s32/.u32`, other widths, whole vectors
-and nonfundamental alternate formats do not join this closed carrier set. Explicit
-scalar components retain their real vector declaration and compact-member provenance.
-Shared BF16x2/other alternate-format exact-B32 contracts remain unchanged.
-These slots remain register-only; no packed numeric literal bits/splat/zero
-representation or ordinary scalar-F16 conversion is added. Existing modifier,
-predicate, layout and PTX/target availability contracts remain unchanged.
+The current native packed register-carrier and exact-word source rules are in
+[SDK support](../sdk_support.md#resolved-ir-design--scalar-packed32-source-members)
+and [packed SETP](../sdk_support.md#resolved-ir-design--packed-setp-raw-and-exact-words).

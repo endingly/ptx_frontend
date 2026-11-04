@@ -1,5 +1,7 @@
 # Symbol Binding Design
 
+Current source forms, type/target restrictions and retained limitations are maintained in the [SDK support contract](../sdk_support.md#symbol-binding-design). This page retains technical reference material and evidence.
+
 ## Position in the frontend
 
 Symbol binding sits between Syntax AST and Resolved IR/checking:
@@ -19,6 +21,8 @@ values. Both own the strings they need and do not depend on the Syntax AST
 lifetime.
 
 ## Scopes and symbols
+
+[SDK support: Scopes and symbols](../sdk_support.md#symbol-binding-design--scopes-and-symbols).
 
 Each module has one root scope. Every `.entry`/`.func` item has a function
 scope whose parent is the module scope, and every nested `AstBlock` has a
@@ -51,47 +55,6 @@ the parent scope. A block declaration can therefore shadow an outer or module
 symbol, while sibling blocks remain invisible to each other. Labels and
 control-flow metadata are deliberately function-local rather than block-local.
 
-Debug identities use a separate module metadata namespace. `.file` indices are
-normalized to `uint64_t` (decimal/octal/binary/hex and an optional `u`/`U` suffix) and bind
-as `DebugFile` symbols. Every repeated normalized index is an error, even for
-identical filenames and metadata; diagnostics identify the current and first index
-ranges. The first `SymbolId` survives only for diagnostic recovery and `.loc`
-binding. Different indices may name the same file. `SymbolTable::debugFiles()`
-borrows source-ordered owned records containing the normalized index, bound symbol,
-exact index/filename tokens, optional timestamp/file-size tokens, and their source
-ranges; rejected repeats remain recorded. Filename escapes are retained without
-decoding or path deduplication, and absent numeric metadata retains its default-zero
-meaning. This follows [PTX ISA 9.3 §11.5.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-file)
-and CUDA 13.3 `ptxas` duplicate-index diagnostics. A `.debug_str` section binds its name and each typed `AstSectionLabelDefinition` as `DebugStringLabel` symbols. Ordinary `SymbolTable::lookup()` skips
-both debug kinds, so a program declaration may use the same spelling. `.loc`
-creates `DebugFile` references for its basic and `inlined_at` file fields, plus
-a `DebugFunctionName` reference for `function_name`; the latter can resolve
-only the `.debug_str` section itself or one of its labels. These metadata
-identities diagnose unresolved references but never behave as PTX operands.
-
-Declaration spelling is checked after lexing, using the ASCII grammar in
-[PTX ISA 9.3 §4.4](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#identifiers):
-a letter may stand alone; a leading `_`, `$`, or `%` requires at least one
-following letter, digit, `_`, or `$`. Percent is allowed only at the start.
-Thus `_x`, `$x`, `%r`, and parameterized bases such as `_x<2>` remain legal,
-while ordinary declarations named `_` or `$` receive `InvalidIdentifier` at
-the name token. Compact declaration prefixes follow the same rule: `_x<2>`
-and `$x<2>` are legal, while `_<2>` and `$<2>` are rejected. This applies to
-variables, functions, ordinary parameters,
-labels, aliases, and raw `.debug_str` payload labels. Debug file indices and
-the synthetic `.debug_str` section identity are outside this name grammar.
-The declaration checker inspects AST spellings independently of symbol lookup;
-AST-free module validation checks retained names and reports `RuleViolation`
-at the declaration name range. Source association still preserves spelling
-identity and does not normalize names.
-
-The lexer retains `_` as an identifier for contextual uses. Instruction sinks
-remain operand-specific. Under
-[PTX ISA 9.3 §11.3.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-directives-callprototype),
-`.callprototype` keeps its mandatory function-name `_` and permits dummy `_`
-input and return names; those dummy names do not become bound symbols or owned
-ABI names. `$` has no corresponding exception.
-
 `SymbolTable::debugLocations()` borrows the table's owning, module-ordered
 `DebugLocationDeclaration` records. Each retains its lexical `ScopeId`, base
 `DebugLocationSourceTriple`, optional `DebugLocationInlineContext`, and physical
@@ -104,27 +67,14 @@ common module validation, rather than binding alone, enforces inline precedence.
 
 ## Parameterized variable names
 
+[SDK support: Parameterized variable names](../sdk_support.md#symbol-binding-design--parameterized-variable-names).
+
 PTX `name<count>` denotes `name0` through `name(count-1)`. The symbol table
 stores the base and count instead of expanding them. Looking up `%r2` returns
 the declaration's `SymbolId` plus `2` in
 `SymbolLookup::parameterized_index`, avoiding potentially large symbol lists.
 Member suffixes use canonical decimal spelling: `%r<3>` matches `%r0` through
 `%r2`, but does not match `%r02`.
-
-Declaration collection compares the represented name sets. A parameterized
-declaration that overlaps an explicit name, or another parameterized
-declaration with a different base, produces a same-scope duplicate diagnostic
-with the previous range. The base itself is not a generated member, so
-`name<2>` and an explicit `name` remain distinct symbols.
-Ordinary/ordinary comparisons use the two literal spellings; ordinary/group
-comparisons test the ordinary spelling against the group's members; and
-group/group comparisons test only generated members. Zero-count invalid groups
-have no members and do not create overlap candidates, while same-base compact
-declarations retain the exact-declaration duplicate policy.
-
-Parameterized names are valid in every state space, but cannot also declare an
-array or initializer. The previous `.reg`-only restriction was removed, and
-the public CST/AST field is now consistently named `parameterized_count`.
 
 ## Lookup indexes and compact groups
 
@@ -167,6 +117,8 @@ including compact-group controls and a generated PTX corpus input.
 
 ## Reference binding
 
+[SDK support: Reference binding](../sdk_support.md#symbol-binding-design--reference-binding).
+
 The pass visits:
 
 - instruction predicates and identifiers in every operand shape;
@@ -176,12 +128,6 @@ The pass visits:
 
 Each `SymbolReference` retains its spelling, range, reference kind, optional
 target, and an explicit `ReferenceClassification`:
-
-- `DeclaredSymbol` for an ordinary declaration in this module;
-- `ExternalSymbol` for a reference bound to an explicit `.extern` declaration;
-- `SpecialRegister` for a predefined PTX special register that needs no user
-  declaration;
-- `Unresolved` when none of the above matches.
 
 A parameterized declaration target also retains its member index. Special
 registers are recognized through the independent `special_registers` semantic
@@ -218,46 +164,4 @@ does not resolve metadata members or instruction use. See
 
 ## Current diagnostics and boundary
 
-The pass now accumulates diagnostics for same-scope duplicates, parameterized
-name-set overlaps, invalid or zero parameterized counts, conflicting linkage
-qualifiers, and genuinely unresolved references. Same-name module declarations first share a
-stable `SymbolId`; the declaration semantic pass then classifies them as a
-legal redeclaration, signature conflict, or multiple definition. Module
-resolution preserves the distinction between special and unresolved names.
-The unified scalar `mov` source resolves the former to a
-`ResolvedSpecialRegisterRef` carrying stable identity and component. The
-semantic registry provides the current declared type and intrinsic availability
-for that identity, while generated checker descriptors provide
-instruction-specific historical read compatibility. Opcodes without a declared
-special-register shape still report an unsupported operand rather than an
-undeclared name. See `declaration_semantics_design.md` for the following pass.
-
-32/64-bit integer/bit-size `mov d, symbol[+offset]` and `ld.u32 d, [address]`
-now consume binding
-identity as well. A direct symbol in the former produces a `ResolvedSymbolRef`;
-its offset form embeds that representation as a `ResolvedAddress` base. Symbol
-address bases in the latter use the same representation. Module resolution
-retains a stable `SymbolId`, parameterized member, declaration kind, declared
-state space, and effective address state space. Direct parameter memory
-addresses and kernel formal-parameter `mov` addresses remain in `.param`;
-device-function formal-parameter `mov` addresses are in `.local`, and the
-checker applies a PTX 2.0 / SM 20 baseline to all such addresses and raises
-the PTX minimum to 6.0 for a return-parameter address.
-Function-local `.param` call-argument variables are bound separately from
-formal parameters; direct `ld.param`/`st.param` addresses are valid, while
-`mov` remains non-addressable. Standalone resolution keeps spelling only. A bare function name binds to a
-`ResolvedFunctionRef` with the same stable `SymbolId` and its `.func`/`.entry`
-classification. The checker requires PTX 3.1 / SM 35 for a kernel-function
-address; a device-function address uses the base PTX 1.0 availability of
-`mov`. Lexical binding records declaration identities and metadata;
-instruction-specific state-space and special-register/type compatibility is
-checked during Resolved IR resolution/checking for modeled forms. Remaining
-work concerns unmodeled instruction/operand forms rather than a missing
-compatibility phase.
-
-Instruction-keyword spellings in explicit name roles follow the
-[contextual lexical interpretation](lexer_design.md), including the official
-`bar` object/function examples. Binding preserves exact case and spelling;
-source name checks and AST-free owned checks apply to actual declaration/symbol
-names without a global keyword exclusion or diagnostic-spelling history join.
-Independent role, type, ABI and prior-declaration checks remain authoritative.
+[SDK support: Current diagnostics and boundary](../sdk_support.md#symbol-binding-design--current-diagnostics-and-boundary).

@@ -1,5 +1,7 @@
 # Python Generator Model Design
 
+Current source forms, type/target restrictions and retained limitations are maintained in the [SDK support contract](../sdk_support.md#python-generator-model). This page retains technical reference material and evidence.
+
 ## Purpose
 
 The Python layer is the sole model boundary between YAML and generated C++. It
@@ -436,4 +438,4 @@ bypasses the consistency boundary.
 
 ## Video topology projection
 
-Frozen `VideoInstructionSpec` and `VideoOperandSpec` carry lane/operation, role, selector, coercion and written-negation obligations. Normalization validates field references and selector topology before syntax-language overlap checks. The same typed slot shape feeds selection and overlap validation, so scalar merge and secondary forms remain distinct. Backend projection rewrites modifier references through the existing field-alias map, including `.sat` → `saturate`; C++ policy receives typed enums and stable field IDs, not opcode-name or raw-suffix branches. Generated classes and checker descriptors consume this normalized contract.
+[SDK support: Video topology projection](../sdk_support.md#python-generator-model--video-topology-projection).

@@ -1,5 +1,7 @@
 # YAML Instruction Spec：结构与原则
 
+当前支持范围、语法与操作接受条件、类型和目标限制以英文 [SDK 支持契约](../sdk_support.md#yaml-instruction-spec) 为唯一维护依据；本文保留技术参考与历史证据。
+
 ## 目的
 
 `python/src/ptx_frontend/spec/resources/ptx_spec/` 中的 YAML 是 PTX 指令事实的 canonical
@@ -26,24 +28,7 @@ identifier 本身都不是 executable checker：只有 normalizer、generated de
 
 ## 扩展边界
 
-canonical YAML/database 是 instruction form 唯一的 machine-readable source。不得另建手写
-opcode/variant registry 或 capability API。
-
-canonical model 变更的独立、已测量成本见[generated-model build scalability baseline](build_scalability.md)；
-它不是 opcode acceptance 或 ISA-conformance evidence。
-
-只有当 form 复用已实现的 syntax/operand primitive、modifier domain、type expression 与
-descriptor-backed constraint 时，才适合 YAML-only 添加。它仍需要 non-overlapping variant、
-normalizer/database check、generated descriptor、resolver/checker coverage，以及
-source/target availability fact。复用一个 `rule` name 不等于新 relation 会被检查；必须确认
-其 selected descriptor field 和 constraint 会进入 executable checker code。
-
-新增 operand primitive、modifier domain/value representation 或 semantic constraint 是
-coordinated change：按需扩展 schema，再扩展 Python Syntax/Resolved model 与 normalization、
-C++ resolved payload 与 resolver、descriptor emission、checker implementation 和测试。不能仅因
-YAML 能解析就把 requirement 静默编码进 string 或 enum。frontend contract 是 source
-acceptance、binding、resolved modeling 与 target-aware validation；它不提供 simulator execution，
-也不建立 physical-hardware conformance。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#yaml-instruction-spec--extension-boundary)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/yaml_instruction_spec.md#extension-boundary)。
 
 ## 预定义数据引用
 
@@ -213,200 +198,7 @@ source modifier field。见[历史 contract](resolved_ir_design.md#历史浮点�
 
 ## Operand 与 operand pattern
 
-operand 由稳定 `name`、syntax `kind`、语义 `role`、`access` 与可选 `type` 定义：
-
-```yaml
-- name: src1
-  kind: reg_or_imm
-  role: src1
-  access: read
-  type: {expr: modifier(type)}
-```
-
-目前完整生成/resolve 支持的是 `reg`、`imm`、`reg_or_imm`、`pred`、`pred_or_not`、
-`addr` 与 `reg_vector`；`pred_or_not` 接受 `%pN` 或 `!%pN`，并在 resolved IR 保留取反标记。
-schema 仍可以描述更广的 PTX operand kinds。新增 schema enum 并不等于已支持：必须
-同步扩展 Python Syntax/Resolved model、C++ resolver 和 checker。`type` 可以引用
-modifier（`modifier(type)`），也可以是固定 scalar type（例如 `u32`）。目前唯一支持的
-type-expression 函数是 `modifier(name)`：它读取当前 variant 的 active `kind: type` modifier。
-schema 仍保留 `same_as(...)`、`one_of(...)` 和 `same_size_as(...)` 作为未来语法，但
-normalizer 会明确报错表示尚未支持。
-
-每个 generated operand payload 还必须有明确的 module-reference policy。
-`code_gen.reference_policy` 会将 semantic payload 分类到公开的
-`REFERENCE_VALUE_KINDS` 或 `REFERENCE_FREE_VALUE_KINDS`；未分类 type 会在 context
-构造时、generation 开始前失败。reference-bearing payload
-是能够携带 bound declaration/symbol identity 的 resolved primitive（例如 register、predicate、
-symbol、address、vector、call/control 与 tensor-coordinate form）。生成的
-`visit_instruction_references` visitor 将它们交给 module 和 AST-free revalidation。reference-free
-payload 是不含此类 identity 的 value（例如 modifier enum、immediate 与 special-register
-reference），故刻意不访问。必须按实际 resolved payload 和 validation requirement 决定分类，
-不能按 operand 的 YAML name 猜测。随后还必须扩展 `ptx_module_availability.cpp` 中的 C++
-consumer：`ReferenceBearingOperandPayload` 接纳该 payload，`collect_operand_references` 递归
-投影为 `ModuleReferenceUse`，`check_module_references` 执行 owned-symbol、kind、scope、
-register-state 与 parameterized-index check。因此 generated visitor 本身不足；collector 的
-exhaustive branch 会故意令新 admitted payload 在没有 owned-module validation 时编译失败。
-
-`immediate_conversion` 是 integer immediate 独立的 use contract。其默认值 `narrow`
-会在解码 64-bit source 后保留 resolved scalar width 的低位。仅当语义 operand 必须能由
-该宽度表示时才使用 `require_target_range`：
-
-```yaml
-- name: barrier
-  kind: reg_or_imm
-  role: barrier
-  access: read
-  type: u32
-  immediate_conversion: require_target_range
-```
-
-它独立于 `type`：fixed scalar type 与 modifier-derived type 都可选择任一 conversion。
-若 bounded control operand 的规则可由 generated range、exact-value 或 multiple-of constraint
-完整表达，应复用这些 constraint；它们比较原始 decoded source bits。
-
-address operand 也可以从 active `kind: state_space` modifier 派生所要求的
-state space：
-
-```yaml
-- name: address
-  kind: addr
-  role: addr
-  access: read
-  state_space: {expr: modifier(state_space)}
-```
-
-normalizer 会保留该引用，resolved descriptor 保存对应 modifier field ID。checker 仅在
-address 具有 declaration-derived effective state space 时比较；register、immediate 与
-standalone address 仍为 unknown，不根据 spelling 推断。
-当前 scalar/vector `ld/st` explicit form 为每个 opcode 使用单一 runtime modifier field，不为每个
-state-space value 复制 variant。
-
-explicit `.param` address 可增加窄化的方向与 function-context constraint：
-
-```yaml
-- name: address
-  kind: addr
-  role: addr
-  access: read
-  state_space: {expr: modifier(state_space)}
-  parameter:
-    direction: input
-    function_availability: {ptx: "2.0", sm: 20}
-```
-
-`parameter` 只能用于 `kind: addr`，通常伴随 state-space modifier expression；该 active
-modifier 必须允许 `param`（或 fixed 为 `param`），normalizer 会拒绝脱离 `.param`、因而不会
-生效的 constraint。resolved descriptor 保存 typed input/return direction 与 availability。
-runtime 选择 `.param` 后，公共 checker 优先拒绝已知的错误 parameter direction；否则在
-constraint 期望 return 或 address 已知属于 device function 时应用 function availability。
-因此当前 load constraint 允许 entry input parameter 使用 explicit-form baseline，但在
-device function 中要求 PTX 2.0 / SM 20；store 的 return constraint 在所有 context 都要求
-该 target。未知 identity 不猜测 direction；已知非 `.param` symbol 只由原有 exact
-state-space mismatch 处理。
-
-也可为包含 `param` 的静态 state-space allowlist 设置 `parameter.entry_only: true`
-和 `direction: input`。即使没有 state-space modifier，checker 也会对已知参数地址
-应用该约束，同时要求 input direction 和 entry-function provenance。该 Boolean 默认为
-false，保留既有显式 `.param` consumer 的行为；非 Boolean 值、entry-only 加 return
-direction，以及脱离有效空间域的静态约束均被拒绝。无状态空间后缀的
-`prefetch.tensormap` 使用此窄契约。未知 standalone 或寄存器地址来源仍保持未知并可接受。
-
-scalar string 或 list 可定义静态 effective-address allowlist。list item 可以是普通
-state-space string，也可以是带 `value`/`availability` 的 object：
-
-```yaml
-- name: address
-  kind: addr
-  role: addr
-  access: read
-  state_space:
-    - value: const
-      availability: {ptx: "3.1"}
-    - global
-    - local
-    - shared
-```
-
-scalar form 等价于一个没有额外 target requirement 的单项 list。静态 value 与
-`expr: modifier(...)` 互斥。resolved descriptor 将每个静态 value 映射到
-`MemoryStateSpace` 并保留 availability；公共 checker 拒绝 list 之外的已知 effective
-space，并检查命中 entry 的 availability。register、immediate 与 standalone address 的
-unknown space 仍接受。当前 generic scalar/vector load 使用上例 policy，generic scalar/vector store 仅允许
-`.global/.local/.shared`。
-
-当前 scalar/vector `ld/st` variant 复用一个包含 `.b8/.b16/.b32/.b64`、
-`.u8/.u16/.u32/.u64`、`.s8/.s16/.s32/.s64` 与 `.f32` 的 type set，再由各 variant 追加 `.f64`。
-legacy load 额外建模 `.ca/.cg/.cs/.lu/.cv`，legacy store 额外建模 `.wb/.cg/.cs/.wt`；
-显式 cache spelling 统一附加 PTX 2.0 / SM 20 availability，而省略时解析为不可拼写的
-`unspecified` sentinel。PTX 的实际硬件默认语义仍遵循 ISA：省略时 `ld` 等效 `.ca`、`st`
-等效 `.wb`；但 Resolved IR 有意保留 `Unspecified`，以区分 source provenance 与
-modifier-value availability。explicit `.f64` 附加 SM 13 availability；generic `.f64`
-不复制该门槛，因为 generic variant 已要求 SM 20。data operand 使用
-`type: {expr: modifier(type)}`，由 runtime modifier 及其位置驱动公共
-fundamental-type 检查。register operand 还可以选择显式 width policy：
-legacy memory-vector payload 最多 128 bit：`.v2` 到 64-bit type，`.v4` 到
-32-bit type；生成的 `memory_vector` constraint 另只允许 PTX 8.8/SM 100 的
-256-bit `.v8` × 32-bit 与 `.v4` × 64-bit，且地址已知时必须 global。
-
-```yaml
-- name: dst
-  kind: reg
-  role: dst
-  access: write
-  type: {expr: modifier(type)}
-  register_width: equal_or_wider
-```
-
-`register_width` 默认为 `same_width`，允许同宽兼容基础类型。`exact` 则要求声明类型枚举
-相同，应保留给显式格式限制，而非仅位宽固定的普通 operand。规范来源及回归边界见
-[寄存器声明兼容性](register_type_policy.md)。normalizer 会拒绝在非 register operand 或没有 type
-expression 的 operand 上使用非默认 `equal_or_wider`，避免 constraint 静默失效；`reg_vector`
-operand 也可使用该 policy，并逐元素检查。resolved operand descriptor 保存该 policy，不生成
-runtime Resolved IR field。当前 scalar `ld` destination、scalar `st` source，以及 legacy
-`.v2/.v4` memory vector element 使用 `equal_or_wider`：声明 register size 必须大于等于
-instruction size；通过 size 检查后，任一侧 bit type 与 signed/unsigned integer pair 兼容，
-float 要求 exact type/size，integer/float 不兼容。immediate check 仍为 same-width。仅转换指令使用的 `cvt_scalar_src` 与
-`cvt_register_src` 接受标量 special register 或已选择的硬件向量分量；前者还接受 immediate。
-其 special-register check 应用声明的 width policy；普通 `reg_or_imm` domain 保持原有边界。当前 scalar `ld/st` domain 已包含 `.b128`，其 modifier-value availability 为 PTX
-8.3 / SM 70；`.b128` 搭配 `.sys` 还要求 PTX 8.4。因此 exact `.b128` declaration 可以满足
-selected `.b128` memory instruction。`equal_or_wider` escape hatch 仍不允许把 wider actual
-`.b128` register 用于 narrower selected instruction。supported memory form 及其剩余边界见
-[LD](converage/ld_coverage.md) 与 [ST](converage/st_coverage.md)。
-
-`vector.allow_named` 是默认 false 的 Boolean，仅 element-policy `reg_vector` 可用。
-它传播至 binding 与 `OperandDescriptor::allow_named_vector`，仅为 opted slot 添加
-identifier syntax。普通 LD/LDNC/LDU destination 与普通 ST source opt-in；async/bulk
-store 和其他 consumer 不开放。Named 声明仍限 v2/v4、128 bit，独立于现代 256-bit
-brace 支持。详见 [owned provenance](resolved_ir_design.md#named-memory-vector-source)。
-
-`reg_vector` operand 必须用 `vector.arity` 声明合法元素数。静态形式使用整数或列表：
-
-```yaml
-vector: {arity: [2, 4], type_policy: aggregate, allow_sink: true}
-```
-memory vector 的 generated cross rule 只允许精确 256-bit modern payload 使用部分 sink；
-legacy vector 与 all-sink form 仍拒绝。
-
-legacy memory vector 则把 arity 链接到 required runtime vector modifier：
-
-```yaml
-- name: dst
-  kind: reg_vector
-  role: dst
-  access: write
-  type: {expr: modifier(type)}
-  register_width: equal_or_wider
-  vector: {arity: {expr: modifier(vector)}, type_policy: element}
-```
-
-`type_policy: aggregate` 按整条 instruction 的 bit width 检查 vector payload，用于
-`mov` pack/unpack；`type_policy: element` 逐元素按 instruction type 检查，用于 legacy
-memory vector。该 memory vector 保留最多 128-bit 的 legacy form（`.v2` 到 64-bit type，
-`.v4` 到 32-bit type），并加入上述 PTX 8.8 的 256-bit form。`VectorArity` 是 required modifier domain，不支持
-optional/default 形式。
-
-应使用语义 role（如 `dst`、`src1`、`barrier`、`thread_count`）而不是为了复用字段
-随意命名 `srcN`；role 和 access 进入 resolved descriptor，供 checker 和后续规则使用。
+当前接受条件与限制见英文 [SDK 支持契约](../sdk_support.md#yaml-instruction-spec--operands-and-operand-patterns)；API、算法及证据见 [英文技术参考](../us-en/yaml_instruction_spec.md#operands-and-operand-patterns)。
 
 ## Operand layout
 
@@ -531,102 +323,11 @@ instructions:
 
 ## Availability、rule 与 example
 
-
-plain availability 与各 `any_of` clause 可包含 `ptx_before: "1.4"`：PTX version
-必须严格小于此 exclusive 上界，并且至少为 `ptx`（缺省 `"0.0"`）。省略表示无上界。
-两个 version 必须是 uint16 component 的十进制 `major.minor` string；格式错误、空、
-上下界相等或逆序的 interval 均拒绝。generator 把 optional 上界传到
-`AvailabilityDescriptor::ptx_before` 或 `AvailabilityClause::ptx_before`。
-既有仅含下界的 metadata 行为不变。plain 上界失败在相应 source range 报出含 exclusive
-limit 的 `UnsupportedPtxVersion`；DNF 失败保持 `UnsupportedAvailability`。
-
-每个 variant 必须声明：
-
-```yaml
-availability:
-  ptx: "8.0"
-  sm: 100
-  family: sm_100f      # 可选的最低 family-specific 源特性 target
-rule: integer_arith.add # 可选但建议提供
-```
-
-checker 公共逻辑解释最低 PTX、SM 与 `family` 要求。`family` 是最低
-family-specific 源特性 target：checker 只在 source target profile 的
-`enabled_family_features` 中查找。显式 catalog 为：`sm_100` → 无；
-`sm_100f`/`sm_100a` → `sm_100f`；`sm_103` → 无；`sm_103f`/`sm_103a` →
-`sm_100f`、`sm_103f`；`sm_110` → 无；`sm_110f`/`sm_110a` → `sm_110f`；
-`sm_120` → 无；`sm_120f`/`sm_120a` 为 `sm_120f`；
-`sm_121` → 无；`sm_121f`/`sm_121a` 为 `sm_120f`、`sm_121f`。不得由 SM 数字或
-target 后缀推断此集合。它不同于 PTX 到物理 GPU 的 translation compatibility；后者当前不建模。
-`a` target 是 exact identity，不能作 family spelling；需要精确 target 时使用
-`any_of: [{target: sm_100a}]`。capability clause、exact target 与 `family` 均是相互独立的
-constraint。`rule` 是封闭的 semantic-rule ID，供 instruction-specific checker 使用。
-normalization 会在构造 IR 前拒绝未知或非字符串的 rule spelling；emitter 按 typed identity
-dispatch，而 checker descriptor 仅将该 spelling 保留为 inert metadata。`examples`、`doc` 和
-`description` 记录规范意图，不能替代可执行的 C++/
-Python 测试。
-
-`any_of` 的一个 clause 也可以包含 `family`；它是该 clause 内的 AND-term，沿用同一
-`enabled_family_features` 查找，不要求该 exact target spelling。schema、normalizer
-与生成的 descriptor 允许一至六个 clause。`setmaxnreg` 使用全部六个：exact
-`sm_90a`（PTX 8.0）、exact `sm_100a`（8.6）、exact `sm_120a`（8.7）、
-已启用的 `sm_100f` 与 `sm_120f` family（8.8），以及已启用的 `sm_110f`
-family（9.0）。指令契约见[杂项指令覆盖范围](converage/miscellaneous_coverage.md)。
-
-`any_of` clause 可以用 `targets: [sm_32, sm_35, sm_37]` 表达精确的
-architecture/flavor 成员集合。`targets` 必须是非空、无重复的 canonical
-`sm_<uint32>[a|f]` spelling 列表，与 `target` 互斥。成员检查要求显式 target identity，
-并与 PTX、SM、family、capability 和 source option 要求取 AND；不推导相邻架构或其他
-flavor。生成的 `AvailabilityTarget` 数组具有进程生命周期，由
-`AvailabilityClause::exact_targets` 借用。DNF 上限仍为六个 clause；target 列表没有
-固定 descriptor 容量。手工 consumer 同时设置 singular 与 set 字段时必须同时满足两者。
-scalar 成员顺序已调整以维持 descriptor 大小，consumer 必须一起重新构建。
-
-显式 generic catalog 包含 `sm_32`、`sm_35`、`sm_37`、`sm_53`、`sm_60`、`sm_61`、
-`sm_62`、`sm_86`、`sm_87` 与 `sm_88`，均无 enabled family feature。前三者无已建模
-capability；`sm_53` 与 `sm_60`–`sm_62` 具有 `graph_exec`；`sm_86`–`sm_88` 具有
-`reserved_smem` 与 `graph_exec`。suffix 变体和未列架构仍不支持。此显式
-[PTX 9.3 target table](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
-contract 与模块内指令的 PTX version 检查相互独立。
-
-`any_of` clause 可以用 `map_f64_to_f32: true` 要求 source programmer option，例如
-`{ptx: "1.0", target: sm_10, map_f64_to_f32: true}`。它与 PTX、exact target（含 flavor）、
-SM、family 和 capability 一起构成 AND-term。出现时必须为 Boolean true；false、数字或
-字符串替代值，以及放在 legacy availability object 中均无效。省略表示不增加 option 要求。
-emitter 设置 `checker::AvailabilityClause::requires_map_f64_to_f32`；公共 availability
-逻辑检查默认值为 false 的 `checker::TargetInfo::map_f64_to_f32`。该 source control 不是
-硬件 capability，绝不改变 resolved operand 的 type 或 width。
-
-canonical `div_rn_f64`、`rcp_rn_f64` 与 `sqrt_rn_f64` variant 各使用四个 clause：
-原有 PTX 1.4 / SM 13 下限，加上同时要求此 option 和 PTX 1.4 的精确 generic
-`sm_10`、`sm_11`、`sm_12` 候选。syntax identity、显式 `.rn`、f64 type 与 64-bit
-operand 均不变。此 option 不为其他 f64、directed rounding、approximate reciprocal
-或 f32 form 增加候选。
-
-`operand_layouts` 中的 `availability` 与 variant availability 是累积关系，而不是覆盖关系：
-只有选中的 layout 会增加自己的 PTX、SM 或 family 要求。若多个 layout 都能匹配同一语法，
-resolver 只会选择唯一的、语法 shape 严格更具体的 layout；相同或不可比较的候选是 YAML
-建模错误，不能借 availability 消除歧义。
-
-`kind: reg_vector` 的 operand 会生成 `ResolvedRegisterVector` payload。静态
-`vector.arity` 只作为 descriptor check；动态
-`vector.arity: {expr: modifier(vector)}` 还会记录到所选 runtime modifier field 的链接。该信息
-不影响 modifier variant 选择。例如 `mov` 的 scalar、pack 与 unpack 是同一 modifier variant
-的三种 layout，不能因 `.b16/.b32/.b64` 形式重叠而复制 variant；`ld.v2` 与 `ld.v4` 则是由
-required runtime `vector` modifier 选择的同一个 vector variant。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#yaml-instruction-spec--availability-rules-and-examples)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/yaml_instruction_spec.md#availability-rules-and-examples)。
 
 ## Add 的当前覆盖
 
-`arithmetic.yaml` 中按节拆分的 `add` 定义会自动合并。当前覆盖标准
-`.f32/.f32x2/.f64`、mixed-precision `.f32.{f16,bf16}` 以及半精度
-`.f16/.f16x2/.bf16/.bf16x2` 形式；舍入模式解析为 `RoundingMode`，`.rm/.rp.f32`
-的 `sm_20` 要求使用 value availability 表达。packed 与 half/bfloat 形式按 PTX 规范
-只接受 register operand。
-
-mixed variant 使用 `result_type` 与 `input_type` 两个具名 slot：前者 fixed 为 `f32`，
-后者接受 `f16/bf16`。operand 的结构化 type expression 分别引用这两个 slot，因此
-resolver 与 checker 无需从 modifier 的位置或字符串重新推断 operand type。该 variant
-要求 PTX 8.6 / sm_100，并允许可选舍入与 `.sat`。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#yaml-instruction-spec--current-add-coverage)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/yaml_instruction_spec.md#current-add-coverage)。
 
 ## 编写原则
 
@@ -666,26 +367,12 @@ ctest --preset ci-linux-gcc-debug --output-on-failure
 
 ## Typed Video 契约
 
-`video` category 拥有 23 个 opcode variant 和 39 个 operand layout。Variant 的封闭 `video` mapping 包含 `lanes: scalar|two|four`、`operation: arithmetic|shift|compare|mad` 及可选、已验证的 Boolean `sat_modifier`/`po_modifier` 字段引用。每个 `video_operand` 的封闭 mapping 包含逻辑 `position`、typed `selector` policy、可选且引用 `video_type` 字段的 `type_modifier`，以及 `allow_immediate`/`allow_negate`。Normalizer 拒绝角色矛盾、SIMD 立即数、非 Mad 取负、selector topology 错误及缺失字段引用。
-
-`type_use: bit_carrier` 仅允许 Mad C，不能与 `type_modifier` 并用，选择 B32 立即数转换。Type modifier 推导 `ModifierField` 解释；省略 type use 默认 `Unsigned`，用于 set D/C。四个封闭 modifier domain 是 `video_type`、`video_secondary_op`、`video_shift_mode` 和 `video_scale`。Video 语义不转换成普通整数操作别名。语法 shape 推导仅在 scalar merge layout 接受 selected destination，仅在批准的 Mad source slot 接受 arithmetic-negated register。见 [Video 覆盖](converage/video_coverage.md)。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#yaml-instruction-spec--typed-video-contracts)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/yaml_instruction_spec.md#typed-video-contracts)。
 
 ## SM 可用性的数值独占上界
 
-plain availability 与每个 `any_of` clause 支持可选的 `sm_before: 70`。它与 `sm: 30` 共同表示 `30 <= SM < 70`；省略下界时为零，省略上界时无界。字段必须是严格的 uint32 整数且大于下界；typed normalization 与 rendering 拒绝零、布尔、浮点、字符串、显式 null、溢出及空或逆序区间。JSON Schema 检查整数及范围约束，typed 边界还拒绝整数值浮点数。最多六个有序 alternative 和 `any_of` 不得混合 plain field 的规则保持不变，不引入 target 交集求解器。
-
-`AvailabilityClause::sm_before` 和 `AvailabilityDescriptor::sm_before` 在 `ptx_before` 后追加默认缺省的 `std::optional<uint32_t>` member；此 aggregate 布局变化要求重新编译公共 consumer。谓词直接比较具体 `TargetInfo::sm_version`，不依赖 profile 拼写或 flavor；既有 exact-target、family、capability 和 mapping 条件仍为合取。variant、layout、modifier、operand-value、parameter-address 和 memory-vector 的 plain 失败均产生有位置的 `UnsupportedSmVersion`；DNF 失败仍为 `UnsupportedAvailability`。
-
-旧式 SHFL 使用 `any_of: [{ptx: "3.0", ptx_before: "6.4", sm: 30}, {ptx: "3.0", sm: 30, sm_before: 70}]`。source module 仍要求已知 profile 及合法 profile/version header。`AvailableContext` 中缺少 version 或已知 target 时继续推迟整个 instruction availability 检查，即使其他已知事实看似不兼容；成功不构成完整 ISA 认证。严格验证报告 `MissingValidationContext`；显式未知 profile 仍为 `UnknownTarget`。不新增 partial DNF evaluator 或 opcode 特定 context 规则。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#yaml-instruction-spec--exclusive-numeric-sm-availability-bound)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/yaml_instruction_spec.md#exclusive-numeric-sm-availability-bound)。
 
 ## 历史101 source profile 与验证 feature
 
-`sm_101`/`compute_101` 及 A 形式从 PTX8.6 起支持，F 形式从 PTX8.8 起支持；PTX9.0/9.3 仍接受，rename 不引入上界。110 source profile 仍从 PTX9.0 起支持。`TargetIdentity` 保留 architecture101、flavor 和精确书写；`same_target_identity` 比较 source architecture/flavor，因此101A与110A仍不同。
-
-新增 base 函数 `target_feature_architecture(identity)` 读取显式 private catalog 数据：三个101 key 投影到 feature architecture110，其他 key 保持原 architecture；未收录的 typed key 不会因此被识别。公共 `TargetProfile` 与 `TargetInfo` 布局不变。source/owned/semantic factory 用此 feature level 作为 numeric SM，同时保留 source identity，并传递既有110基础能力 `cluster`、`aggregate_smem`、`reserved_smem`、`graph_exec`。Generic101 没有 family；101A/F 仅启用 canonical `sm_110f`，不继承100f/103f，也不支持 FP64 mapping option。此有限对应基于公布的 rename 与 family 关系，不是物理硬件或 driver 保证。
-
-availability 的 singular 与 span exact-target 要求通过该 helper 比较 validation-feature architecture 与精确 flavor；此关系不同于 source identity 和存储 key 相等。手动提供的 `TargetInfo::sm_version` 仍是 caller 的具体 feature 事实，checker 不会覆盖它。source profile 引入版本、instruction/PTX 门槛、capability 与 shape 条件仍独立。
-
-历史指令数据仅修改已采用的231个 parent：219个保留100A clause并加入101A，仅原有110F分支时加入101F；12个 block-selector parent 追加8.8历史101A/F clause。854个原110条件及其版本门槛全部保留，DNF上限仍为六，25个受限 cluster gather4/im2col-W parent 不变。TCGEN 闭合 row 保留 kind、scaled-D 与显式 scale-vector 限制：历史 written block16/32 门槛为8.8，100-only vector 和 scaled-D 路径仍限定100。生成的 operational query 先验证精确 source profile 及其最低版本，再匹配 feature；未知 word 与地址仍为未决义务，不从实时 register 推断事实。
-
-两个 module validator 均独立检查当前 function 的 `source_region`、`source_version`、精确 `source_target` 与当前 owned region 一致。合法 replacement AST 不能掩盖矛盾 cache。101/110 context 自身一致且当前 payload 在 supplied effective context 下合法时，允许通过 supplied header retarget；保留的 availability 不成为历史否决。缺少完整 instruction context 时继续既有 `AvailableContext` 推迟及严格 `MissingValidationContext` 政策。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#yaml-instruction-spec--historical-101-source-profiles-and-validation-features)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/yaml_instruction_spec.md#historical-101-source-profiles-and-validation-features)。

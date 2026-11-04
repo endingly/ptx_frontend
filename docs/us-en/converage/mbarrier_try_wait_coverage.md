@@ -1,30 +1,5 @@
 # `mbarrier.try_wait` qualifier coverage
 
-The frontend models the `.sem.scope` pair for all ten existing
-`mbarrier.try_wait` shapes in [PTX ISA 9.3 §9.7.14.16.19](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-mbarrier-test-wait-mbarrier-try-wait).
-Both qualifiers must be explicit and ordered: `.acquire|.relaxed` immediately
-followed by `.cta|.cluster`, before the object space and `.b64`. A lone
-qualifier, reversed pair, or `.shared::cluster` wait object is rejected.
-The synchronization scope and the `.shared::cta` object space are distinct.
+Current source forms, type/target restrictions and retained limitations are maintained in the [SDK support contract](../../sdk_support.md#mbarrier-try-wait-coverage). This page retains technical reference material and evidence.
 
-Each paired form retains its unqualified counterpart's token or parity
-operand, generic/`.shared`/`.shared::cta` address choices, and optional
-`timeHint` operand. `timeHint` is a `.u32` register or immediate in
-nanoseconds. Explicit `.phase_type::primary` retains all six layouts: ordinary,
-report-predicate, and report-value results, each with or without `timeHint`.
-Explicit `.phase_type::conditional` requires `.parity` and has only the
-ordinary with/without-hint layouts. Immediate parity must be `0` or `1`, and
-the object address must be aligned to eight bytes. Owned resolved IR retains
-the explicit qualifier values, locations, and chosen operand layout.
-
-All `try_wait` forms require `sm_90`. The explicit pair starts at PTX 8.0;
-`.relaxed` starts at PTX 8.6, and `.cluster` scope additionally requires the
-cluster capability. Phase-type and report forms require PTX 9.3. Unqualified
-forms remain distinct in the source model; their effective semantics default
-to acquire at CTA scope. The frontend validates instruction-local contracts
-but does not simulate suspension, the time limit, phase progress, or memory
-visibility at runtime.
-
-Non-parity state inputs retain explicit Register token policy in generated descriptors and reject sink payloads during both source resolution and AST-free checking. The same common rule distinguishes CTA arrival RegisterOrSink from remote cluster Sink outputs; ordinary report-value registers are excluded. Optional descriptor absence denotes non-token policy. The public optional-member migration requires rebuilding consumers; it does not change the independent carrier-typing rules, source qualifiers, availability, or runtime token/phase obligations.
-
-The written `.b64` suffix does not make every state role a Bit operand. Non-parity wait input typing is U64 with same-width B64/S64/U64 carriers; F64 is rejected. In contrast, opaque arrival outputs and `pending_count` inputs accept same-width B64/S64/U64/F64. Actual declarations and source provenance remain visible, and form, target, address, count, parity, and time-hint checks are unchanged. Report values retain qualified logical B8 with B8/S8/U8 carriers; the fixed PTX 9.3 report-role width mapping remains a reference gap. These checks do not authenticate runtime state or establish phase progress.
+[SDK support: `mbarrier.try_wait` qualifier coverage](../../sdk_support.md#mbarrier-try-wait-coverage--mbarriertry_wait-qualifier-coverage).

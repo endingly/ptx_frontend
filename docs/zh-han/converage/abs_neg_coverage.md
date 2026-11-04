@@ -1,17 +1,5 @@
 # `abs` 与 `neg` 浮点覆盖
 
-此切片通过 generated YAML、typed Resolved IR 与 target-aware checker 建模浮点 [PTX 9.3 `abs`](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-abs)、[half/bfloat `abs`](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-floating-point-instructions-abs)、[PTX 9.3 `neg`](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-neg) 及 [half/bfloat `neg`](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-floating-point-instructions-neg)。frontend 不执行这些运算。
+当前支持范围、语法与操作接受条件、类型和目标限制以英文 [SDK 支持契约](../../sdk_support.md#abs-neg-coverage) 为唯一维护依据；本文保留技术参考与历史证据。
 
-| Form | Minimum | source 与 storage contract |
-| --- | --- | --- |
-| `abs{.ftz}.f32`、`neg{.ftz}.f32` | PTX 1.0 / 所有 target architecture；`.ftz` 为 PTX 1.4 | source 可为 floating literal 或同宽 `.f32`/`.b32` register；destination 为同宽 `.f32`/`.b32` register。 |
-| `abs.f64`、`neg.f64` | PTX 1.0 / SM 13 | source 可为 floating literal 或同宽 `.f64`/`.b64` register；destination 为同宽 `.f64`/`.b64` register。 |
-| `abs{.ftz}.f16`、`abs{.ftz}.f16x2` | PTX 6.5 / SM 53 | 仅 register。scalar `.f16` 接受 `.f16` 或 `.b16`；packed `abs.f16x2` 接受 `.f16x2` 或 `.b32`。 |
-| `neg{.ftz}.f16`、`neg{.ftz}.f16x2` | PTX 6.0 / SM 53 | 仅 register。scalar `.f16` 接受 `.f16` 或 `.b16`；packed `neg.f16x2` 两个 operand 接受 native `.f16x2` 或 `.b32`。 |
-| `abs`/`neg` `.bf16`、`.bf16x2` | PTX 7.0 / SM 80 | 仅 register 且没有 `.ftz`；scalar 要求 exact `.b16`，packed 要求 exact `.b32`。 |
-
-integer literal、错误宽度或 integer register container、未支持 modifier、额外 operand 及 destination sink 都会被拒绝。checker 保持 FP32 base instruction 的 PTX 1.0 minimum，只在 optional `.ftz` value 出现时要求 PTX 1.4。CUDA 13.3.73 的 `ptxas` 在 `.version 1.3` 直接报告 `.ftz` 需要 PTX 1.4；该 assembler 无法证明历史 SM minimum，后者由 frontend target test 检查。
-
-记录的 CUDA 13.3.73 `sm_90` probe command 是 `/usr/local/cuda/bin/ptxas -arch=sm_90 <module>.ptx -o <temporary>.o`。146 个 module 覆盖 modern positive form、FP literal、physical container、forbidden modifier、source/destination mismatch 及 sink rejection。Table 9 明确允许 native `.f16x2` 或 `.b32` register declaration；instruction 对 bit storage 的描述不缩小该封闭 carrier 集。其他同宽 type 与 alternate format 仍被排除。
-
-[explicit 浮点 MAD](mad_coverage.md)、[DIV](div_coverage.md)、[reciprocal/square-root form](unary_float_coverage.md)、[浮点 transcendental](transcendental_coverage.md) 与 [浮点 MIN/MAX](min_max_coverage.md) 已单独建模。[浮点与 mixed ADD/SUB](add_sub_coverage.md) 完成 §9.7.3–§9.7.5 其余 cohort 的对账。这里不添加这些 operation 的 execution semantics。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../../sdk_support.md#abs-neg-coverage--abs-and-neg-floating-point-coverage)；保留的实现、API 或证据说明见 [英文技术参考](../../us-en/converage/abs_neg_coverage.md#abs-and-neg-floating-point-coverage)。

@@ -1,5 +1,7 @@
 # Control-flow Operand Syntax Design
 
+Current source forms, type/target restrictions and retained limitations are maintained in the [SDK support contract](../sdk_support.md#control-flow-syntax-design). This page retains technical reference material and evidence.
+
 ## Why this is not a flat operand list
 
 The operands of `bra`, `brx.idx`, and `call` are not an ordinary comma-separated flat
@@ -49,6 +51,8 @@ module metadata use now resolve through their descriptors.
 
 ## Descriptor and Resolved IR boundary
 
+[SDK support: Descriptor and Resolved IR boundary](../sdk_support.md#control-flow-syntax-design--descriptor-and-resolved-ir-boundary).
+
 `OperandSyntaxShape` now provides `Group`, `CallTarget`, `CallTargetSet`,
 `BranchTarget`, and `BranchTargetSet`, with matching bits in the Python descriptor model and C++
 backend domain. Because `bra` has one direct label target, it legitimately uses
@@ -57,15 +61,6 @@ dispatch, and checking. During module resolution, `ResolvedBranchTarget` stores
 the current function label's stable `SymbolId`; standalone resolution retains
 only the source spelling. `.uni` and the execution predicate are preserved as
 a generated modifier field and an opcode-common field respectively.
-
-`brx.idx{.uni} index, tlist` is a separate PTX 6.0 / SM 30 opcode. Its index
-is a `.u32` register and its `tlist` resolves as `ResolvedBranchTargetSet`,
-which retains the current-function `.branchtargets` `SymbolId`; standalone
-resolution retains the spelling. It does not expand target entries or build a
-control-flow graph. In a module, the `.branchtargets` declaration must occur
-earlier in the same function's lexical traversal; its member labels may still
-refer forward. Direct `bra` targets remain forward-referenceable. `bra` remains
-direct-only.
 
 `call` now uses the non-`Flat` `Call` layout algorithm. One generated direct
 variant has exactly three fixed payload layouts: target only, target plus the
@@ -76,14 +71,6 @@ input position. `ResolvedFunctionRef` preserves a bound direct target,
 state space, and `ResolvedCallArguments` owns per-element ranges. Literals are
 retained untyped by standalone instruction resolution, which deliberately has
 no callee declaration context.
-
-Indirect forms use separate `IndirectCall` layouts rather than reusing either
-the direct `Call` layouts or `Flat`: target plus metadata, target plus input
-group plus metadata, and return group plus target plus input group plus
-metadata. Both the register target and the final metadata operand resolve as
-`ResolvedIndirectCallee`; layout slot shapes distinguish `CallTarget` from
-`CallTargetSet`. These layouts require PTX 2.1 and SM 20. The public modifier
-variant remains `call_direct` for compatibility.
 
 For a direct named call in a module, resolution looks up the callee's canonical
 prototype/definition signature. It compares return and input arity and order,
@@ -109,229 +96,40 @@ syntax that matches no descriptor.
 
 ## Call-table flist arrays
 
-The existing indirect-call layouts also admit a final storage name, for example
-`call %fp, (1+2), table;`. `ResolvedCallTableRef` is a distinct indirect-callee
-branch retaining the actual variable `SymbolId`, written name and range; storage
-is not relabeled as metadata. The module owns one `ResolvedCallTableContract`
-per consumed table and reuses its common full function signature for the normal
-return/input ABI and formal-driven literal/expression checks.
-
-Supported tables are initialized one-dimensional scalar `.u32/.u64` arrays in
-`.global/.const`, at module scope or a visible local scope. Inferred extent is
-supported, and element width need not match function-pointer width. Explicit
-entries must be complete unmasked zero-addend device-function relocations.
-Order and duplicate targets survive; omitted tails are zero-fill, not callable
-slots. At least one callable entry is required. Numeric/mixed, masked/addended,
-nonfunction, vector, multidimensional, parameter and extern-only tables remain
-unsupported as flist, without invalidating unrelated ordinary data.
-
-The table declaration must precede the call. Function references retain the
-existing exact-token prior-declaration rule, including aliases and compatible
-prototype/definition identity. Target signatures must agree in all normalized
-ABI fields and `.noreturn`. This proves neither loaded-pointer membership nor
-mutable runtime contents. Stored ptxas 13.3.33 compile-only evidence accepts
-partial/duplicate tables but crashes on mixed function/numeric call controls;
-the frontend diagnoses that unsupported subset, with no assembler-parity or
-GPU-execution claim.
+[SDK support: Call-table flist arrays](../sdk_support.md#control-flow-syntax-design--call-table-flist-arrays).
 
 ## Return uniformity
 
-`ret{.uni};` accepts unpredicated, `@p`, and `@!p` forms in both device
-functions and entries, with the existing PTX 1.0 / all-architecture availability.
-The canonical `ret_bare` variant and generated `RetBare` class remain stable.
-Its `WithLocs<bool> uni` field defaults to `false` with no locations; a written
-`.uni` sets it to `true` and retains the exact modifier range. The execution
-predicate is retained independently, including its negation and bound register
-identity, and both survive AST release for owned-module validation.
-`.uni` records the programmer's guarantee of uniform return behavior. The
-frontend does not prove dynamic divergence or convergence. Unknown or repeated
-modifiers and unexpected operands remain invalid.
+[SDK support: Return uniformity](../sdk_support.md#control-flow-syntax-design--return-uniformity).
 
 ## Function-local `.callprototype` syntax
 
-The parser now retains PTX 9.3 `.callprototype` declarations as dedicated
-function-body CST/AST nodes rather than a label followed by an instruction.
-All four signature forms are accepted: `_`, `_ (params)`, `(return) _`, and
-`(return) _ (params)`. CST preserves the label, colon, sink, parameter-list
-punctuation, `.noreturn`, `.abi_preserve N`, and `.abi_preserve_control N`.
-AST retains their semantic spellings and source ranges. Declaration semantics
-rejects `.noreturn` with return parameters and validates array formals; parsing
-at module scope is rejected. Binding owns the local label. Current indirect-call
-layouts consume that bound prototype identity and reuse the shared call ABI
-contract; see [Resolved IR](resolved_ir_design.md) for entry points and limits.
-
-Current owned and supplied prototype contracts independently enforce base
-PTX 2.1 / SM 20, `.noreturn` PTX 6.4 / SM 30, and both ABI suffixes PTX 9.0 /
-SM 80, including independently known partial context. Nested and unused prototypes
-are included; ordinary instruction availability and runtime ABI behavior are not
-expanded by these checks.
+[SDK support: Function-local `.callprototype` syntax](../sdk_support.md#control-flow-syntax-design--function-local-callprototype-syntax).
 
 ## Function-local `.calltargets` syntax
 
-PTX 9.3 `.calltargets` is likewise a dedicated function-body CST/AST node.
-It retains its label, colon, directive, non-empty ordered function-name list,
-commas, semicolon, and whole/member source ranges. The parser rejects an empty
-list, a trailing comma, and use without a local label or at module scope.
-Declaration semantics requires every member to be a prior device `.func`,
-diagnoses duplicates using individual member ranges, and requires equal
-canonical signatures.
-
-`.branchtargets` and `.calltargets` each require PTX 2.1 and SM 20, including
-unused declarations in nested blocks. AST-free validation uses the function's
-selected owned region; source-aware validation checks both current records and
-supplied typed declarations with the supplied active context. Known version and
-recognized profile minima are checked independently before full-context gates;
-only unknown prerequisites defer under `AvailableContext`. Strict context and
-unknown-target diagnostics, nonneutral payload identity, member binding,
-signatures and declaration-order checks retain their existing contracts.
+[SDK support: Function-local `.calltargets` syntax](../sdk_support.md#control-flow-syntax-design--function-local-calltargets-syntax).
 
 ## Function-local `.branchtargets` syntax
 
-`.branchtargets` now has its own function-body CST/AST node. Its non-empty
-ordered list preserves ordinary labels and compact entries such as `N<5>`;
-the latter retain name, count, angle punctuation, and one entry range without
-expanding into synthetic labels. Declaration semantics checks local-label
-membership and count validity without adding symbols. Repeated destinations,
-including overlapping compact entries, retain their order and multiplicity;
-each expanded occurrence denotes a separate index slot.
-`brx.idx` consumes the declaration by stable local identity without expanding
-its entries.
+[SDK support: Function-local `.branchtargets` syntax](../sdk_support.md#control-flow-syntax-design--function-local-branchtargets-syntax).
 
 ## PTX 9.3 call parameter context
 
-`ld` accepts `.param`, `.param::entry`, and `.param::func`; `st` accepts
-`.param` and `.param::func`. `::entry` addresses only an entry's formal input.
-`::func` addresses a device-function parameter or a function-local call
-parameter. The unqualified spelling defaults to entry parameters in an entry,
-to function parameters in a device function, and to function-local call
-parameters in either context.
-
-Only function-local `.param` variables are call staging. Their `st.param` input
-stores must be unpredicated and form the contiguous block immediately before a
-call that passes the same variable; their `ld.param` return loads must be
-unpredicated and form the contiguous block immediately after a call returning
-the same variable. Nonexecuting declarations, labels, metadata, and lexical
-braces are transparent to instruction adjacency. Intervening executable
-instructions break a block; binding and scope rules still require the same
-visible parameter object/member. These local checks do not infer runtime path
-initialization.
-`call` itself may be predicated. `.uni` is retained as the programmer's
-uniformity assertion, so the frontend does not attempt unprovable static
-uniformity analysis or reject a predicated direct `call.uni`.
-
-Register-state device and call-prototype formals have a separate default-ABI
-minimum: when known PTX >=2.0 and the active recognized target is SM20+, the whole
-scalar/vector value must be at least32bits. This measures explicit vector total
-width, not each lane, and preserves source type/shape. It applies to unused input
-and return formals too, with the supplied AST context for source-aware retargeting
-and owned regions after AST death. Known legacy contexts disable the minimum;
-missing context defers it under partial checking. Ordinary small/predicate registers
-and compatible small actuals to `.param` formals remain legal. See
-[parameter declarations](parameter_declarations.md) for the complete boundary.
-
-A local `ResolvedCallPrototypeContract` describes a device-call interface, so its
-owned `signature.is_entry` must remain false. AST-free module validation checks
-this role even when the prototype is unused, including return-only interfaces
-whose types and widths are otherwise valid. Module/function copies and instruction
-clones preserve prototype identity. This metadata-integrity rule is independent
-of formal ABI width, feature availability and supplied-source association; no
-source spelling/history is reconstructed to validate the flag.
+[SDK support: PTX 9.3 call parameter context](../sdk_support.md#control-flow-syntax-design--ptx-93-call-parameter-context).
 
 ## Static recursion boundary
 
-Known local call cycles require PTX 2.0 and SM 20. Acyclic device functions remain
-legal on supported older contexts. Both module validators recompute a private
-current typed may-call graph over canonical local device definitions, including
-unused definitions. Actual direct calls create exact edges; only consumed,
-validated finite `.calltargets` or call-table alternatives create candidate edges.
-Unused metadata and implicit zero table tails create no edges. A cycle requiring
-a finite alternative is statically possible recursion, not proof it executes.
-Predicated calls remain may-call edges; no CFG, predicate feasibility, stack
-execution or dataflow analysis is performed.
-
-Each participating caller uses its selected region, or supplied active context
-in the source-aware API. Known old PTX or recognized low SM rejects independently
-of the other missing fact; unknown prerequisites alone may defer in
-`AvailableContext`. Strict context and unknown-target handling remain unchanged.
-Prototype-only/external callees and dynamic signature-only calls are open
-boundaries. They gain no fabricated return edges and no blanket strict rejection;
-success means modeled checks passed, not whole-program acyclicity across them.
-
+[SDK support: Static recursion boundary](../sdk_support.md#control-flow-syntax-design--static-recursion-boundary).
 
 ## Historical entry body inputs
 
-PTX 1.0–1.3 entry body `.param` declarations have the owning `LegacyEntryInput`
-role in the sole `parameter_declarations` table, including scoped/group/array
-identities. The function signature remains syntactic header ABI only, so an empty
-header signature does not imply no host inputs. Lexical metadata order assigns
-no launch addresses or packing. Resolution needs a version only for ambiguous
-entry body roles; it reports `MissingValidationContext` without guessing from SM.
-Typed modules retain their role when context is missing.
-
-The optional `ResolvedSymbolRef::parameter_role` cache is derived from the actual
-record while keeping structural `CallParameter`. Address/MOV/tensor projections
-share input/return/call-slot directions. Both validators rejoin current records
-and caches and enforce read-only entry-frame access, direct call-actual exclusion,
-shape/scope and logical capacity before context skips. Legacy input LD is not
-call-return staging; MOV preserves `.param`. Modern BodyLocal staging is unchanged.
-The checked sum of per-member bytes times compact count has the known32764-byte
-global ceiling; no double axes/vector multiplication or invented256 legacy cap.
-`D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` remains qualified for exact historical
-physical launch packing. See the [parameter contract](parameter_declarations.md)
-for context windows, intrinsic guarantees and preserved limitations.
-
+[SDK support: Historical entry body inputs](../sdk_support.md#control-flow-syntax-design--historical-entry-body-inputs).
 
 ### Indirect function-address carriers
 
-An indirect function address uses a General `.reg` effective scalar with a
-fundamental signed, unsigned or bit type of 8, 16, 32 or 64 bits. Floating types,
-packed/alternate instruction-only types, `.b128`, predicates, special registers
-and whole vectors do not satisfy this role. A selected ordinary component uses
-the same element-type rule and retains its real owner identity, selector ranges
-and the 128-bit vector-declaration limit. Written call components use the same invariant as typed public register-component values.
-
-This is a **derived** address-carrier interpretation of
-[PTX §6.4.1](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#addresses-as-operands)
-and the function-address-register requirement in
-[§9.7.13.5](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-instructions-call),
-not a claim that `call` explicitly enumerates all twelve carrier types. Address
-value widths of 32/64 bits do not impose a 32-bit register minimum or require a
-64-bit register under `.address_size 64`. Eligibility does not prove that a
-narrow register actually contains a representable function address, a linked
-code address or a member of a runtime target set.
-
-Source resolution, direct typed checks and both module validation APIs apply
-the role before missing version/target can defer it. Owned checks rejoin actual
-symbol declarations and reject lying or erased type caches; valid supplied
-source cannot mask bad current data. Generated views borrow the active RegRef
-alternative without reinterpreting metadata/table alternatives. Completely
-unknown standalone facts retain their existing unknown/context behavior.
-Formal input/return ABI rules and ordinary floating call inputs remain separate.
-
+[SDK support: Indirect function-address carriers](../sdk_support.md#control-flow-syntax-design--indirect-function-address-carriers).
 
 ### Selected scalar call operands
 
-Call inputs and the single parenthesized return accept ordinary `.xyzw/.rgba`
-register selections. The target accepts an identifier or an explicitly selected
-indirect register; final prototype/target-set/table metadata stays identifier-only.
-Anonymous brace actuals and direct function projections remain unsupported.
-`ResolvedCallParameterRef::component` is a default-disengaged owning optional;
-null preserves the whole-variable contract and old aggregate construction.
-
-Source and both owned-module validation routes first join the real General
-`.reg` v2/v4 declaration, SymbolId, parameterized member, element type/state,
-physical 128-bit owner bound and explicit selector provenance. Only then does
-the existing call ABI comparison see an effective scalar. Arrays, pointer,
-size and alignment constraints are retained. Deleting or contradicting a cache
-cannot hide a known declaration. The return's outer parenthesized range stays
-in `WithLocs`; its selected leaf remains contained inside the group and instruction.
-Copied observer values, module copies and instruction clones own the selection.
-
-Modern register-formal minimum width remains a formal ABI rule, not a global
-component minimum: matching legal subword `.param` formals use the existing
-scalar actual policy. Whole named-vector actuals, constants and parameter-memory
-staging retain their existing rules. This is derived scalar-element inheritance,
-not pointer execution, hidden moves or synthetic scalar declarations. Coherent
-current edits remain legal; written source identity is checked independently.
-Public CST/AST variants and the owning call reference require matching producer
-and consumer rebuilds. No instruction schema, generated layout or callback changes.
+[SDK support: Selected scalar call operands](../sdk_support.md#control-flow-syntax-design--selected-scalar-call-operands).

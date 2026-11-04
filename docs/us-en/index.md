@@ -1,11 +1,12 @@
 # Detailed reference index
 
 Start with the [GitHub Wiki](https://github.com/endingly/ptx_frontend/wiki) for
-technical guides and [current scope](converage/coverage_status.md) for evidence boundaries.
+technical guides and [current scope](../sdk_support.md) for evidence boundaries.
 These detailed source references retain design decisions, per-family contracts,
 and reproducible evidence. Historical audit pins and build measurements describe
-their recorded revisions, not current support. Matching English and Chinese
-filenames are maintained together; code and tests decide documentation drift.
+their recorded revisions, not current support. The English [SDK support contract](../sdk_support.md) is the single current
+support authority for both languages. Paired technical references remain aligned;
+code and tests decide documentation drift.
 Design, API, and policy references remain in this language directory. Coverage
 records, audits, and closeout matrices are grouped under `converage/`.
 
@@ -45,7 +46,8 @@ records, audits, and closeout matrices are grouped under `converage/`.
 | Extended-precision integer coverage | [EN](converage/carry_coverage.md) | [中文](../zh-han/converage/carry_coverage.md) |
 | Conversion and Address-Query Coverage | [EN](converage/conversion_coverage.md) | [中文](../zh-han/converage/conversion_coverage.md) |
 | Core Opcode Completeness Audit | [EN](converage/core_opcode_completeness_audit.md) | [中文](../zh-han/converage/core_opcode_completeness_audit.md) |
-| Current coverage and evidence boundaries | [EN](converage/coverage_status.md) | [中文](../zh-han/converage/coverage_status.md) |
+| Current SDK supported scope and retained limitations | [English contract](../sdk_support.md) | [同一英文契约](../sdk_support.md) |
+| Historical coverage baseline and evidence boundaries | [EN](converage/coverage_status.md) | [中文](../zh-han/converage/coverage_status.md) |
 | PTX 9.3 non-bulk `cp.async` coverage | [EN](converage/cp_async_coverage.md) | [中文](../zh-han/converage/cp_async_coverage.md) |
 | PTX 9.3 `createpolicy` coverage | [EN](converage/createpolicy_coverage.md) | [中文](../zh-han/converage/createpolicy_coverage.md) |
 | Floating `div` coverage | [EN](converage/div_coverage.md) | [中文](../zh-han/converage/div_coverage.md) |

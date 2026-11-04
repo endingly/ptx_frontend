@@ -1,5 +1,7 @@
 # 历史覆盖基线与证据边界
 
+本文为**历史证据记录**；表格、缺口、计数与工具结果只描述其记录版本（含 `2bd78d6`），不定义当前 SDK 支持范围。当前语法、操作、类型、目标及保留限制统一见英文 [SDK 支持契约](../../sdk_support.md)。
+
 技术入口为 [GitHub Wiki](https://github.com/endingly/ptx_frontend/wiki)。
 [参考索引](../index.md)将详细设计和各指令族契约与源码一同维护。
 本页保留版本 `2bd78d605f7fc545c11b77f42e9cd5bc7fe376a4` 的历史对齐记录。
@@ -36,24 +38,7 @@ multimem、Fabric/CFT、texture、surface、stack 和 video 均有明确源码�
 旧 PTX 版本汇编器观察不能覆盖 PTX 9.3 语法。optional cp.async bounds、
 WGMMA shape 疑问与 WMMA f64 歧义没有被本审计提升为已确认 missing-operation 结论。
 
-## 验证与运行时边界
 
-parse/resolve/check 流水线验证已建模源码形式。两个 module validation overload
-都会重新检查严格初始 header 顺序、target item 分类、scalar storage occurrence/layout
-一致性和 function signature/declaration ABI 一致性，包括 AST 销毁后的 owned 路径。
-具体边界见 [module validation contract](../resolved_ir_design.md)、
-[storage metadata](../storage_declarations.md) 和
-[parameter metadata](../parameter_declarations.md)。
-`resolveAndValidateModule` 要求完整源码上下文，不表示穷尽 PTX 验证。
+## 当前验证与维护边界
 
-调用方已知 descriptor、scale 和 sparsity fact 是条件性断言。TCGEN05 K96
-scale-layout role row 仍保留开放语义义务。前端不证明实时 descriptor byte、
-collector/protocol history、memory allocation、跨线程 ordering、数值执行或 GPU 结果。
-历史 simulator pin 与 build/ptxas 测量仍是历史记录。
-
-## 维护方式
-
-源码契约变化应同步英中参考文档与相关测试。Wiki 作为链接详细参考的技术指南；
-README 仅保留背景、构建安装、使用与许可。不要重建手写 opcode ledger，也不要把重复
-计数当作 support gate。代码与可复现检查决定漂移，issue 状态和 roadmap checkbox
-本身不证明验收。公共 API 仍处于 pre-1.0。
+当前验证、运行时限制与支持范围见英文 [SDK 支持契约](../../sdk_support.md)。本文只保留上述固定版本的历史记录。

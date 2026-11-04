@@ -1,7 +1,7 @@
 # 详细参考索引
 
 技术指南从 [GitHub Wiki](https://github.com/endingly/ptx_frontend/wiki) 开始；
-证据边界见[当前范围](converage/coverage_status.md)。详细源码参考保留设计决策、各族契约和
+证据边界见[当前范围](../sdk_support.md)。详细源码参考保留设计决策、各族契约和
 可复现证据。历史审计 pin 与构建测量描述其记录版本，不代表当前支持。
 相同文件名的英中文档一同维护；代码与测试决定文档漂移。
 设计、API 和策略参考保留在当前语言目录；覆盖度记录、审计与收尾矩阵
@@ -43,7 +43,8 @@
 | Extended-precision integer coverage | [EN](../us-en/converage/carry_coverage.md) | [中文](converage/carry_coverage.md) |
 | Conversion and Address-Query Coverage | [EN](../us-en/converage/conversion_coverage.md) | [中文](converage/conversion_coverage.md) |
 | Core Opcode Completeness Audit | [EN](../us-en/converage/core_opcode_completeness_audit.md) | [中文](converage/core_opcode_completeness_audit.md) |
-| Current coverage and evidence boundaries | [EN](../us-en/converage/coverage_status.md) | [中文](converage/coverage_status.md) |
+| Current SDK supported scope and retained limitations | [English contract](../sdk_support.md) | [同一英文契约](../sdk_support.md) |
+| 历史 coverage 基线与证据边界 | [EN](../us-en/converage/coverage_status.md) | [中文](converage/coverage_status.md) |
 | PTX 9.3 non-bulk `cp.async` coverage | [EN](../us-en/converage/cp_async_coverage.md) | [中文](converage/cp_async_coverage.md) |
 | PTX 9.3 `createpolicy` coverage | [EN](../us-en/converage/createpolicy_coverage.md) | [中文](converage/createpolicy_coverage.md) |
 | Floating `div` coverage | [EN](../us-en/converage/div_coverage.md) | [中文](converage/div_coverage.md) |

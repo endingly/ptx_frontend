@@ -1,49 +1,10 @@
 # 寄存器声明兼容性
 
+当前支持范围、语法与操作接受条件、类型和目标限制以英文 [SDK 支持契约](../sdk_support.md#register-type-policy) 为唯一维护依据；本文保留技术参考与历史证据。
+
 ## Contract
 
-`register_width: same_width` 同时检查位宽和基础类型兼容性，而非枚举 identity：
-bit-size 寄存器可承载同宽兼容的整数或浮点 operand，同宽有符号与无符号整数声明可互换。
-整数与浮点之间的替换仍然非法。`mul.wide.u32` 和 `mad.wide.u32` 仍要求 32 位乘数、
-64 位结果；`mad` 的加数也必须为 64 位。这些 same-width operand 拒绝更宽寄存器。
-
-`exact` 保留枚举 identity 语义，适用于显式声明格式要求，不能仅因为普通算术 operand
-位宽固定就使用它。`equal_or_wider` 按 PTX ISA 9.3 Tables 27/28 为适用的
-`ld`/`st`/`cvt` operand 接受最宽为 `.b128` 的兼容 bit carrier。声明资格由中央检查；
-instruction、format、PTX-version 和 SM gate 仍然适用。立即数转换不变。resolution 仍构造相同 IR，
-generated checker 按 descriptor policy 检查已绑定寄存器声明；仅 resolve 成功不表示
-整个模块的指令均通过 checking。
-
-declaration semantics 还会验证每个 `.reg` 的 type token，即使该寄存器从未被使用。
-允许的基础 declaration type 为 `.s8/.s16/.s32/.s64`、`.u8/.u16/.u32/.u64`、
-`.b8/.b16/.b32/.b64/.b128`、`.f16`、`.f16x2`、`.f32`、`.f64` 以及 scalar `.pred`。
-已识别的 packed 或 alternate instruction format（例如 `.bf16`、`.tf32` 和已建模的
-packed 拼写）会报告为 instruction-only；未识别的拼写会报告为 unknown。CST 仍保持
-permissive。non-predicate `.v2`/`.v4` 寄存器最大为 128 bit，predicate 寄存器必须
-是 scalar。这些 declaration rule 保留合法 `.reg` function formal 及 parameterized
-register group。
-
-`base::ScalarTypeMetadata` 是每个已建模 scalar 的 PTX 拼写、kind、字节宽度及 `.reg`
-declaration usage 的唯一规范来源。declaration semantics 使用该 metadata；generated
-resolver 的 suffix table 仍只是 instruction-modifier 的机械映射。`.param` 刻意保留其
-独立的 storage-type contract。
-
-
-`.reg` 声明禁止方括号数组，包括未使用的寄存器、未指定大小或多维数组，以及向量寄存器数组。
-声明语义在第一个方括号维度处报告 `InvalidRegisterDeclarationShape`。
-合法的 `.reg .u32 r<2>` 紧凑寄存器组与 `.v2`/`.v4` 寄存器声明保持有效；
-`.param`、`.global`、`.const`、`.shared` 和 `.local` 数组继续遵循各自现有规则。
-依据为 [PTX ISA 9.3 寄存器状态空间](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#register-state-space)。
-
-`binding::Symbol::is_array` 保留任一声明出现是否写有方括号维度（或形式参数是否为数组），
-与 `vector_width`、`parameterized_count` 相互独立。自有模块校验检查每个寄存器符号，
-即使它未被使用且没有存储记录；非法数组在保留的标识符范围处报告 `RuleViolation`。
-绑定到寄存器且带数组维度的存储或参数记录也会被拒绝。这些检查在源码与 AST 销毁后仍然有效；
-带 AST 的校验还会检查替换源码中的声明。
-
-Module `.reg` 与 `.local` 的 placement 遵循 source target ABI 边界
-（PTX >= 3.0 且已识别的 SM >= 20），并保留历史版本及 SM 1.x 的行为。
-源码 occurrence、自有 lifetime 与不完整 context 的契约见[声明语义](declaration_semantics_design.md)。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#register-type-policy--contract)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/register_type_policy.md#contract)。
 
 ## 规范来源记录
 
@@ -54,6 +15,8 @@ Module `.reg` 与 `.local` 的 placement 遵循 source target ABI 边界
 不把持续更新的无版本手册 URL 当作冻结规范版本。
 
 ## 验证边界
+
+本节保留下述固定版本的历史审查、策略表与工具结果，不是当前 source permission 清单；当前规则见英文 [SDK 支持契约](../sdk_support.md#register-type-policy)。
 
 审查基线为 `c6e5e2d5503b6f8a7d01dca7e7cb43e33f78719a`，三个规格文件中共有
 106 处显式 `exact` 声明。本次决策如下：
@@ -112,11 +75,6 @@ out/build/ci-linux-gcc-debug/submod/resolved_ir/test_modern_operand_codegen --gt
 PYTHONPATH=python .venv/bin/python -m unittest discover -s python/tests -t python -p 'test_*.py' -q
 ```
 
-Native packed `.f16x2` 是32-bit fundamental floating 值。Table 9 明确给出的
-`.f16x2`/`.b32` declaration 选择适用于 `mul.f16x2`、`neg.f16x2` 及两个 predicate-pair
-`setp.f16x2` form 的 register data role；可混用 native/bit carrier。同宽
-`.f32/.s32/.u32`、其他宽度、whole vector 和非 fundamental alternate format 不属于该
-封闭 carrier 集。显式 scalar component 保留真实 vector declaration 与 compact-member
-provenance。共享 BF16x2/其他 alternate-format exact-B32 合同保持不变。这些 slot 仍仅接受
-register，不增加 packed numeric literal 的 bits/splat/zero 表示或普通 scalar-F16 conversion。
-既有 modifier、predicate、layout 与 PTX/target availability 不变。
+当前 native packed register carrier 与 exact-word source 规则见英文
+[SDK 支持契约](../sdk_support.md#resolved-ir-design--scalar-packed32-source-members)
+及 [packed SETP](../sdk_support.md#resolved-ir-design--packed-setp-raw-and-exact-words)。

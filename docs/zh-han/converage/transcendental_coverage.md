@@ -1,21 +1,5 @@
 # 浮点 transcendental 覆盖
 
-PTX 1.0–1.3 额外接受 `sin.f32`、`cos.f32`、`lg2.f32` 与 `ex2.f32` 的 exact omitted-control form，解释为 approximate+FTZ。在 PTX >=1.4 或遗漏 mode 却写出 `.ftz` 时拒绝。 source omission 与 typed interpretation 分离；见[公共 contract](../resolved_ir_design.md#历史浮点控制省略形式)。
+当前支持范围、语法与操作接受条件、类型和目标限制以英文 [SDK 支持契约](../../sdk_support.md#transcendental-coverage) 为唯一维护依据；本文保留技术参考与历史证据。
 
-生成模型加入 [sin](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-sin)、[cos](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-cos)、[lg2](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-lg2) 与 [ex2](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-ex2) 在 [PTX 9.3 §9.7.3.18–§9.7.3.21](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions) 的 explicit approximate form、§9.7.3.22 的 single-precision [tanh](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-tanh)，以及 §9.7.4.9 与 §9.7.4.10 的 half/bfloat [tanh](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-floating-point-instructions-tanh) 与 [ex2](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-floating-point-instructions-ex2) cohort。`.approx` 是 typed fixed flag，而不是 unchecked spelling，因此 explicit 与历史省略 mode 保留不同 identity。frontend 建模 parsing、owned resolution 与 target validation，不执行数值 operation，也不计算 approximation error bound。
-
-| Form | Minimum | Contract |
-| --- | --- | --- |
-| `sin.approx{.ftz}.f32`、`cos.approx{.ftz}.f32`、`lg2.approx{.ftz}.f32`、`ex2.approx{.ftz}.f32` | PTX 1.4 / 所有 target architecture | 固定 typed `.approx`；`.ftz` optional；没有 rounding modifier。 |
-| `tanh.approx.f32` | PTX 7.0 / SM 75 | 固定 `.approx`；没有 `.ftz`、rounding 或 saturation modifier。 |
-| `tanh.approx.{f16,f16x2}`、`ex2.approx.{f16,f16x2}` | PTX 7.0 / SM 75 | 固定 `.approx`；没有 `.ftz`。 |
-| `tanh.approx.{bf16,bf16x2}` | PTX 7.8 / SM 90 | 固定 `.approx`；没有 `.ftz`。 |
-| `ex2.approx.ftz.{bf16,bf16x2}` | PTX 7.8 / SM 90 | 固定 `.approx` 且必须有 typed `.ftz`。 |
-
-每个 `.f32` source 接受 floating literal 或同宽 native floating/bit register container，destination 接受相应的 native 或 bit register container。half 与 bfloat cohort 只绑定 register，不接受 immediate：scalar `.f16` 接受 `.f16` 或 `.b16`，packed `.f16x2` 接受 `.f16x2` 或 `.b32`，而 BF16 form 需要 `.b16`/`.b32` bit container，因为 `.bf16` 是 instruction-only format，不是 `.reg` declaration format。
-
-integer literal 与 integer register container、错误宽度、sink、PTX >=1.4 时遗漏 `.approx`、任何 TANH cohort 上的 `.ftz`、F16 EX2 cohort 上的 `.ftz`、BF16 EX2 cohort 缺失 `.ftz`，以及不受支持的 `.f64` 与 `.f32x2` spelling 都会被拒绝。
-
-CUDA 13.3.73 证据使用 `/usr/local/cuda/bin/ptxas -arch=sm_90 <module>.ptx -o <temporary>.o`。44 个 module 的 matrix 有 23 个预期接受、21 个拒绝，且没有 assembler divergence。拒绝项由 assembler 自身诊断印证，其措辞与模型约束一致：`.approx modifier required for instruction 'sin'`、`Illegal modifier '.ftz' for instruction 'tanh'`、`.ftz modifier required for instruction 'ex2.bf16'`，以及 `.f32x2` 的 `Unexpected instruction types specified for 'sin'`。针对性的 `-arch=sm_75` probe 接受 PTX 7.0 的 TANH 与 F16 EX2 cohort，`-arch=sm_80` probe 以 `Feature 'ex2.bf16' requires .target sm_90 or higher` 拒绝两个 BF16 cohort，从而独立于 frontend test 确认 SM 边界。另有十个 probe 将每个 below-floor `.version` 与其 floor 配对：`.version 1.3` 被 `Feature '.approx' requires PTX ISA .version 1.4 or later` 拒绝，`.version 6.5` 被 `Feature 'tanh' requires PTX ISA .version 7.0 or later` 与 `Feature 'ex2.f16/f16x2' requires PTX ISA .version 7.0 or later` 拒绝，`.version 7.5` 被 `Feature 'ex2.bf16' requires PTX ISA .version 7.8 or later` 拒绝。7.0 与 7.8 floor 由双向确认，因为 `.version 7.0` / `sm_75` 与 `.version 7.8` / `sm_90` 都接受。本 matrix 无法验证 1.4 floor 的 accept 侧：该 `ptxas` 只从 `sm_75` 起选择 target，而 `.version 1.4` 以 `PTX .version 1.4 does not support .target sm_75` 拒绝 `.target sm_75`。这属于 toolchain 的 version/target 耦合，而非 frontend contract，因此 1.4 的 accept 侧由 frontend checker test 承担。这些 probe 只证明 syntax 与 contract，不表示旧 GPU codegen。
-
-[浮点 MIN/MAX](min_max_coverage.md) 已单独建模。[浮点与 mixed ADD/SUB](add_sub_coverage.md) 完成 §9.7.3–§9.7.5 其余 cohort 的对账，这里不添加它的 execution semantics。
+本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../../sdk_support.md#transcendental-coverage--floating-transcendental-coverage)；保留的实现、API 或证据说明见 [英文技术参考](../../us-en/converage/transcendental_coverage.md#floating-transcendental-coverage)。

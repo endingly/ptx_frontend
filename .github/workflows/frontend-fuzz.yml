@@ -1,0 +1,63 @@
+name: Frontend fuzz smoke
+
+on:
+  pull_request:
+    paths:
+      - 'submod/**'
+      - 'python/**'
+      - 'include/**'
+      - 'corpus/**'
+      - 'fuzz/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/frontend-fuzz.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VCPKG_ROOT: ${{ github.workspace }}/.vcpkg
+  VCPKG_DOWNLOADS: ${{ github.workspace }}/.cache/vcpkg/downloads
+  VCPKG_BINARY_CACHE: ${{ github.workspace }}/.cache/vcpkg/archives
+  VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/.cache/vcpkg/archives,readwrite"
+  PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
+  CC: /usr/bin/clang-21
+  CXX: /usr/bin/clang++-21
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Linux dependencies
+        uses: ./.github/actions/setup-linux
+      - name: Install sanitizer runtime
+        run: sudo apt-get install -y --no-install-recommends libclang-rt-21-dev
+      - name: Configure isolated sanitizer build
+        run: >-
+          cmake -S . -B out/build/fuzz-asan -G Ninja
+          -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
+          -DPTX_FRONTEND_BUILD_FUZZERS=ON -DBUILD_TESTING=OFF -DPTX_USE_CCACHE=OFF
+          -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS_RELEASE="-O1 -gline-tables-only -DNDEBUG"
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - name: Build fuzz targets
+        run: cmake --build out/build/fuzz-asan --parallel 4 --target fuzz_lexer_cst fuzz_frontend fuzz_frontend_canary
+      - name: Replay seeds and bounded fixed-seed campaigns
+        run: .venv/bin/python fuzz/run_smoke.py --runs 2000 --seconds 30
+      - name: Retain failure reproductions and logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontend-fuzz-failure
+          retention-days: 7
+          path: |
+            out/fuzz-smoke
+            out/build/fuzz-asan/compile_commands.json
+            out/build/fuzz-asan/CMakeCache.txt

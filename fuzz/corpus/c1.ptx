@@ -1,0 +1,4 @@
+.version 9.3
+.target sm_100
+.address_size 64
+.entry c1() { .reg .v4 .u16 V; mov.v4.u16 V, %tid; ret; }

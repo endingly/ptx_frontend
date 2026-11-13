@@ -1,0 +1,4 @@
+.version 9.3
+.target sm_100
+.address_size 64
+.entry store() { .shared .b32 slot; st.shared.b32 [slot], 17; ret; }

@@ -3654,7 +3654,7 @@ execution evidence for eleven commonly used operation names.
 | Resolved storage declarations | Supported subset | Owned global/constant/shared/local declaration metadata with identity/scope, typed shape, checked byte extent, alignment, linkage, and initializer constants/relocations; external unsized shared data remains dynamic and size-unknown. See the [storage contract](#storage-declarations) for normalization boundaries; no memory allocation or runtime instances |
 | Other directives | Partial | Same-module `.alias` canonicalizes direct-call ABI lookup and is retained as an owned alias contract. Typed `.managed`/`.unified` attributes are retained as typed function/storage contracts (`.unified` owns its two numeric UUID halves); documented header directives are likewise owned. LD/ST validate unified-address and read-only contracts. Linker/backend behavior and runtime allocation remain unsupported. |
 | Structured control syntax | Supported subset | `.callprototype`, `.calltargets`, and `.branchtargets` have dedicated function-local CST/AST syntax; binding and declaration semantics validate their labels/members/contracts. Resolved module contracts retain bound metadata-label identities, scope, canonical call signatures, ordered call targets, and expanded logical branch-target entries. Generated `IndirectCall` layouts resolve a `.reg` target plus bound prototype/target-set metadata at PTX 2.1 / SM 20, and module resolution applies the shared call ABI contract. `brx.idx` resolves a `.u32` index and current-function `.branchtargets` identity at PTX 6.0 / SM 30; it does not build a CFG or prove dynamic control flow. |
-| Recovery/editing | Supported subset | `parseModule()` emits ordered diagnostics plus inserted/skipped/error CST recovery nodes and resumes at bounded structural/module anchors; a partial nested block retains its valid body but has no closing-brace token. Standalone instruction parsing remains fail-fast. Recovered modules lower only valid neighboring nodes; recovery markers remain CST-only and parser diagnostics return once in source order. The installed consumer covers legal PTX 9.3 directive text, semantic directive failure, and recovered unknown directives. Round-trip serialization uses the original token buffer rather than recovery markers. An opt-in Clang lexer/CST libFuzzer target has a GTest seed smoke, but no ASan/UBSan or CI matrix yet |
+| Recovery/editing | Supported subset | `parseModule()` emits ordered diagnostics plus inserted/skipped/error CST recovery nodes and resumes at bounded structural/module anchors; a partial nested block retains its valid body but has no closing-brace token. Standalone instruction parsing remains fail-fast. Recovered modules lower only valid neighboring nodes; recovery markers remain CST-only and parser diagnostics return once in source order. The installed consumer covers legal PTX 9.3 directive text, semantic directive failure, and recovered unknown directives. Round-trip serialization uses the original token buffer rather than recovery markers. Opt-in Clang lexer/CST and bounded frontend libFuzzer targets use private ASan/UBSan instrumentation, deterministic seed replay and bounded CI smoke; internal canaries cover strict source/AST-free ownership checks. See the [fuzz guide](us-en/fuzzing.md) |
 | Resolved opcodes | Partial | The documented supported forms and their parser/resolver/checker tests define the current opcode boundary; the [ISA-wide audit](us-en/converage/coverage_status.md) distinguishes root inventory from form completeness. The M12 common-kernel corpus validates 60 frozen forms through parse, resolve, and target-aware checking on `sm_80`, `sm_90a`, and `sm_100`; its `setmaxnreg.inc.sync.aligned.u32` occurrence is only in the `sm_90a` corpus fixture. Corpus presence is distinct from checker availability and complete ISA coverage. The current `setmaxnreg` target matrix and all five miscellaneous opcodes are described in [miscellaneous coverage](#miscellaneous-coverage). Uncatalogued official spellings report `UnknownTarget`; translation compatibility is not inferred. Other frozen slices remain partial; simulator execution remains unsupported. |
 | PTX 9.3 miscellaneous instructions | Supported | `brkpt`, `nanosleep.u32`, `pmevent` index/mask, `trap`, and `setmaxnreg.inc`/`.dec` with operand and target checks. See [miscellaneous coverage](#miscellaneous-coverage). |
 
@@ -8930,12 +8930,24 @@ the original parser diagnostics once and in source order. Round-trip
 serialization uses the original token buffer rather than recovery markers. A
 nested block missing its required `}`
 retains its parsed body and an inserted marker, with no `right_brace` token.
-The opt-in Clang `PTX_FRONTEND_BUILD_FUZZERS` target fuzzes raw lexer and CST
-input; its entry point is also exercised by a small GTest seed smoke. It has no
-ASan/UBSan or CI matrix yet. From the source root, run
-`cmake -S . -B out/fuzz -DPTX_FRONTEND_BUILD_FUZZERS=ON -DBUILD_TESTING=OFF`,
-`cmake --build out/fuzz --target fuzz_lexer_cst`, then
-`out/fuzz/submod/cst/fuzz_lexer_cst submod/cst/fuzz/corpus`.
+The default-OFF Clang `PTX_FRONTEND_BUILD_FUZZERS` build provides
+`fuzz_lexer_cst` and a bounded (64 KiB) `fuzz_frontend` pipeline. The latter
+exercises instruction/module AST parsing and clean-AST binding, resolution and
+strict validation; expected parse/recovery/semantic failures return normally.
+After strict success, it checks source/AST-free owned validation and module,
+function and instruction copy/move/clone preservation under the same
+`RequireCompleteContext` policy. It does not fuzz public-IR mutation or call
+ptxas per input. Private libFuzzer coverage plus nonrecovering ASan/UBSan
+instrument base through resolved IR, including generated sources and common
+inline code through consumers. A separate `BUILD_TESTING=OFF` build is required;
+ordinary SDK target interfaces are unchanged. Internal canaries prove 16-bit whole hardware-vector MOV and
+scalar immediate ST reach strict ownership checks and replay malformed/deep
+inputs; the canary also runs in ordinary CTest builds. A bounded CI smoke
+replays hand-authored/recovery and existing MIT natural seeds, then runs both
+fixed-seed campaigns with failure artifacts. See the reproducible
+[English fuzz guide](us-en/fuzzing.md) / [中文指南](zh-han/fuzzing.md) for build,
+budget, scratch corpus and replay commands. These checks are bounded robustness
+evidence, not exhaustive semantic conformance.
 The module grammar does not yet accept
 other kernel-tuning directives or a token-edit API. The parser validates initializer
 grammar shape and state-space/linkage constraints; the following declaration

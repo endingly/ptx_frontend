@@ -1,0 +1,1 @@
+frontend canary: 2 strict + ownership successes; rejection/depth/cap replay passed

@@ -12,6 +12,7 @@
 | 详细主题 | English | 中文 |
 | --- | --- | --- |
 | Bitwise constant-expression signedness | [EN](../us-en/bitwise_constant_policy.md) | [中文](bitwise_constant_policy.md) |
+| 有界前端模糊测试 | [EN](../us-en/fuzzing.md) | [中文](fuzzing.md) |
 | Generated-model build scalability | [EN](../us-en/build_scalability.md) | [中文](build_scalability.md) |
 | Installed CMake Components | [EN](../us-en/cmake_components.md) | [中文](cmake_components.md) |
 | C++ naming and legacy-interface policy | [EN](../us-en/code_conventions.md) | [中文](code_conventions.md) |

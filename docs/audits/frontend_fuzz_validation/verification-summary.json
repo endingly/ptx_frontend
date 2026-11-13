@@ -1,0 +1,202 @@
+{
+  "build": {
+    "build_dir": "out/build/fuzz-asan",
+    "build_file_sha256": {
+      ".ninja_log": "1e81f905b9344beacecd5e1bb61b65c10566f27b454425cd7c7a491e7cdfc656",
+      "CMakeCache.txt": "c6319e67fac45079c69cc3c24aebeed0bd657b9586c0bde6821fa8755ae504d9",
+      "build.log": "6b154f76be44cd2d84ab45153325f8cd1c66fa6fea778e6b3b56799fa7f6588b",
+      "build.ninja": "eca79dd80083bde26ac0d16fb08075594238b60c958e354c39397583685fa31f",
+      "compile_commands.json": "8ddb3453f165a9a2f696aa35085da55395ae48e6ecae90197322b7909d2672a7"
+    },
+    "captured_ninja_commands_count": 344,
+    "compile_commands_count": 332,
+    "compiled_source_aggregate_sha256": "515556a8e24e7707736d5067ad72176c6a43266c4c5af92b7c488ee67d05654d",
+    "compiled_source_count": 331,
+    "component_object_counts": {
+      "base": 3,
+      "binding": 1,
+      "cst": 8,
+      "lexer": 2,
+      "resolved_ir": 308,
+      "semantic": 2,
+      "syntax": 3
+    },
+    "configuration": {
+      "BUILD_TESTING:BOOL": "OFF",
+      "CMAKE_CXX_COMPILER:STRING": "/workspace/.ptx-fuzz-toolchain/root/usr/bin/clang++-19",
+      "CMAKE_LINKER:FILEPATH": "/workspace/.ptx-fuzz-toolchain/root/usr/bin/ld.lld-19",
+      "PTX_FRONTEND_BUILD_FUZZERS:BOOL": "ON"
+    },
+    "executable_sha256": {
+      "fuzz_frontend": "088a2ec7c7885fc0094908c8a69b680addc002e61050ba8dd4362e11dfd50a43",
+      "fuzz_frontend_canary": "1cf782f9568c1a72b87bf99ab9f553fa4d4050ddb969ff1b971bbc5dc1b020d8",
+      "fuzz_lexer_cst": "dfbfe7a39087848b439fb49a6196f35cf5cc8b39630f32b723ca10697b5e23e7"
+    },
+    "generated_resolved_ir_objects": 290,
+    "incremental_confirmation": {
+      "command": "cmake --build out/build/fuzz-asan --target fuzz_frontend fuzz_lexer_cst fuzz_frontend_canary -j4",
+      "exit_status": 0,
+      "result": "CMake reconfigure succeeded; ninja: no work to do."
+    },
+    "instrumentation_missing_objects": 0,
+    "link_modes": {
+      "fuzz_frontend": "ASan+UBSan+libFuzzer",
+      "fuzz_frontend_canary": "ASan+UBSan standalone",
+      "fuzz_lexer_cst": "ASan+UBSan+libFuzzer"
+    },
+    "ninja_commands_file_sha256": "c07df5baf36e503c6b11f86b453d8a1e5cb95bdedf288d197476a2c9c911ebf4",
+    "toolchain": {
+      "clang": "Debian clang version 19.1.7 (3+b1)",
+      "linker": "Debian LLD 19.1.7 (compatible with GNU linkers)",
+      "standard_library": "Clang defaulted to system GCC libstdc++ 14.2.0",
+      "system_gxx": "g++ (Debian 14.2.0-19) 14.2.0"
+    }
+  },
+  "hashes": {
+    "initial_corpus_manifest": "out/fuzz-local-verified/initial-corpora.json",
+    "ninja_commands": "out/fuzz-local-verified/ninja-commands.txt",
+    "run_metadata_matches_current": {
+      "/workspace/ptx_frontend/fuzz/run_smoke.py": true,
+      "/workspace/ptx_frontend/out/build/fuzz-asan/CMakeCache.txt": true,
+      "/workspace/ptx_frontend/out/build/fuzz-asan/compile_commands.json": true,
+      "/workspace/ptx_frontend/out/build/fuzz-asan/fuzz_frontend": true,
+      "/workspace/ptx_frontend/out/build/fuzz-asan/fuzz_frontend_canary": true,
+      "/workspace/ptx_frontend/out/build/fuzz-asan/fuzz_lexer_cst": true
+    },
+    "seed_manifest": "out/fuzz-local-verified/seeds.json",
+    "task_changed_files_sha256": {
+      ".github/workflows/frontend-fuzz.yml": "5195523dca210af026eddbda9c4d6703c3ac6bcceec19d63bc57eed5b602ccd5",
+      "CMakeLists.txt": "b6d863ed02dbb39df9679403453e6acd6af9b87d2119c6c2ac291e3bbfbc6869",
+      "cmake/frontend_fuzz.cmake": "c3d3d9d3f1aa5c8e0f1edf30c0c25274079e053f290a02ce61360058cd80529d",
+      "docs/audits/frontend_fuzz_review.md": "ce2af63c37caf396b44b17b9ea7c08a069c069816ac11d05bc11899486884f91",
+      "docs/sdk_support.md": "c5e4e353f082071956c0ccf92b596c236d104246b625d3d7106079c9ba0e22fd",
+      "docs/us-en/fuzzing.md": "2d5e6f9023145078db2b07ac60a257293b601820844e774fb6ba62ae7161888c",
+      "docs/us-en/index.md": "930484917c77901d0671b87bb0e4b04f906862615e3d6088baa177e841bc8fea",
+      "docs/zh-han/fuzzing.md": "991b663641eda3769197348ba178e4614f7cf3c67f26bacb55ce1dbc0c7b4e64",
+      "docs/zh-han/index.md": "810c6fcf6064fbfa5f20f84dd87c8fae527b389da830d98586fc9683546f744b",
+      "fuzz/corpus/arithmetic.ptx": "0fc02e9ddccaf1a32b33aece0a25b7db6dabe99ef4e7b2d48210f124520aebe0",
+      "fuzz/corpus/block-depth.ptx": "6bd1d09023126d5b318e4d9795377a9a89ad7c2453325de85209ca17c14f249d",
+      "fuzz/corpus/c1.ptx": "43e243a8a3285126ebb1d32d7f027d29e1c0f0642711b502d5bf8c486c826030",
+      "fuzz/corpus/constant-depth.ptx": "88b47b0882e88c78aa69ae1bd67beaef102bef25f6dc51b8c5e1df8af2eb792e",
+      "fuzz/corpus/instruction.ptx": "5e9b08270e2f3516cb61cb4258c70d37043b30195847c3b0f40bf44ecb8d0dcf",
+      "fuzz/corpus/invalid-bytes": "1550935a58a9980170cc4e3afc9c8ac0db78e81e749b8dc134ccd280c976bf3a",
+      "fuzz/corpus/missing-context.ptx": "51d60624b178655f7584d29ee8a1430b94f0658dc1f0d9a1f0097aecfdde2dfa",
+      "fuzz/corpus/recovery.ptx": "b7e53305f5f9a0cf9710749e1d6656f48d667f37f6e41333b563eaa957c1a565",
+      "fuzz/corpus/store.ptx": "4da2b01fda8e24a6fd91130e55046c77deb633de792d9f4890be8571d50e77a5",
+      "fuzz/frontend_canary.cpp": "6082f3c335b9b9dd2641b4703ffa15d0e28c158233f60a53cf669573400ef0a7",
+      "fuzz/frontend_fuzz.cpp": "db813200d7375b091602fd281cd5d26be75d942435e4afed99aa67c69f4c9fe0",
+      "fuzz/frontend_fuzz.hpp": "830ddfbb77f53f65aa75c2b933867f8980677f954774cd4ba74972652c90d57f",
+      "fuzz/frontend_fuzz_entry.cpp": "ad8a52b842c04e4f6b75dcc17983c195fc21af8c30fae4abd14702f6dfbac425",
+      "fuzz/ptx.dict": "7017dba7861e38374dbaabae2f0901abf8daf5f3603bf3db1fb971a6ef231157",
+      "fuzz/run_smoke.py": "217dbee2feccfb4bdbfec43246726fda1db2d9d55853e819aba80782cc896a3b",
+      "submod/cst/CMakeLists.txt": "b727a198a107f1297ef2b5f60ffc9e07a0ed9b618345d6837ee2b396c48a7eeb"
+    }
+  },
+  "repository": {
+    "branch": "audit/ptx93-manual-conformance",
+    "head": "c77d9bc5f580030a2c26c72ab5888eab96fe4011",
+    "task_worktree_files": [
+      ".github/workflows/frontend-fuzz.yml",
+      "CMakeLists.txt",
+      "cmake/frontend_fuzz.cmake",
+      "docs/audits/frontend_fuzz_review.md",
+      "docs/sdk_support.md",
+      "docs/us-en/fuzzing.md",
+      "docs/us-en/index.md",
+      "docs/zh-han/fuzzing.md",
+      "docs/zh-han/index.md",
+      "fuzz/corpus/arithmetic.ptx",
+      "fuzz/corpus/block-depth.ptx",
+      "fuzz/corpus/c1.ptx",
+      "fuzz/corpus/constant-depth.ptx",
+      "fuzz/corpus/instruction.ptx",
+      "fuzz/corpus/invalid-bytes",
+      "fuzz/corpus/missing-context.ptx",
+      "fuzz/corpus/recovery.ptx",
+      "fuzz/corpus/store.ptx",
+      "fuzz/frontend_canary.cpp",
+      "fuzz/frontend_fuzz.cpp",
+      "fuzz/frontend_fuzz.hpp",
+      "fuzz/frontend_fuzz_entry.cpp",
+      "fuzz/ptx.dict",
+      "fuzz/run_smoke.py",
+      "submod/cst/CMakeLists.txt"
+    ]
+  },
+  "scope_note": "Finite local compiler fuzz campaigns only; not exhaustive semantic conformance and not hosted CI execution.",
+  "smoke": {
+    "campaigns": {
+      "fuzz_frontend": {
+        "command_seconds": 52.889,
+        "cov": 22459,
+        "exec_per_second": 384,
+        "features": 71764,
+        "final_rss_mb": 793,
+        "log_duration": "52 second(s)",
+        "max_observed_rss_mb": 793,
+        "returncode": 0,
+        "runs": 20000
+      },
+      "fuzz_lexer_cst": {
+        "command_seconds": 54.94,
+        "cov": 2859,
+        "exec_per_second": 370,
+        "features": 13190,
+        "final_rss_mb": 456,
+        "log_duration": "54 second(s)",
+        "max_observed_rss_mb": 456,
+        "returncode": 0,
+        "runs": 20000
+      }
+    },
+    "canary": {
+      "output": "frontend canary: 2 strict + ownership successes; rejection/depth/cap replay passed",
+      "returncode": 0,
+      "seconds": 0.569
+    },
+    "command": "/tmp/ptx93-audit-tools/venv/bin/python fuzz/run_smoke.py --build out/build/fuzz-asan --scratch out/fuzz-local-verified --runs 20000 --seconds 90 --seed 93",
+    "crash_artifacts": [],
+    "initial_corpora": {
+      "fuzz_frontend": {
+        "all_match_seed_sources": true,
+        "count": 32
+      },
+      "fuzz_lexer_cst": {
+        "all_match_seed_sources": true,
+        "count": 32
+      }
+    },
+    "limits": {
+      "ASAN_OPTIONS": "abort_on_error=1:detect_leaks=1",
+      "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1",
+      "max_input_bytes": 65536,
+      "max_total_time_seconds_per_target": 90,
+      "per_input_timeout_seconds": 5,
+      "rss_limit_mb": 2048,
+      "runs_requested_per_target": 20000,
+      "seed": 93
+    },
+    "overall_exit_status": 0,
+    "replays": {
+      "fuzz_frontend": {
+        "cov": 20343,
+        "features": 44221,
+        "final_rss_mb": 654,
+        "returncode": 0,
+        "runs": 33
+      },
+      "fuzz_lexer_cst": {
+        "cov": 1698,
+        "features": 4678,
+        "final_rss_mb": 57,
+        "returncode": 0,
+        "runs": 33
+      }
+    },
+    "sanitizer_or_crash_markers": [],
+    "seed_integrity_all_match": true,
+    "source_seed_bytes_max": 9540,
+    "source_seed_bytes_total": 71371,
+    "source_seed_count": 32
+  }
+}

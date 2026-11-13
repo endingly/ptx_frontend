@@ -1,0 +1,60 @@
+{
+  "base_commit": "c77d9bc5f580030a2c26c72ab5888eab96fe4011",
+  "tracked_diff_sha256": "836593861c98eb84b0c644e76499b3ec27eb9e32f82af08682c31ff3f3932aaa",
+  "files": {
+    ".github/workflows/frontend-fuzz.yml": "5195523dca210af026eddbda9c4d6703c3ac6bcceec19d63bc57eed5b602ccd5",
+    "CMakeLists.txt": "b6d863ed02dbb39df9679403453e6acd6af9b87d2119c6c2ac291e3bbfbc6869",
+    "cmake/frontend_fuzz.cmake": "c3d3d9d3f1aa5c8e0f1edf30c0c25274079e053f290a02ce61360058cd80529d",
+    "docs/sdk_support.md": "c5e4e353f082071956c0ccf92b596c236d104246b625d3d7106079c9ba0e22fd",
+    "docs/us-en/fuzzing.md": "2d5e6f9023145078db2b07ac60a257293b601820844e774fb6ba62ae7161888c",
+    "docs/us-en/index.md": "930484917c77901d0671b87bb0e4b04f906862615e3d6088baa177e841bc8fea",
+    "docs/zh-han/fuzzing.md": "991b663641eda3769197348ba178e4614f7cf3c67f26bacb55ce1dbc0c7b4e64",
+    "docs/zh-han/index.md": "810c6fcf6064fbfa5f20f84dd87c8fae527b389da830d98586fc9683546f744b",
+    "fuzz/corpus/arithmetic.ptx": "0fc02e9ddccaf1a32b33aece0a25b7db6dabe99ef4e7b2d48210f124520aebe0",
+    "fuzz/corpus/block-depth.ptx": "6bd1d09023126d5b318e4d9795377a9a89ad7c2453325de85209ca17c14f249d",
+    "fuzz/corpus/c1.ptx": "43e243a8a3285126ebb1d32d7f027d29e1c0f0642711b502d5bf8c486c826030",
+    "fuzz/corpus/constant-depth.ptx": "88b47b0882e88c78aa69ae1bd67beaef102bef25f6dc51b8c5e1df8af2eb792e",
+    "fuzz/corpus/instruction.ptx": "5e9b08270e2f3516cb61cb4258c70d37043b30195847c3b0f40bf44ecb8d0dcf",
+    "fuzz/corpus/invalid-bytes": "1550935a58a9980170cc4e3afc9c8ac0db78e81e749b8dc134ccd280c976bf3a",
+    "fuzz/corpus/missing-context.ptx": "51d60624b178655f7584d29ee8a1430b94f0658dc1f0d9a1f0097aecfdde2dfa",
+    "fuzz/corpus/recovery.ptx": "b7e53305f5f9a0cf9710749e1d6656f48d667f37f6e41333b563eaa957c1a565",
+    "fuzz/corpus/store.ptx": "4da2b01fda8e24a6fd91130e55046c77deb633de792d9f4890be8571d50e77a5",
+    "fuzz/frontend_canary.cpp": "6082f3c335b9b9dd2641b4703ffa15d0e28c158233f60a53cf669573400ef0a7",
+    "fuzz/frontend_fuzz.cpp": "db813200d7375b091602fd281cd5d26be75d942435e4afed99aa67c69f4c9fe0",
+    "fuzz/frontend_fuzz.hpp": "830ddfbb77f53f65aa75c2b933867f8980677f954774cd4ba74972652c90d57f",
+    "fuzz/frontend_fuzz_entry.cpp": "ad8a52b842c04e4f6b75dcc17983c195fc21af8c30fae4abd14702f6dfbac425",
+    "fuzz/ptx.dict": "7017dba7861e38374dbaabae2f0901abf8daf5f3603bf3db1fb971a6ef231157",
+    "fuzz/run_smoke.py": "217dbee2feccfb4bdbfec43246726fda1db2d9d55853e819aba80782cc896a3b",
+    "submod/cst/CMakeLists.txt": "b727a198a107f1297ef2b5f60ffc9e07a0ed9b618345d6837ee2b396c48a7eeb"
+  },
+  "delivery_content_sha256": "1692524328780836381450cdfcc87bdedc52a36ffffbed2a9dabfd64f436d379",
+  "scope_note": "24 implementation, seed, workflow and maintained support files; independent review and validation records are separate evidence.",
+  "evidence_hashes": {
+    "canary.log": "448c5769b5938650c3400bbbff7ce4e2483db7fa098020f6ee362631f8fe4aed",
+    "fuzz-gcc-canary.log": "bb4aab4f8ba12f844c22a88073be2e6c5f5632a47e36415c18681d19bd932e1e",
+    "fuzz-gcc-cst.log": "f1b30586e9c64702c51d2efc7f6e3425f28a66c1e2692d228d95070a68a8450f",
+    "fuzz-gcc-regressions.log": "efa03448ccdddb8595c1893b9eca9ad34f748bb1afda77c06e9406686af99882",
+    "fuzz-gcc-syntax.log": "34602c44f753aade77aaa552408dfeb7e57838367e5476897d450d1bd07c215c",
+    "fuzz-instrumentation.txt": "bf50390de1935cc43d6911f0dd018f36a17925fe8920dfc436dfcc94c71038d5",
+    "fuzz_frontend-campaign.log": "173ff369a7f7e0baa21a5605e58fc74aaac4b456604cce178c63649b83f89850",
+    "fuzz_frontend-replay.log": "622d8365d210f0a9cf618f37b8a4739771b7e49b977a5cf11c826b26f3c31421",
+    "fuzz_lexer_cst-campaign.log": "2ea1098a47e1bb8c48ceccb7b39462f092ea9e38fee03b3e60496b2f637c7cbe",
+    "fuzz_lexer_cst-replay.log": "2ee959d1f3d46ef915bf75f1f33db299e8993219b6037f51b296f3ac4dba1bb6",
+    "initial-corpora.json": "2cafca5c156f7bb3d2b1885ffd7418b58bf540a72f6bbe223da8c91490ff0667",
+    "ninja-commands.txt": "c07df5baf36e503c6b11f86b453d8a1e5cb95bdedf288d197476a2c9c911ebf4",
+    "run-metadata.json": "6323bec446fd3203db23fa5be99faf1d316677af1dfb2775444f7e293b76541b",
+    "seeds.json": "6eb6885617e1994a6082377aacfc0e62a93f886095d39b47c251fed73361570a",
+    "summary.json": "096e5949030058a5b168e853b98f985e9a92798991f7ed558625887ee4fc65de",
+    "toolchain-provenance.txt": "c0fac696102f7781c8c9f063788b3f9e6749cba3a2f476ca3ae16acff07b3595",
+    "verification-summary.json": "035a019f489504603d712c06ca9339081c5de19524e9ede2100808b60b835fb1"
+  },
+  "core_review": {
+    "record": "../frontend_fuzz_review.md",
+    "verdict": "accept",
+    "sha256": "f6e482db4c0e3e38d518d2739ed4aaa31830e45d2dc3d50266d52cb37c8ae79d"
+  },
+  "validation_report": {
+    "record": "../frontend_fuzz_validation.md",
+    "sha256": "1415707f60039ff27bf24149e3e865581926efc9ec289b4968afde042f3045d7"
+  }
+}

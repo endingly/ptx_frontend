@@ -1,0 +1,76 @@
+[
+  {
+    "command": [
+      "/workspace/ptx_frontend/out/build/fuzz-asan/fuzz_frontend_canary"
+    ],
+    "log": "canary.log",
+    "returncode": 0,
+    "seconds": 0.569
+  },
+  {
+    "command": [
+      "/workspace/ptx_frontend/out/build/fuzz-asan/fuzz_lexer_cst",
+      "-seed=93",
+      "-max_len=65536",
+      "-timeout=5",
+      "-rss_limit_mb=2048",
+      "-artifact_prefix=/workspace/ptx_frontend/out/fuzz-local-verified/fuzz_lexer_cst/artifacts/",
+      "-dict=/workspace/ptx_frontend/fuzz/ptx.dict",
+      "-runs=0",
+      "/workspace/ptx_frontend/out/fuzz-local-verified/fuzz_lexer_cst/corpus"
+    ],
+    "log": "fuzz_lexer_cst-replay.log",
+    "returncode": 0,
+    "seconds": 0.265
+  },
+  {
+    "command": [
+      "/workspace/ptx_frontend/out/build/fuzz-asan/fuzz_lexer_cst",
+      "-seed=93",
+      "-max_len=65536",
+      "-timeout=5",
+      "-rss_limit_mb=2048",
+      "-artifact_prefix=/workspace/ptx_frontend/out/fuzz-local-verified/fuzz_lexer_cst/artifacts/",
+      "-dict=/workspace/ptx_frontend/fuzz/ptx.dict",
+      "-runs=20000",
+      "-max_total_time=90",
+      "/workspace/ptx_frontend/out/fuzz-local-verified/fuzz_lexer_cst/corpus"
+    ],
+    "log": "fuzz_lexer_cst-campaign.log",
+    "returncode": 0,
+    "seconds": 54.94
+  },
+  {
+    "command": [
+      "/workspace/ptx_frontend/out/build/fuzz-asan/fuzz_frontend",
+      "-seed=93",
+      "-max_len=65536",
+      "-timeout=5",
+      "-rss_limit_mb=2048",
+      "-artifact_prefix=/workspace/ptx_frontend/out/fuzz-local-verified/fuzz_frontend/artifacts/",
+      "-dict=/workspace/ptx_frontend/fuzz/ptx.dict",
+      "-runs=0",
+      "/workspace/ptx_frontend/out/fuzz-local-verified/fuzz_frontend/corpus"
+    ],
+    "log": "fuzz_frontend-replay.log",
+    "returncode": 0,
+    "seconds": 1.47
+  },
+  {
+    "command": [
+      "/workspace/ptx_frontend/out/build/fuzz-asan/fuzz_frontend",
+      "-seed=93",
+      "-max_len=65536",
+      "-timeout=5",
+      "-rss_limit_mb=2048",
+      "-artifact_prefix=/workspace/ptx_frontend/out/fuzz-local-verified/fuzz_frontend/artifacts/",
+      "-dict=/workspace/ptx_frontend/fuzz/ptx.dict",
+      "-runs=20000",
+      "-max_total_time=90",
+      "/workspace/ptx_frontend/out/fuzz-local-verified/fuzz_frontend/corpus"
+    ],
+    "log": "fuzz_frontend-campaign.log",
+    "returncode": 0,
+    "seconds": 52.889
+  }
+]

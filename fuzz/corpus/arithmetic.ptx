@@ -1,0 +1,4 @@
+.version 9.3
+.target sm_80
+.address_size 64
+.entry add() { .reg .u32 %r<3>; add.u32 %r0, %r1, %r2; ret; }

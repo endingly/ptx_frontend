@@ -1,0 +1,42 @@
+Running main() from /tmp/ptx93-audit-deps/googletest/googletest/src/gtest_main.cc
+Note: Google Test filter = StImmediate.*:ResolvedFunctionOwnership.*:ModuleValidationContract.OwnsInstructionSourcesAfterAstDestruction
+[==========] Running 13 tests from 3 test suites.
+[----------] Global test environment set-up.
+[----------] 5 tests from ResolvedFunctionOwnership
+[ RUN      ] ResolvedFunctionOwnership.RetainsOpaqueParametersAcrossValueCopies
+[       OK ] ResolvedFunctionOwnership.RetainsOpaqueParametersAcrossValueCopies (8 ms)
+[ RUN      ] ResolvedFunctionOwnership.CopiesEveryNonNullInstructionIndependently
+[       OK ] ResolvedFunctionOwnership.CopiesEveryNonNullInstructionIndependently (0 ms)
+[ RUN      ] ResolvedFunctionOwnership.AssignmentHasStrongGuaranteeOnCloneFailure
+[       OK ] ResolvedFunctionOwnership.AssignmentHasStrongGuaranteeOnCloneFailure (0 ms)
+[ RUN      ] ResolvedFunctionOwnership.BodyGrowthKeepsBorrowedInstructionStable
+[       OK ] ResolvedFunctionOwnership.BodyGrowthKeepsBorrowedInstructionStable (0 ms)
+[ RUN      ] ResolvedFunctionOwnership.NullBodyEntryFailsOwnedValidation
+[       OK ] ResolvedFunctionOwnership.NullBodyEntryFailsOwnedValidation (5 ms)
+[----------] 5 tests from ResolvedFunctionOwnership (16 ms total)
+
+[----------] 1 test from ModuleValidationContract
+[ RUN      ] ModuleValidationContract.OwnsInstructionSourcesAfterAstDestruction
+[       OK ] ModuleValidationContract.OwnsInstructionSourcesAfterAstDestruction (0 ms)
+[----------] 1 test from ModuleValidationContract (0 ms total)
+
+[----------] 7 tests from StImmediate
+[ RUN      ] StImmediate.PreservesIntegerSourceAndNarrowedBits
+[       OK ] StImmediate.PreservesIntegerSourceAndNarrowedBits (25 ms)
+[ RUN      ] StImmediate.PreservesFloatingWordsAndRejectsOtherOrigins
+[       OK ] StImmediate.PreservesFloatingWordsAndRejectsOtherOrigins (23 ms)
+[ RUN      ] StImmediate.CoversSpacesQualifiersAndRetainsRegisterOnlyRoles
+[       OK ] StImmediate.CoversSpacesQualifiersAndRetainsRegisterOnlyRoles (7 ms)
+[ RUN      ] StImmediate.RejectsForgedWidthAndFloatingOrigin
+[       OK ] StImmediate.RejectsForgedWidthAndFloatingOrigin (0 ms)
+[ RUN      ] StImmediate.OwnsSourcesAfterReleaseAndPreservesAstCorrespondence
+[       OK ] StImmediate.OwnsSourcesAfterReleaseAndPreservesAstCorrespondence (7 ms)
+[ RUN      ] StImmediate.KeepsOtherNumericImmediateRoles
+[       OK ] StImmediate.KeepsOtherNumericImmediateRoles (0 ms)
+[ RUN      ] StImmediate.PreservesParameterAndCallStagingRules
+[       OK ] StImmediate.PreservesParameterAndCallStagingRules (13 ms)
+[----------] 7 tests from StImmediate (79 ms total)
+
+[----------] Global test environment tear-down
+[==========] 13 tests from 3 test suites ran. (96 ms total)
+[  PASSED  ] 13 tests.

@@ -1,0 +1,7 @@
+Test project /tmp/ptx93-audit-build
+    Start 1: fuzz_frontend_canary
+1/1 Test #1: fuzz_frontend_canary .............   Passed    0.06 sec
+
+100% tests passed out of 1
+
+Total Test time (real) =   0.10 sec

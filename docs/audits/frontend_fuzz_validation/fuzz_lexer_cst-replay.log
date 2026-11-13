@@ -1,0 +1,10 @@
+Dictionary: 32 entries
+INFO: Running with entropic power schedule (0xFF, 100).
+INFO: Seed: 93
+INFO: Loaded 1 modules   (11709 inline 8-bit counters): 11709 [0x55c615ab38b0, 0x55c615ab666d), 
+INFO: Loaded 1 PC tables (11709 PCs): 11709 [0x55c615ab6670,0x55c615ae4240), 
+INFO:       32 files found in /workspace/ptx_frontend/out/fuzz-local-verified/fuzz_lexer_cst/corpus
+INFO: seed corpus: files: 32 min: 3b max: 9540b total: 71371b rss: 32Mb
+#33	INITED cov: 1698 ft: 4678 corp: 31/69Kb exec/s: 0 rss: 57Mb
+#33	DONE   cov: 1698 ft: 4678 corp: 31/69Kb lim: 9540 exec/s: 0 rss: 57Mb
+Done 33 runs in 0 second(s)

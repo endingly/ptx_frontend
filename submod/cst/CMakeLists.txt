@@ -15,23 +15,6 @@ target_link_libraries(
     ptx_frontend::base
 )
 
-option(PTX_FRONTEND_BUILD_FUZZERS "Build the Clang lexer/CST fuzz target" OFF)
-if(PTX_FRONTEND_BUILD_FUZZERS)
-    if(BUILD_TESTING)
-        message(FATAL_ERROR
-            "PTX_FRONTEND_BUILD_FUZZERS requires a separate build with BUILD_TESTING=OFF")
-    endif()
-    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        message(FATAL_ERROR "PTX_FRONTEND_BUILD_FUZZERS requires Clang/libFuzzer")
-    endif()
-    target_compile_options(ptx_frontend_lexer PRIVATE -fsanitize=fuzzer-no-link)
-    target_compile_options(ptx_frontend_cst PRIVATE -fsanitize=fuzzer-no-link)
-    add_executable(fuzz_lexer_cst fuzz/lexer_cst_fuzz.cpp)
-    target_link_libraries(fuzz_lexer_cst PRIVATE ptx_frontend::cst)
-    target_compile_options(fuzz_lexer_cst PRIVATE -fsanitize=fuzzer)
-    target_link_options(fuzz_lexer_cst PRIVATE -fsanitize=fuzzer)
-endif()
-
 if(BUILD_TESTING)
     file(GLOB_RECURSE test_cst_srcs CONFIGURE_DEPENDS test/*.cpp)
     add_executable(test_cst ${test_cst_srcs})

@@ -1,0 +1,14 @@
+{
+  "files": {
+    "/workspace/ptx_frontend/out/build/fuzz-asan/fuzz_frontend_canary": "1cf782f9568c1a72b87bf99ab9f553fa4d4050ddb969ff1b971bbc5dc1b020d8",
+    "/workspace/ptx_frontend/out/build/fuzz-asan/fuzz_lexer_cst": "dfbfe7a39087848b439fb49a6196f35cf5cc8b39630f32b723ca10697b5e23e7",
+    "/workspace/ptx_frontend/out/build/fuzz-asan/fuzz_frontend": "088a2ec7c7885fc0094908c8a69b680addc002e61050ba8dd4362e11dfd50a43",
+    "/workspace/ptx_frontend/out/build/fuzz-asan/compile_commands.json": "8ddb3453f165a9a2f696aa35085da55395ae48e6ecae90197322b7909d2672a7",
+    "/workspace/ptx_frontend/out/build/fuzz-asan/CMakeCache.txt": "c6319e67fac45079c69cc3c24aebeed0bd657b9586c0bde6821fa8755ae504d9",
+    "/workspace/ptx_frontend/fuzz/run_smoke.py": "217dbee2feccfb4bdbfec43246726fda1db2d9d55853e819aba80782cc896a3b"
+  },
+  "environment": {
+    "ASAN_OPTIONS": "abort_on_error=1:detect_leaks=1",
+    "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
+  }
+}

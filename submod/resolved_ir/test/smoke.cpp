@@ -158,12 +158,15 @@ void negative_cases() {
 
   auto instruction = resolve("add.s32 %r0, %r1, 7;");
   auto& add = dynamic_cast<ir::AddIntegerNoSat&>(*instruction);
-  std::get<ir::ResolvedImmediate>(add.src2.value).type = ir::ScalarType::F32;
+  auto& immediate = std::get<ir::ResolvedImmediate>(add.src2.value);
+  const auto original_immediate = immediate;
+  immediate.type = ir::ScalarType::F32;
+  immediate.integer_source_bits.reset();
   auto mismatch = add.check(context());
   first_error(mismatch, ck::CheckDiagnosticKind::OperandTypeMismatch);
   require(mismatch.error().front().range == add.src2.locs.front(),
           "diagnostic source lost");
-  std::get<ir::ResolvedImmediate>(add.src2.value).type = ir::ScalarType::S32;
+  immediate = original_immediate;
   add.dst.value.declared_type = ir::ScalarType::F64;
   first_error(add.check(context()),
               ck::CheckDiagnosticKind::OperandTypeMismatch);

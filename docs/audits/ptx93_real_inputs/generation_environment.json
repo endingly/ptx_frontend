@@ -1,0 +1,32 @@
+{
+  "nvcc_sha256": "6b55d91cd23f314ccb6801d71d64d20760a7ec31d37d87017ea0681d79bd3285",
+  "nvcc_version": {
+    "command": [
+      "/tmp/ptx93-nvcc/bin/nvcc",
+      "--version"
+    ],
+    "returncode": 0,
+    "stdout": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2026 NVIDIA Corporation\nBuilt on Fri_Apr_24_07:22:02_PM_PDT_2026\nCuda compilation tools, release 13.3, V13.3.33\nBuild cuda_13.3.r13.3/compiler.37862127_0\n",
+    "stderr": ""
+  },
+  "probe_source_path": "docs/audits/ptx93_probes/probe.cpp",
+  "probe_source_sha256": "4d721a57433483561a68138d3f45b6d5cf7eb69ae290a34c50a21846f9c1746c",
+  "gcc_version": {
+    "command": [
+      "gcc",
+      "--version"
+    ],
+    "returncode": 0,
+    "stdout": "gcc (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+    "stderr": ""
+  },
+  "generation_cwd": "/workspace/ptx_frontend",
+  "nvcc_prefix": "/tmp/ptx93-nvcc",
+  "note": "Original lineinfo PTX includes absolute repository and toolchain header paths. Byte-for-byte regeneration requires these paths. No compiler output normalization was performed.",
+  "earlier_unformatted_probe_source": {
+    "path": "/tmp/ptx93-audit-tools/probe.cpp",
+    "sha256": "74baa4247d04a5a94724cb230b005f5a65afb3c0f65e34b5e3bb2c7b7ca20125",
+    "note": "Initial audit-helper source, retained here only as origin metadata. The final compiled probe uses the canonical formatted source below."
+  },
+  "probe_source_note": "Canonical source compiled by the final CMake probe hook. The real-input results record the resulting executable hash. Formatting changed the earlier helper source bytes; no PTX compiler inputs or outputs were reformatted."
+}

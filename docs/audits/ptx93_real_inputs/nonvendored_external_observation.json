@@ -1,0 +1,30 @@
+{
+  "classification": "Observed external raw compiler output; NOT redistributed because companion NVIDIA source header references historical EULA. Root gpuocelot BSD license does not establish license for this NVIDIA sample. Not included in vendored 14-fixture corpus.",
+  "url": "https://raw.githubusercontent.com/gpuocelot/gpuocelot/b16039dc940dc6bc4ea0a98380495769ff35ed99/tests/cuda3.2/data/vectorAdd.ptx",
+  "sha256": "e3fcf206666bb26dd5dbe75a11c2b706667413fb75ee647296a940627678ce7b",
+  "bytes": 3482,
+  "compiler_banner": "nvopencc 3.2 built on 2010-09-08",
+  "target": "sm_10, map_f64_to_f32",
+  "license_header_url": "https://raw.githubusercontent.com/gpuocelot/gpuocelot/b16039dc940dc6bc4ea0a98380495769ff35ed99/tests/cuda3.2/tests/vectorAddDrv/vectorAdd.cu",
+  "frontend": {
+    "command": [
+      "/tmp/ptx93-audit-build/ptx93_probe",
+      "/tmp/vectorAdd.ptx"
+    ],
+    "returncode": 0,
+    "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+    "stderr": ""
+  },
+  "ptxas": {
+    "command": [
+      "/tmp/ptx93-nvcc/bin/ptxas",
+      "-arch=sm_10",
+      "/tmp/vectorAdd.ptx",
+      "-o",
+      "/tmp/ptx93-upstream-vector.cubin"
+    ],
+    "returncode": 255,
+    "stdout": "",
+    "stderr": "ptxas fatal   : Value 'sm_10' is not defined for option 'gpu-name'\n"
+  }
+}

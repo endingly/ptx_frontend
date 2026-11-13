@@ -1,0 +1,4 @@
+[0/2] Re-checking globbed directories...
+[1/4] Building CXX object submod/resolved_ir/CMakeFiles/test_resolved_ir.dir/test/test_miscellaneous_coverage.cpp.o
+[2/4] Building CXX object submod/resolved_ir/CMakeFiles/test_resolved_ir.dir/test/test_floating_bit_constants.cpp.o
+[3/4] Linking CXX executable submod/resolved_ir/test_resolved_ir

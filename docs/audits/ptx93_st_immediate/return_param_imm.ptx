@@ -1,0 +1,5 @@
+.version 9.3
+.target sm_100
+.address_size 64
+.func (.param .b32 result) give() { .reg .b32 %v; mov.b32 %v,17; st.param.b32 [result], 17; ret; }
+.visible .entry probe(.param .u64 output) { .reg .b64 %out; .reg .b32 %v; ld.param.u64 %out,[output]; { .param .b32 result; call (result),give,(); ld.param.b32 %v,[result]; } st.global.b32 [%out],%v; ret; }

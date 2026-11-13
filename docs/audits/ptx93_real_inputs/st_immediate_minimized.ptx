@@ -1,0 +1,12 @@
+// Audit-only minimization of nvcc13.3.33 histogram_sm_100.ptx's line58.
+// Not a natural compiler output and not a regression expectation.
+.version 9.3
+.target sm_100
+.address_size 64
+.visible .entry st_immediate_minimized() {
+ .reg .b32 %r;
+ .shared .b32 slot;
+ mov.u32 %r, slot;
+ st.shared.b32 [%r], 0;
+ ret;
+}

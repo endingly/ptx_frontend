@@ -1,0 +1,23 @@
+command: python .github/scripts/check_clang_format.py --clang-format /tmp/ptx93-audit-tools/venv/bin/clang-format
+exit_code: 0
+
+untracked submod/resolved_ir/test/test_st_immediate.cpp exit_code: 0
+
+untracked docs/audits/ptx93_probes/probe.cpp exit_code: 0
+
+final repair examples/memory_cache_hint_consumer/main.cpp exit_code: 0
+
+final repair submod/resolved_ir/src/ptx_resolved_ir_checker.cpp exit_code: 0
+
+final repair submod/resolved_ir/test/test_floating_bit_constants.cpp exit_code: 0
+
+final repair submod/resolved_ir/test/test_instruction_constant_expressions.cpp exit_code: 0
+
+final repair submod/resolved_ir/test/test_miscellaneous_coverage.cpp exit_code: 0
+
+final repair submod/resolved_ir/test/test_select_variant_add.cpp exit_code: 0
+
+final repair submod/resolved_ir/test/test_st_immediate.cpp exit_code: 0
+
+final Doxygen-only checker edit: clang-format21 --dry-run --Werror exit_code: 0
+final git diff --check exit_code: 0

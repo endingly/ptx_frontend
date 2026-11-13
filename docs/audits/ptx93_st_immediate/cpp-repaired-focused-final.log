@@ -1,0 +1,49 @@
+Running main() from /tmp/ptx93-audit-deps/googletest/googletest/src/gtest_main.cc
+Note: Google Test filter = ResolvedIrChecker.GeneratedAddWrapperChecksImmediateTypeExpression:FloatingBitConstants.ValueVectorsPreserveFloatingOriginAndIntegerRoleControls:InstructionConstantExpressions.NumericConsumersAndRegisterOnlyBoundaries:MiscellaneousCoverage.FixedValueChecksImmediateConsistency:Multimem.PackedFp8LiteralBitsAfterAstDeath:StImmediate.*
+[==========] Running 12 tests from 6 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from ResolvedIrChecker
+[ RUN      ] ResolvedIrChecker.GeneratedAddWrapperChecksImmediateTypeExpression
+[       OK ] ResolvedIrChecker.GeneratedAddWrapperChecksImmediateTypeExpression (1 ms)
+[----------] 1 test from ResolvedIrChecker (1 ms total)
+
+[----------] 1 test from FloatingBitConstants
+[ RUN      ] FloatingBitConstants.ValueVectorsPreserveFloatingOriginAndIntegerRoleControls
+[       OK ] FloatingBitConstants.ValueVectorsPreserveFloatingOriginAndIntegerRoleControls (4 ms)
+[----------] 1 test from FloatingBitConstants (4 ms total)
+
+[----------] 1 test from InstructionConstantExpressions
+[ RUN      ] InstructionConstantExpressions.NumericConsumersAndRegisterOnlyBoundaries
+[       OK ] InstructionConstantExpressions.NumericConsumersAndRegisterOnlyBoundaries (18 ms)
+[----------] 1 test from InstructionConstantExpressions (18 ms total)
+
+[----------] 1 test from MiscellaneousCoverage
+[ RUN      ] MiscellaneousCoverage.FixedValueChecksImmediateConsistency
+[       OK ] MiscellaneousCoverage.FixedValueChecksImmediateConsistency (0 ms)
+[----------] 1 test from MiscellaneousCoverage (0 ms total)
+
+[----------] 1 test from Multimem
+[ RUN      ] Multimem.PackedFp8LiteralBitsAfterAstDeath
+[       OK ] Multimem.PackedFp8LiteralBitsAfterAstDeath (103 ms)
+[----------] 1 test from Multimem (103 ms total)
+
+[----------] 7 tests from StImmediate
+[ RUN      ] StImmediate.PreservesIntegerSourceAndNarrowedBits
+[       OK ] StImmediate.PreservesIntegerSourceAndNarrowedBits (11 ms)
+[ RUN      ] StImmediate.PreservesFloatingWordsAndRejectsOtherOrigins
+[       OK ] StImmediate.PreservesFloatingWordsAndRejectsOtherOrigins (2 ms)
+[ RUN      ] StImmediate.CoversSpacesQualifiersAndRetainsRegisterOnlyRoles
+[       OK ] StImmediate.CoversSpacesQualifiersAndRetainsRegisterOnlyRoles (2 ms)
+[ RUN      ] StImmediate.RejectsForgedWidthAndFloatingOrigin
+[       OK ] StImmediate.RejectsForgedWidthAndFloatingOrigin (0 ms)
+[ RUN      ] StImmediate.OwnsSourcesAfterReleaseAndPreservesAstCorrespondence
+[       OK ] StImmediate.OwnsSourcesAfterReleaseAndPreservesAstCorrespondence (3 ms)
+[ RUN      ] StImmediate.KeepsOtherNumericImmediateRoles
+[       OK ] StImmediate.KeepsOtherNumericImmediateRoles (0 ms)
+[ RUN      ] StImmediate.PreservesParameterAndCallStagingRules
+[       OK ] StImmediate.PreservesParameterAndCallStagingRules (4 ms)
+[----------] 7 tests from StImmediate (26 ms total)
+
+[----------] Global test environment tear-down
+[==========] 12 tests from 6 test suites ran. (154 ms total)
+[  PASSED  ] 12 tests.

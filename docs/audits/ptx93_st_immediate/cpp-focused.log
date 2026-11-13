@@ -1,0 +1,88 @@
+Running main() from /tmp/ptx93-audit-deps/googletest/googletest/src/gtest_main.cc
+[==========] Running 16 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 7 tests from StImmediate
+[ RUN      ] StImmediate.PreservesIntegerSourceAndNarrowedBits
+/workspace/ptx_frontend/submod/resolved_ir/test/test_st_immediate.cpp:40: Failure
+Value of: result
+  Actual: false
+Expected: true
+Expected a numbered register, got '%r'.
+Google Test trace:
+/workspace/ptx_frontend/submod/resolved_ir/test/test_st_immediate.cpp:38: 0
+/workspace/ptx_frontend/submod/resolved_ir/test/test_st_immediate.cpp:36: b8
+
+[  FAILED  ] StImmediate.PreservesIntegerSourceAndNarrowedBits (0 ms)
+[ RUN      ] StImmediate.PreservesFloatingWordsAndRejectsOtherOrigins
+/workspace/ptx_frontend/submod/resolved_ir/test/test_st_immediate.cpp:84: Failure
+Value of: result
+  Actual: false
+Expected: true
+Expected a numbered register, got '%r'.
+Google Test trace:
+/workspace/ptx_frontend/submod/resolved_ir/test/test_st_immediate.cpp:82: 1.5
+/workspace/ptx_frontend/submod/resolved_ir/test/test_st_immediate.cpp:81: f32
+
+[  FAILED  ] StImmediate.PreservesFloatingWordsAndRejectsOtherOrigins (0 ms)
+[ RUN      ] StImmediate.CoversSpacesQualifiersAndRetainsRegisterOnlyRoles
+/workspace/ptx_frontend/submod/resolved_ir/test/test_st_immediate.cpp:117: Failure
+Value of: result
+  Actual: false
+Expected: true
+Expected a numbered register, got '%r'.
+Google Test trace:
+/workspace/ptx_frontend/submod/resolved_ir/test/test_st_immediate.cpp:113: st.b32 [%r], 17;
+
+[  FAILED  ] StImmediate.CoversSpacesQualifiersAndRetainsRegisterOnlyRoles (0 ms)
+[ RUN      ] StImmediate.RejectsForgedWidthAndFloatingOrigin
+/workspace/ptx_frontend/submod/resolved_ir/test/test_st_immediate.cpp:134: Failure
+Value of: result
+  Actual: false
+Expected: true
+
+[  FAILED  ] StImmediate.RejectsForgedWidthAndFloatingOrigin (0 ms)
+[ RUN      ] StImmediate.OwnsSourcesAfterReleaseAndPreservesAstCorrespondence
+/workspace/ptx_frontend/submod/resolved_ir/test/test_st_immediate.cpp:179: Failure
+Value of: validateModule(*ast, *result)
+  Actual: true
+Expected: false
+
+[  FAILED  ] StImmediate.OwnsSourcesAfterReleaseAndPreservesAstCorrespondence (2 ms)
+[ RUN      ] StImmediate.KeepsOtherNumericImmediateRoles
+[       OK ] StImmediate.KeepsOtherNumericImmediateRoles (0 ms)
+[ RUN      ] StImmediate.PreservesParameterAndCallStagingRules
+[       OK ] StImmediate.PreservesParameterAndCallStagingRules (4 ms)
+[----------] 7 tests from StImmediate (8 ms total)
+
+[----------] 9 tests from StCompleteness
+[ RUN      ] StCompleteness.ResolvesCoreAndSharedFamilies
+[       OK ] StCompleteness.ResolvesCoreAndSharedFamilies (1 ms)
+[ RUN      ] StCompleteness.ResolvesCacheControlFamilies
+[       OK ] StCompleteness.ResolvesCacheControlFamilies (7 ms)
+[ RUN      ] StCompleteness.RejectsKnownNonglobalCacheHintAddress
+[       OK ] StCompleteness.RejectsKnownNonglobalCacheHintAddress (1 ms)
+[ RUN      ] StCompleteness.EnforcesModernL2EvictionBoundary
+[       OK ] StCompleteness.EnforcesModernL2EvictionBoundary (1 ms)
+[ RUN      ] StCompleteness.EnforcesTypeAndCacheControlAvailability
+[       OK ] StCompleteness.EnforcesTypeAndCacheControlAvailability (1 ms)
+[ RUN      ] StCompleteness.MaterializesOptionalL1EvictionDefault
+[       OK ] StCompleteness.MaterializesOptionalL1EvictionDefault (0 ms)
+[ RUN      ] StCompleteness.RejectsUnifiedAddressWrites
+[       OK ] StCompleteness.RejectsUnifiedAddressWrites (1 ms)
+[ RUN      ] StCompleteness.EnforcesMmioSemanticsAndAvailability
+[       OK ] StCompleteness.EnforcesMmioSemanticsAndAvailability (1 ms)
+[ RUN      ] StCompleteness.PreservesParameterPolicyAndRevalidatesMutation
+[       OK ] StCompleteness.PreservesParameterPolicyAndRevalidatesMutation (1 ms)
+[----------] 9 tests from StCompleteness (18 ms total)
+
+[----------] Global test environment tear-down
+[==========] 16 tests from 2 test suites ran. (26 ms total)
+[  PASSED  ] 11 tests.
+[  FAILED  ] 5 tests, listed below:
+[  FAILED  ] StImmediate.PreservesIntegerSourceAndNarrowedBits
+[  FAILED  ] StImmediate.PreservesFloatingWordsAndRejectsOtherOrigins
+[  FAILED  ] StImmediate.CoversSpacesQualifiersAndRetainsRegisterOnlyRoles
+[  FAILED  ] StImmediate.RejectsForgedWidthAndFloatingOrigin
+[  FAILED  ] StImmediate.OwnsSourcesAfterReleaseAndPreservesAstCorrespondence
+
+ 5 FAILED TESTS

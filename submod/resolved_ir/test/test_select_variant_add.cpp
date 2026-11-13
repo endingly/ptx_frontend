@@ -628,6 +628,7 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperChecksImmediateTypeExpression) {
   auto* immediate = std::get_if<ResolvedImmediate>(&add->src2.value);
   ASSERT_NE(immediate, nullptr);
   immediate->type = ScalarType::F32;
+  immediate->integer_source_bits.reset();
 
   const Context context{
       .target = {.ptx_version = {9, 2}, .sm_version = 120},

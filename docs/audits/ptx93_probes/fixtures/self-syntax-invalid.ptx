@@ -1,0 +1,4 @@
+.version 9.3
+.target sm_80
+.visible .entry kernel() {
+.reg .u32 r;

@@ -10,6 +10,8 @@
 
 本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#resolved-ir-design--explicit-vector-mov)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/resolved_ir_design.md#explicit-vector-mov)。
 
+完整硬件向量 MOV 保留固有寄存器身份和原生元数据。检查器通过指令局部的类型兼容描述符进行验证，不改写拥有的源操作数；源范围及目标可用性仍需通过检查。
+
 ## 具名数组地址
 
 本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#resolved-ir-design--named-array-addresses)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/resolved_ir_design.md#named-array-addresses)。
@@ -454,3 +456,10 @@ alias 只在 code generation 时应用。例如语义 IR 中的 `.sat` field 保
 ### Atomic vector value 源
 
 本节的当前支持范围、接受条件及保留限制见英文 [SDK 支持契约](../sdk_support.md#resolved-ir-design--atomic-vector-value-sources)；保留的实现、API 或证据说明见 [英文技术参考](../us-en/resolved_ir_design.md#atomic-vector-value-sources)。
+
+
+## 标量存储立即数表示
+
+[SDK 标量 ST 生产者契约](../sdk_support.md#st-coverage--contract) 包含编译器和汇编器兼容性扩展；手册仍明确要求源操作数位于寄存器状态空间。所有普通同步标量 ST 数据字段现为 `WithLocs<RegOrImm>`。调用方应以 `std::get_if<ResolvedRegisterRef>(&store.src.value)` 或 `std::get_if<ResolvedImmediate>(&store.src.value)` 替换原有直接寄存器成员读取，并使用匹配的头文件和库重新构建。向量、异步和辅助策略字段保持原类型。标量缓存策略形式的带策略与省略策略布局共用同一个直接 `src` 联合类型；可选 `cache_policy` 字段仍为寄存器。
+
+现有数值转换器拥有选定位宽的值、类型以及原始整数源位和符号；位置记录保留书写操作数范围。浮点数值精度转换和等宽精确字保留沿用现有转换器，包括位类型载体的词法浮点位宽限制。不会插入临时寄存器或替换指令。B128 立即数与超出求值域 64 位的整数大小仍是表示限制。自有检查拒绝超出选定位宽的值以及浮点数的整数来源或负号标记，但不要求恢复已释放的词法历史。AST 比较另行验证源身份。源文本和 AST 释放后，复制、赋值及克隆仍保留这些自有记录；标量寄存器引用遍历访问联合类型的寄存器分支。

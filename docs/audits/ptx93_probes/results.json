@@ -1,0 +1,169 @@
+{
+  "source_sha": "1b44ad8212aa254610b3afb447c9e774df03710d",
+  "command": [
+    "/tmp/ptx93-audit-build/ptx93_probe",
+    "<fixture>"
+  ],
+  "exit_codes": {
+    "0": "clean parse and resolveAndValidate",
+    "2": "parse or lowering diagnostic",
+    "3": "resolveAndValidate diagnostic",
+    "4": "exception"
+  },
+  "results": [
+    {
+      "fixture": "fixtures/bmsk-width-2.ptx",
+      "sha256": "c09e186ddc0e25360e63017b43ddc5bf294fef1b2b8cfc2c5c1b88a4c39a90ca",
+      "exit_code": 0,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/bmsk-width-33.ptx",
+      "sha256": "9dfcf1ea34af9449c602dfb387b67bb11b1ba860a55b7eb5f3134d9c984408dd",
+      "exit_code": 0,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/file-repeated.ptx",
+      "sha256": "28797925dddbf3647061e00516ece191e331f71a174c898e816440088b1ddc80",
+      "exit_code": 3,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=Binding kind=DuplicateSymbol range=6:7-6:8 previous_range=4:7-4:8 message=\"Duplicate symbol '1' in debug metadata.\"\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/file-single.ptx",
+      "sha256": "769c8f4c0394715c559ac8c202a74636f9869854fb2fa004b46d87798d95c534",
+      "exit_code": 0,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/global-v2-f64.ptx",
+      "sha256": "fa1de7efab3f2ad4aec33376f195674284b829e9a7347e926cf2c5d458143b21",
+      "exit_code": 0,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/global-v4-f64.ptx",
+      "sha256": "5c3b9d7c4a7323bb05dfb327bc006651d7a508a2ae51af583e4beb7bb93bbd85",
+      "exit_code": 3,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=DeclarationSemantics kind=UnsupportedStorageDeclaration range=4:1-4:20 message=\"Storage vector width exceeds the supported 128-bit PTX limit.\"\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/pm0-64-mov-u32.ptx",
+      "sha256": "e95471ec1523e3a42addd26a08b8997b78feb780e4133153b0539d08fc019f21",
+      "exit_code": 3,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=Checking kind=OperandTypeMismatch range=4:34-4:41 message=\"Special-register operand 'src' has declared type 'U64' but instruction type source 'type' is 'U32'.\"\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/pm0-64-mov-u64.ptx",
+      "sha256": "3693544071f4222c0278619069eb664a52cf02b3bd413948d0d81b6a579174df",
+      "exit_code": 0,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/self-semantic-invalid.ptx",
+      "sha256": "d422f5ebad287b2fa8d41b5ae873661944e05c253b6b6a4cbb3074ed75b9e778",
+      "exit_code": 3,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=Binding kind=UnresolvedReference range=5:12-5:19 message=\"Unresolved instruction operand 'unknown'.\"\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/self-syntax-invalid.ptx",
+      "sha256": "5ef8f3703f859a69023d9f57fc31752cb72d06ad195d7fb3eea1a11c69bfc8cd",
+      "exit_code": 2,
+      "stdout": "parse value=1 diagnostics=1\nstage=Syntax range=5:1-5:1 message=\"expected '}' at end of function body\"\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/self-valid.ptx",
+      "sha256": "df51676ebcdfa7f8b36052eaff7d330b69b8a97abbd56da911ef6a32d14ecb21",
+      "exit_code": 0,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/tid-v1-u16.ptx",
+      "sha256": "7df3fc1a02d0ce81855fb35e540ce16ab5656264d625b8eacea57c31e0df4d5a",
+      "exit_code": 3,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=Checking kind=InvalidVectorOperand range=5:15-5:19 message=\"Whole hardware vector MOV requires a four-lane intrinsic u32 source.\"\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/tid-v2-u32.ptx",
+      "sha256": "eeb9e0bab84e21d0a53758f39c5d5caa4419fc0fcf0b267ed41aababe6f8fa53",
+      "exit_code": 0,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/global-v2-pred.ptx",
+      "sha256": "ca3bcbfaa764a40798141aec8acde6686ba4ec870fec227ed2ec0f1bc7e5f803",
+      "exit_code": 3,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=DeclarationSemantics kind=UnsupportedStorageDeclaration range=4:13-4:18 message=\".pred cannot declare addressable storage.\"\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/reg-v4-f64.ptx",
+      "sha256": "4d90c942519f69a47f76815c8415f5d58813f4e817281b103995ca862f8615b4",
+      "exit_code": 3,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=DeclarationSemantics kind=InvalidRegisterDeclarationShape range=4:17-4:20 message=\"Non-predicate register vectors may not exceed 128 bits.\"\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/array-fixed-exact.ptx",
+      "sha256": "9b4f0a267d835c2debba6d988eadcb62d3c0c81e6885e9b15e9f425621a34842",
+      "exit_code": 0,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/array-fixed-excess.ptx",
+      "sha256": "9d7b234276be6f249eb3d1bcfe46bef0f99ae5681896c0f77a652d040cc233f4",
+      "exit_code": 3,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=DeclarationSemantics kind=ExcessInitializerElements range=4:19-4:26 message=\"Initializer dimension contains 3 elements but its declared extent is 2.\"\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/array-inferred.ptx",
+      "sha256": "6c3f39bf22098b0d0c3deff78e1a7a4ffcec158d779a8d39548a455db92b68ca",
+      "exit_code": 0,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/envreg31.ptx",
+      "sha256": "612b508cc5454dedeb7a7ade7c91c6dace19b338fc6ca95b02e9760baf984b12",
+      "exit_code": 0,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/envreg32.ptx",
+      "sha256": "45bf295ff9bb5a6c8ab1a702c7ac5333a6ef7be7f5c810e17e96bdd4e5ef9dbd",
+      "exit_code": 3,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=Binding kind=UnresolvedReference range=4:34-4:43 message=\"Unresolved instruction operand '%envreg32'.\"\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/address-size64.ptx",
+      "sha256": "1457c85c8b6bde0262d2360955876cd6542552a1aa91c3ff77c3111e6ecb9cc9",
+      "exit_code": 0,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+      "stderr": ""
+    },
+    {
+      "fixture": "fixtures/address-size16.ptx",
+      "sha256": "d7192de7b4b207232524da3d52a8b83bae61f852be65eb070b5409026127dbc3",
+      "exit_code": 3,
+      "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=2\nstage=Checking kind=ModuleSourceMismatch range=3:1-3:17 message=\"Owned module header contains an invalid source directive.\"\nstage=Checking kind=ModuleSourceMismatch range=1:1-4:17 message=\"Owned header traversal disagrees with directive provenance.\"\n",
+      "stderr": ""
+    }
+  ]
+}

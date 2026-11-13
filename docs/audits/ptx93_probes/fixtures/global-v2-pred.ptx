@@ -1,0 +1,4 @@
+.version 9.3
+.target sm_80
+.address_size 64
+.global .v2 .pred V;

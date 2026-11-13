@@ -691,6 +691,16 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
             ),
             "unspecified",
         )
+        for variant in store.variants:
+            for layout in variant.operand_layouts:
+                for binding in layout.bindings:
+                    if binding.target_field_id != "src" or binding.allowed_shapes == (ResolvedOperandShape.VECTOR,):
+                        continue
+                    self.assertEqual(binding.allowed_shapes, (
+                        ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE,
+                    ))
+                    field = next(row for row in variant.fields if row.name == "src")
+                    self.assertEqual(field_cpp_type(field), "WithLocs<RegOrImm>")
         self.assertEqual(
             store_variants["GenericScalar"].operand_layouts[0].bindings[1].type_expression,
             ResolvedOperandTypeExpression(

@@ -1,0 +1,33 @@
+Running main() from /tmp/ptx93-audit-deps/googletest/googletest/src/gtest_main.cc
+Note: Google Test filter = VectorMov.OwnsWholeHardware16And32BitCohorts:VectorMov.RejectsWholeHardware16BitTampering
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from VectorMov
+[ RUN      ] VectorMov.OwnsWholeHardware16And32BitCohorts
+/workspace/ptx_frontend/submod/resolved_ir/test/test_vector_mov.cpp:417: Failure
+Value of: owned
+  Actual: false
+Expected: true
+Whole hardware vector MOV requires a four-lane intrinsic u32 source.
+Google Test trace:
+/workspace/ptx_frontend/submod/resolved_ir/test/test_vector_mov.cpp:411: mov.v4.u16 J, %tid;
+
+[  FAILED  ] VectorMov.OwnsWholeHardware16And32BitCohorts (3 ms)
+[ RUN      ] VectorMov.RejectsWholeHardware16BitTampering
+/workspace/ptx_frontend/submod/resolved_ir/test/test_vector_mov.cpp:481: Failure
+Value of: baseline
+  Actual: false
+Expected: true
+Whole hardware vector MOV requires a four-lane intrinsic u32 source.
+
+[  FAILED  ] VectorMov.RejectsWholeHardware16BitTampering (1 ms)
+[----------] 2 tests from VectorMov (5 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (5 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 2 tests, listed below:
+[  FAILED  ] VectorMov.OwnsWholeHardware16And32BitCohorts
+[  FAILED  ] VectorMov.RejectsWholeHardware16BitTampering
+
+ 2 FAILED TESTS

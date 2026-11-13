@@ -441,8 +441,8 @@ std::pair<uint64_t, bool> integer_constraint_value(
 }
 
 /**
- * Recheck integer-source use-width bits and canonical raw packed floating words.
- * Packed floating words have no integer origin, including an optional zero.
+ * Recheck scalar payload widths, integer-source caches and floating metadata.
+ * Floating words have no integer origin, including an optional zero.
  * Fixed integer constraints use the original source value for legality, while
  * consumers observe the converted bits; both representations must agree.
  */
@@ -483,6 +483,22 @@ CheckResult check_source_immediate_consistency(const OperandView& operand,
             operand.field_id),
     }});
   }
+  const uint8_t payload_bytes = base::scalar_size_of(*operand.immediate_type);
+  const bool valid_width =
+      payload_bytes > 0 && payload_bytes <= sizeof(uint64_t);
+  const bool excess_bits =
+      valid_width && payload_bytes < sizeof(uint64_t) &&
+      (*operand.immediate_bits >> (payload_bytes * 8)) != 0;
+  const bool ordinary_float = *operand.immediate_type == ScalarType::F32 ||
+                              *operand.immediate_type == ScalarType::F64;
+  if (!valid_width || excess_bits ||
+      (ordinary_float && (operand.integer_source_bits ||
+                          operand.immediate_is_negative.value_or(false))))
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+        .range = diagnostic_range(operand.locations, context),
+        .message = "Immediate payload exceeds its scalar width or has invalid "
+                   "floating-origin metadata."}});
   if (!operand.integer_source_bits || !is_integer_type(*operand.immediate_type))
     return {};
   const uint8_t byte_width = base::scalar_size_of(*operand.immediate_type);
@@ -2113,12 +2129,13 @@ CheckResult check_operands(
             !fabric_range_inside(range, range) ||
             (context.instruction_range != SourceRange{} &&
              !fabric_range_inside(range, context.instruction_range)) ||
-            (expected_type != ScalarType::U32 &&
-             expected_type != ScalarType::S32 &&
-             expected_type != ScalarType::B32))
+            !operand->special_register_type ||
+            !scalar_types_compatible(*operand->special_register_type,
+                                     expected_type,
+                                     descriptor.register_width_policy))
           invalid(range,
                   "Whole hardware vector MOV requires a four-lane intrinsic "
-                  "u32 source.");
+                  "u32 source compatible with the selected instruction type.");
         continue;
       }
       const auto& values = *operand->mov_value_vector;

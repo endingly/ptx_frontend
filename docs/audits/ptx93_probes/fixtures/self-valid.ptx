@@ -1,0 +1,8 @@
+.version 9.3
+.target sm_80
+.address_size 64
+.visible .entry kernel() {
+.reg .u32 r;
+mov.u32 r, 1;
+ret;
+}

@@ -10,6 +10,10 @@ Current source forms, type/target restrictions and retained limitations are main
 
 [SDK support: Explicit vector MOV](../sdk_support.md#resolved-ir-design--explicit-vector-mov).
 
+Whole hardware MOV retains intrinsic register identity and native metadata. The
+checker applies instruction-local typed compatibility descriptors without
+rewriting the owned source; source ranges and target availability remain checked.
+
 ## Named array addresses
 
 [SDK support: Named array addresses](../sdk_support.md#resolved-ir-design--named-array-addresses).
@@ -772,3 +776,29 @@ Implementation entry points are
 ### Atomic vector value sources
 
 [SDK support: Atomic vector value sources](../sdk_support.md#resolved-ir-design--atomic-vector-value-sources).
+
+
+## Scalar store immediate representation
+
+The [SDK scalar ST producer contract](../sdk_support.md#st-coverage--contract)
+includes a compiler/assembler compatibility extension despite the manual's
+register-only source note. All ordinary synchronous scalar ST data fields are
+`WithLocs<RegOrImm>`. Consumers must replace direct register-member reads with
+`std::get_if<ResolvedRegisterRef>(&store.src.value)` or
+`std::get_if<ResolvedImmediate>(&store.src.value)` and rebuild against matching
+headers/libraries. Vector, async and auxiliary policy fields keep their existing
+types. Scalar cache-policy forms share the same direct `src` union across
+policy-present and policy-omitted layouts; their optional `cache_policy` stays a
+register.
+
+The existing numeric converter owns selected-width bits, type and original
+integer source bits/sign; locations retain the written source range. Float
+numeric conversion and equal-width exact-word preservation use the existing
+converter, including lexical-width restrictions for bit carriers. No temporary
+register or replacement operation is introduced. B128 immediates and integer
+magnitudes beyond the evaluated 64-bit domain remain representation limits.
+Owned checks reject payload bits outside the selected width and invalid floating
+integer-origin/negative flags, but do not demand erased lexical history. AST
+comparison separately checks source identity. Copies, assignments and clones
+retain these owned records after source/AST release; scalar register reference
+traversal follows the union's register arm.

@@ -397,5 +397,139 @@ TEST(VectorMov, PreservesAvailabilityAndModernMemoryFences) {
   EXPECT_FALSE(vector_mov(*double_module).check(double_context));
 }
 
+/** Historical whole reads keep intrinsic metadata through ownership and cloning. */
+TEST(VectorMov, OwnsWholeHardware16And32BitCohorts) {
+  for (const auto source : {"%tid", "%ntid", "%ctaid", "%nctaid"}) {
+    for (const auto type : {"u16", "s16", "b16", "u32", "s32", "b32"}) {
+      for (const bool brace : {false, true}) {
+        const bool narrow = std::string_view(type).ends_with("16");
+        const auto destination =
+            brace ? (narrow ? "{%h0,_,%h2,%h3}" : "{%r0,_,%r2,%r3}")
+                  : (narrow ? "J" : "Q");
+        const auto operation = std::string("mov.v4.") + type + " " +
+                               destination + ", " + source + ";";
+        SCOPED_TRACE(operation);
+        auto owned = [&] {
+          const auto ast =
+              test_helpers::parseModule(vector_mov_module(operation));
+          return resolveAndValidateModule(*ast);
+        }();
+        ASSERT_TRUE(owned) << owned.error().front().message;
+        auto copy = *owned;
+        auto moved = std::move(copy);
+        const auto& mov = vector_mov(moved);
+        const auto& special =
+            std::get<ResolvedVectorSpecialRegisterRef>(mov.src.value);
+        EXPECT_EQ(special.spelling, source);
+        EXPECT_EQ(special.id, base::lookup(source)->id);
+        EXPECT_EQ(base::metadata(special.id).element_type, ScalarType::U32);
+        EXPECT_EQ(base::metadata(special.id).vector_width, 4);
+        ASSERT_EQ(mov.src.locs.size(), 1);
+        EXPECT_EQ(
+            mov.src.locs.front().end.column - mov.src.locs.front().start.column,
+            std::string_view(source).size());
+        EXPECT_TRUE(validateModule(moved));
+        auto context = vector_mov_context(moved);
+        EXPECT_TRUE(mov.clone()->check(context));
+        context.target.ptx_version = {1, 0};
+        EXPECT_EQ(bool(mov.check(context)), narrow);
+        context.target.ptx_version = {2, 0};
+        EXPECT_TRUE(mov.check(context));
+        context.target.ptx_version = {0, 9};
+        EXPECT_FALSE(mov.check(context));
+      }
+    }
+  }
+}
+
+/** Whole-read admission stays tied to the exact contextual type and arity. */
+TEST(VectorMov, RejectsWholeHardwareOutsideContextualCohorts) {
+  for (const auto operation :
+       {"mov.v4.u16 J, %clusterid;", "mov.v4.s16 J, %cluster_ctaid;",
+        "mov.v4.b16 J, %cluster_nctaid;", "mov.v4.u16 J, %nclusterid;",
+        "mov.v2.u16 H, %tid;", "mov.v2.u32 V, %tid;", "mov.v4.f32 X, %tid;",
+        "mov.v2.u64 L, %tid;", "mov.v4.u16 J, %tid.x;",
+        "mov.v4.u16 J, %gridid;"}) {
+    SCOPED_TRACE(operation);
+    const auto ast = test_helpers::parseModule(vector_mov_module(operation));
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    EXPECT_FALSE(resolveAndValidateModule(*ast));
+  }
+  const auto ast =
+      test_helpers::parseModule(vector_mov_module("mov.v4.b32 Q, %clusterid;"));
+  ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+  auto module = resolveAndValidateModule(*ast);
+  ASSERT_TRUE(module) << module.error().front().message;
+  auto context = vector_mov_context(*module);
+  EXPECT_TRUE(vector_mov(*module).check(context));
+  context.target.capabilities = {};
+  EXPECT_FALSE(vector_mov(*module).check(context));
+  context = vector_mov_context(*module);
+  context.target.sm_version = 80;
+  EXPECT_FALSE(vector_mov(*module).check(context));
+  context = vector_mov_context(*module);
+  context.target.ptx_version = {7, 7};
+  EXPECT_FALSE(vector_mov(*module).check(context));
+}
+
+/** Mutable whole-read payloads cannot forge identity, type or source ownership. */
+TEST(VectorMov, RejectsWholeHardware16BitTampering) {
+  const auto ast =
+      test_helpers::parseModule(vector_mov_module("mov.v4.u16 J, %tid;"));
+  ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+  auto baseline = resolveAndValidateModule(*ast);
+  ASSERT_TRUE(baseline) << baseline.error().front().message;
+  for (int mutation = 0; mutation < 10; ++mutation) {
+    SCOPED_TRACE(mutation);
+    auto copy = *baseline;
+    auto& mov = vector_mov(copy);
+    auto& special = std::get<ResolvedVectorSpecialRegisterRef>(mov.src.value);
+    switch (mutation) {
+      case 0:
+        special.id = base::lookup("%ntid")->id;
+        break;
+      case 1:
+        special.spelling = "%ntid";
+        break;
+      case 2:
+        special.id = {};
+        break;
+      case 3:
+        special.spelling = "%tid.x";
+        break;
+      case 4:
+        special.spelling = "%clusterid";
+        special.id = base::lookup("%clusterid")->id;
+        break;
+      case 5:
+        mov.src.locs.clear();
+        break;
+      case 6:
+        mov.src.locs.push_back(mov.src.locs.front());
+        break;
+      case 7:
+        mov.src.locs.front() = {};
+        break;
+      case 8:
+        mov.vector.value = VectorArity::V2;
+        break;
+      case 9:
+        mov.type.value = ScalarType::F32;
+        break;
+    }
+    EXPECT_FALSE(mov.check(vector_mov_context(copy)));
+    EXPECT_FALSE(validateModule(copy));
+  }
+  auto context = vector_mov_context(*baseline);
+  context.instruction_range.start.line += 100;
+  context.instruction_range.end.line += 100;
+  EXPECT_FALSE(vector_mov(*baseline).check(context));
+  auto copy = *baseline;
+  vector_mov(copy).src.locs.front().start.line += 100;
+  vector_mov(copy).src.locs.front().end.line += 100;
+  EXPECT_FALSE(vector_mov(copy).check(vector_mov_context(copy)));
+  EXPECT_FALSE(validateModule(copy));
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

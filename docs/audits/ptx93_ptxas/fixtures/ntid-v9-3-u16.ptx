@@ -1,0 +1,11 @@
+.version 9.3
+.target sm_80
+.address_size 64
+.visible .entry k(.param .u64 output) {
+.reg .u64 addr;
+ld.param.u64 addr, [output];
+.reg .v4 .u16 values;
+mov.v4.u16 values, %ntid;
+st.volatile.global.v4.u16 [addr], values;
+ret;
+}

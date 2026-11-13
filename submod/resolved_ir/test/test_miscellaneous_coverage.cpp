@@ -333,6 +333,13 @@ TEST(MiscellaneousCoverage, FixedValueChecksImmediateConsistency) {
   operand.immediate_bits = 0x3f800000;
   operand.immediate_is_negative = false;
   operand.integer_source_bits = 1;
+  EXPECT_FALSE(check().has_value());
+  operand.integer_source_bits.reset();
+  const auto floating_word = check();
+  ASSERT_FALSE(floating_word.has_value());
+  EXPECT_NE(floating_word.error().front().message.find("unsupported value"),
+            std::string::npos);
+  operand.immediate_bits = 1;
   EXPECT_TRUE(check().has_value());
 }
 

@@ -1,0 +1,7 @@
+.version 1.0
+.target sm_10
+.entry kernel() {
+.reg .v4 .u16 V;
+mov.v4.u16 V, %tid;
+ret;
+}

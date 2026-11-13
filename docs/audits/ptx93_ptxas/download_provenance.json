@@ -1,0 +1,18 @@
+{
+  "download_url": "https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvcc/linux-x86_64/cuda_nvcc-linux-x86_64-13.3.33-archive.tar.xz",
+  "manifest_url": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_13.3.0.json",
+  "manifest_sha256": "507eddaab1360336bc0fe17b77552e0b7dfe1e74da888671c3a2f5fad7775db1",
+  "component": "cuda_nvcc/linux-x86_64",
+  "component_version": "13.3.33",
+  "archive_sha256": "93b098bda4a562ebf3541523ce82adc43f106a81dcf28bcbf8f0d8e093d1c66f",
+  "archive_bytes": 31609400,
+  "archive_hash_verified_against_manifest": true,
+  "extracted_members": [
+    "cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+    "cuda_nvcc-linux-x86_64-13.3.33-archive/LICENSE"
+  ],
+  "official_ptx93_manual_sha256": "40026f79b65fee3f8c8b3e717c6f80c6385e8d97215318d6e4b7f6106f58d5a4",
+  "frontend_baseline": "1b44ad8212aa254610b3afb447c9e774df03710d",
+  "frontend_probe_source": "../ptx93_probes/probe.cpp",
+  "frontend_probe_source_sha256": "4d721a57433483561a68138d3f45b6d5cf7eb69ae290a34c50a21846f9c1746c"
+}

@@ -1,0 +1,10 @@
+# Add temporary audit probes without changing production CMake files.
+set(PTX_AUDIT_PROBE_SOURCE "${CMAKE_CURRENT_LIST_DIR}/probe.cpp")
+function(ptx_audit_targets)
+    add_executable(ptx93_parse_probe "${PTX_AUDIT_PROBE_SOURCE}")
+    target_compile_definitions(ptx93_parse_probe PRIVATE PARSE_ONLY)
+    target_link_libraries(ptx93_parse_probe PRIVATE ptx_frontend::syntax)
+    add_executable(ptx93_probe "${PTX_AUDIT_PROBE_SOURCE}")
+    target_link_libraries(ptx93_probe PRIVATE ptx_frontend::resolved_ir)
+endfunction()
+cmake_language(DEFER CALL ptx_audit_targets)

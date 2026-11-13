@@ -1,0 +1,162 @@
+[
+  {
+    "id": "canonical_global_wb_imm",
+    "type": "b32",
+    "value": "17",
+    "space": "global",
+    "qualifier": "wb",
+    "version": "9.3",
+    "sm": "100",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/canonical_global_wb_imm.ptx",
+      "-o",
+      "/tmp/st_canonical.cubin"
+    ],
+    "source_sha256": "07bf3973c5bc2ec6c06035667fbcdb9d31b4ba23a75f6965ebd8609d0c06c835",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "canonical_global_wb_reg",
+    "type": "b32",
+    "value": "17",
+    "space": "global",
+    "qualifier": "wb",
+    "version": "9.3",
+    "sm": "100",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/canonical_global_wb_reg.ptx",
+      "-o",
+      "/tmp/st_canonical.cubin"
+    ],
+    "source_sha256": "56f10533d35ac49f3d52567330e3c628ad4511fabcad52610ab4b15759f81101",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "canonical_global_cg_imm",
+    "type": "b32",
+    "value": "17",
+    "space": "global",
+    "qualifier": "cg",
+    "version": "9.3",
+    "sm": "100",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/canonical_global_cg_imm.ptx",
+      "-o",
+      "/tmp/st_canonical.cubin"
+    ],
+    "source_sha256": "c3fe62d17c548491ae90ded41c28b5a90092c261a98dbc0959c7da9758672ea3",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "canonical_global_cg_reg",
+    "type": "b32",
+    "value": "17",
+    "space": "global",
+    "qualifier": "cg",
+    "version": "9.3",
+    "sm": "100",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/canonical_global_cg_reg.ptx",
+      "-o",
+      "/tmp/st_canonical.cubin"
+    ],
+    "source_sha256": "e1cce713b4f1d44e050ffbb58ce3c1f00af6a6a8d0a59aa9f190e0597aad5b56",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "canonical_global_cs_imm",
+    "type": "b32",
+    "value": "17",
+    "space": "global",
+    "qualifier": "cs",
+    "version": "9.3",
+    "sm": "100",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/canonical_global_cs_imm.ptx",
+      "-o",
+      "/tmp/st_canonical.cubin"
+    ],
+    "source_sha256": "59dfee49245163ba8e909199c25ac3e877db33f2ab22e09319b97969894daad2",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "canonical_global_cs_reg",
+    "type": "b32",
+    "value": "17",
+    "space": "global",
+    "qualifier": "cs",
+    "version": "9.3",
+    "sm": "100",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/canonical_global_cs_reg.ptx",
+      "-o",
+      "/tmp/st_canonical.cubin"
+    ],
+    "source_sha256": "641ce27c9d3efab08def39cd1bf9d24d0d1ff5e0225b3428a68c38fb1105c6cc",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "canonical_global_wt_imm",
+    "type": "b32",
+    "value": "17",
+    "space": "global",
+    "qualifier": "wt",
+    "version": "9.3",
+    "sm": "100",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/canonical_global_wt_imm.ptx",
+      "-o",
+      "/tmp/st_canonical.cubin"
+    ],
+    "source_sha256": "043e203801d892b55cfb8001909b8f69c45e377bf8a9ae40fca31f0124f9f579",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "canonical_global_wt_reg",
+    "type": "b32",
+    "value": "17",
+    "space": "global",
+    "qualifier": "wt",
+    "version": "9.3",
+    "sm": "100",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/canonical_global_wt_reg.ptx",
+      "-o",
+      "/tmp/st_canonical.cubin"
+    ],
+    "source_sha256": "3d5a7d8331e86cf9006bb08d01d9b9028053556364f02e202106d336d490d7ee",
+    "returncode": 0,
+    "diagnostic": ""
+  }
+]

@@ -1,0 +1,10 @@
+[0/2] Re-checking globbed directories...
+[1/311] Generating changed resolved IR categories and shared artifacts
+-- Resolved IR batch: categories [data_movement], global TRUE
+[2/9] Building CXX object submod/resolved_ir/CMakeFiles/ptx_frontend_resolved_ir.dir/src/ptx_call_parameter_transfers.cpp.o
+[3/9] Building CXX object submod/resolved_ir/CMakeFiles/ptx_frontend_resolved_ir.dir/src/ptx_resolved_ir_checker.cpp.o
+[4/9] Building CXX object submod/resolved_ir/CMakeFiles/ptx_frontend_resolved_ir.dir/generated/private/resolved_ir_data_movement_st.gen.cpp.o
+[5/9] Building CXX object submod/resolved_ir/CMakeFiles/ptx_frontend_resolved_ir.dir/src/ptx_module_availability.cpp.o
+[6/9] Linking CXX static library submod/resolved_ir/libptx_frontend_resolved_ir.a
+[7/9] Linking CXX executable ptx93_vector_tests
+[8/9] Linking CXX executable ptx93_probe

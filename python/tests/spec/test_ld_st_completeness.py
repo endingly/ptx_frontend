@@ -17,6 +17,29 @@ class LdStCompletenessTest(unittest.TestCase):
         """Load the source-tree instruction database once for these checks."""
         cls.database = get_packaged_spec_database()
 
+    def test_sync_scalar_store_data_uses_register_or_immediate(self) -> None:
+        """Widen data only; vector, asynchronous and policy roles stay registers."""
+        instruction = next(row for row in self.database.instructions if row.opcode == "st")
+        scalars = set()
+        for variant in instruction.variants:
+            for layout in variant.operand_layouts:
+                operands = {row.name: row for row in layout.operands}
+                if "src" in operands:
+                    data = operands["src"]
+                    if data.kind is OperandKind.REGISTER_VECTOR:
+                        continue
+                    self.assertIs(data.kind, OperandKind.REGISTER_OR_IMMEDIATE)
+                    self.assertIs(data.register_width_policy, OperandRegisterWidthPolicy.EQUAL_OR_WIDER)
+                    scalars.add(variant.name)
+                    if "cache_policy" in operands:
+                        self.assertIs(operands["cache_policy"].kind, OperandKind.REGISTER)
+        self.assertEqual(scalars, {
+            "st_generic_scalar", "st_explicit_scalar", "st_shared_cta_scalar",
+            "st_shared_cluster_scalar", "st_global_u32_l1_evict", "st_l1_evict_scalar",
+            "st_global_l1_cache_hint_scalar", "st_l1_cache_hint_scalar",
+            "st_global_u32_l2_cache_hint", "st_l2_cache_hint_scalar",
+        })
+
     def test_all_async_store_data_keys_inherit_wider_carriers(self) -> None:
         """Keep the exact eight selectors, including combined compatibility flags."""
 

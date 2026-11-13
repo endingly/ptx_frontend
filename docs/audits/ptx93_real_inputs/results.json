@@ -1,0 +1,776 @@
+{
+  "schema": "ptx_frontend.ptx93_real_inputs_evidence/v1",
+  "manifest_sha256": "1120d246aff94812fffebe2875d50c82caf799b03af784d00a37eb19986040b6",
+  "base_commit": "1b44ad8212aa254610b3afb447c9e774df03710d",
+  "checker_source_sha256": "671c6e68077fc2a8949e2f96b2c160e8784bb6e7a3e3c054600438a2a88db9f7",
+  "runner_sha256": "064931749950a47108f7527af14eba627800130491923cf16b7a1a3eb321f45f",
+  "frontend": {
+    "path": "/tmp/ptx93-audit-build/ptx93_probe",
+    "sha256": "bb86076da340ab9a007425a4771a62eeac302c1126bb224d089a04da705b1a97"
+  },
+  "ptxas": {
+    "path": "/tmp/ptx93-nvcc/bin/ptxas",
+    "sha256": "7fdd01a4cf50e30746da98989c9272a907f491e6fd7fecfda14642e4375f88fb",
+    "version": {
+      "command": [
+        "/tmp/ptx93-nvcc/bin/ptxas",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "ptxas: NVIDIA (R) Ptx optimizing assembler\nCopyright (c) 2005-2026 NVIDIA Corporation\nBuilt on Fri_Apr_24_07:22:02_PM_PDT_2026\nCuda compilation tools, release 13.3, V13.3.33\nBuild cuda_13.3.r13.3/compiler.37862127_0\n",
+      "stderr": "",
+      "timed_out": false,
+      "timeout_seconds": 60
+    }
+  },
+  "fixtures": [
+    {
+      "path": "corpus/ptx93_real_inputs/generated/calls_control_sm_80.ptx",
+      "sha256": "0f0fbc1850f8c8da3012ba36d0e028023acdc55a7c00d4a5f332d87c8b60fb88",
+      "kind": "natural_compiler_emission",
+      "target": "sm_80",
+      "descriptive_instruction_count": 89,
+      "descriptive_roots": [
+        "add",
+        "and",
+        "bra",
+        "cvta",
+        "div",
+        "fma",
+        "ld",
+        "mad",
+        "mov",
+        "mul",
+        "param1",
+        "selp",
+        "setp",
+        "st",
+        "sub"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/calls_control_sm_80.ptx"
+        ],
+        "returncode": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_80",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/calls_control_sm_80.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/calls_control_sm_80.cubin"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "accepted",
+        "cubin_sha256": "482119268232a55f2890df05e8c4cf7b6578b94df912d87d7b9cf51eedb30291"
+      }
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/calls_control_sm_90a.ptx",
+      "sha256": "1934c06ad27724035ca5b93ad34db729d97771073691fdd33bd82d23322fc349",
+      "kind": "natural_compiler_emission",
+      "target": "sm_90a",
+      "descriptive_instruction_count": 89,
+      "descriptive_roots": [
+        "add",
+        "and",
+        "bra",
+        "cvta",
+        "div",
+        "fma",
+        "ld",
+        "mad",
+        "mov",
+        "mul",
+        "param1",
+        "selp",
+        "setp",
+        "st",
+        "sub"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/calls_control_sm_90a.ptx"
+        ],
+        "returncode": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_90a",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/calls_control_sm_90a.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/calls_control_sm_90a.cubin"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "accepted",
+        "cubin_sha256": "ed3e8df05ee8608c7f08f5fd41895fd0409acef580adc97ca0d3d5ab96475177"
+      }
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/calls_control_sm_100.ptx",
+      "sha256": "2dc94d460e7598889398b783401be3b13dc414af521ec496c5f880b729480003",
+      "kind": "natural_compiler_emission",
+      "target": "sm_100",
+      "descriptive_instruction_count": 85,
+      "descriptive_roots": [
+        "add",
+        "and",
+        "bra",
+        "call",
+        "cvta",
+        "div",
+        "fma",
+        "ld",
+        "mad",
+        "mov",
+        "mul",
+        "neg",
+        "selp",
+        "setp",
+        "st"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/calls_control_sm_100.ptx"
+        ],
+        "returncode": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_100",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/calls_control_sm_100.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/calls_control_sm_100.cubin"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "accepted",
+        "cubin_sha256": "13be3f6ea094f4ac6bfe0c99986411cc24d0c69f945d4a4efd7abbb7b645330f"
+      }
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/histogram_sm_80.ptx",
+      "sha256": "f84dab2da1e777421a4f9a46cecb27ca2302d3f95fee5cc712c1a2716b333a06",
+      "kind": "natural_compiler_emission",
+      "target": "sm_80",
+      "descriptive_instruction_count": 50,
+      "descriptive_roots": [
+        "add",
+        "atom",
+        "bar",
+        "bra",
+        "cvt",
+        "cvta",
+        "ld",
+        "mad",
+        "mov",
+        "mul",
+        "setp",
+        "shl",
+        "st"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/histogram_sm_80.ptx"
+        ],
+        "returncode": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_80",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/histogram_sm_80.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/histogram_sm_80.cubin"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "accepted",
+        "cubin_sha256": "dd24d5d062be058196ea061c3e77e2c63ccb194fa2643aac6c67bf4fb4c266e6"
+      }
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/histogram_sm_90a.ptx",
+      "sha256": "6354fe8bb5eab01daabae11d6bce33e4daa7257654f3deb219de62525b8a69e7",
+      "kind": "natural_compiler_emission",
+      "target": "sm_90a",
+      "descriptive_instruction_count": 50,
+      "descriptive_roots": [
+        "add",
+        "atom",
+        "bar",
+        "bra",
+        "cvt",
+        "cvta",
+        "ld",
+        "mad",
+        "mov",
+        "mul",
+        "setp",
+        "shl",
+        "st"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/histogram_sm_90a.ptx"
+        ],
+        "returncode": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_90a",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/histogram_sm_90a.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/histogram_sm_90a.cubin"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "accepted",
+        "cubin_sha256": "10e3996339bbae01e02b8d84c716ee4ceb6dc99ca37808d4575d6e88e9daa6a8"
+      }
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/histogram_sm_100.ptx",
+      "sha256": "dc8b7b2a9bd1f40671a5df49aa9a7c262f1c2f92f30ac274f29b7491ffdaed22",
+      "kind": "natural_compiler_emission",
+      "target": "sm_100",
+      "descriptive_instruction_count": 149,
+      "descriptive_roots": [
+        "add",
+        "and",
+        "atom",
+        "bar",
+        "bra",
+        "cvt",
+        "cvta",
+        "div",
+        "ld",
+        "mad",
+        "max",
+        "mov",
+        "mul",
+        "neg",
+        "selp",
+        "setp",
+        "shl",
+        "st",
+        "sub"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/histogram_sm_100.ptx"
+        ],
+        "returncode": 3,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=5\nstage=Resolution range=58:2-58:27 message=\"Operands do not match any layout of instruction variant 'ExplicitScalar'.\"\nstage=Resolution range=74:2-74:27 message=\"Operands do not match any layout of instruction variant 'ExplicitScalar'.\"\nstage=Resolution range=77:2-77:27 message=\"Operands do not match any layout of instruction variant 'ExplicitScalar'.\"\nstage=Resolution range=80:2-80:27 message=\"Operands do not match any layout of instruction variant 'ExplicitScalar'.\"\nstage=Resolution range=83:2-83:27 message=\"Operands do not match any layout of instruction variant 'ExplicitScalar'.\"\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_100",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/histogram_sm_100.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/histogram_sm_100.cubin"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "accepted",
+        "cubin_sha256": "a93f39dfb59773e14d8da51f91ca56adb517078b51ddc1ff6ebea93ef9517ea3"
+      }
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/reduction_sm_80.ptx",
+      "sha256": "644528cf219ca926b8ff529ab7b5aa33534eb94f94339719733c542ed2be9def",
+      "kind": "natural_compiler_emission",
+      "target": "sm_80",
+      "descriptive_instruction_count": 53,
+      "descriptive_roots": [
+        "add",
+        "and",
+        "atom",
+        "bra",
+        "cvta",
+        "ld",
+        "mad",
+        "mov",
+        "mul",
+        "setp",
+        "shfl"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/reduction_sm_80.ptx"
+        ],
+        "returncode": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_80",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/reduction_sm_80.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/reduction_sm_80.cubin"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "accepted",
+        "cubin_sha256": "ce8fcdbadfcfb753cb92b9998cc43efdeabc67b9c9506621526fdfcc86be3a77"
+      }
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/reduction_sm_90a.ptx",
+      "sha256": "42f7ffdb419eeac48b05898334c6edb5602d52e80c6c39c524b1a911249e2c46",
+      "kind": "natural_compiler_emission",
+      "target": "sm_90a",
+      "descriptive_instruction_count": 53,
+      "descriptive_roots": [
+        "add",
+        "and",
+        "atom",
+        "bra",
+        "cvta",
+        "ld",
+        "mad",
+        "mov",
+        "mul",
+        "setp",
+        "shfl"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/reduction_sm_90a.ptx"
+        ],
+        "returncode": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_90a",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/reduction_sm_90a.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/reduction_sm_90a.cubin"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "accepted",
+        "cubin_sha256": "956734dc49c9ebee4f6b6adf0289470c09340f2eb0bebd22e32866fa1e0d73a8"
+      }
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/reduction_sm_100.ptx",
+      "sha256": "cc4274c185eceaa73bbd4e029a4699eb662cbd13d607e1360abf3fcadf231bfe",
+      "kind": "natural_compiler_emission",
+      "target": "sm_100",
+      "descriptive_instruction_count": 36,
+      "descriptive_roots": [
+        "add",
+        "and",
+        "atom",
+        "bra",
+        "cvta",
+        "ld",
+        "mad",
+        "mov",
+        "mul",
+        "setp",
+        "shfl"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/reduction_sm_100.ptx"
+        ],
+        "returncode": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_100",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/reduction_sm_100.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/reduction_sm_100.cubin"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "accepted",
+        "cubin_sha256": "812261cdc135897ed76b91aa81f8542c3e0db8313960663321d5f01de22e61b4"
+      }
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/tiled_matmul_sm_80.ptx",
+      "sha256": "0e74fe05f41763bfa8cf51eb6dda1dc84cf1954ef7a26fc49a8760d92c3dbc08",
+      "kind": "natural_compiler_emission",
+      "target": "sm_80",
+      "descriptive_instruction_count": 117,
+      "descriptive_roots": [
+        "add",
+        "bar",
+        "bra",
+        "cvta",
+        "fma",
+        "ld",
+        "mad",
+        "mov",
+        "mul",
+        "or",
+        "setp",
+        "shl",
+        "st"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/tiled_matmul_sm_80.ptx"
+        ],
+        "returncode": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_80",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/tiled_matmul_sm_80.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/tiled_matmul_sm_80.cubin"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "accepted",
+        "cubin_sha256": "f840eabc535a965d9bd9cac07bb9306b559320f638ae4717c5ca04c07456a532"
+      }
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/tiled_matmul_sm_90a.ptx",
+      "sha256": "b7c73da4b5612fa9dff437d3611b4c4f2bf4018f298672fd7b21dbaf8a18c7e1",
+      "kind": "natural_compiler_emission",
+      "target": "sm_90a",
+      "descriptive_instruction_count": 117,
+      "descriptive_roots": [
+        "add",
+        "bar",
+        "bra",
+        "cvta",
+        "fma",
+        "ld",
+        "mad",
+        "mov",
+        "mul",
+        "or",
+        "setp",
+        "shl",
+        "st"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/tiled_matmul_sm_90a.ptx"
+        ],
+        "returncode": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_90a",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/tiled_matmul_sm_90a.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/tiled_matmul_sm_90a.cubin"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "accepted",
+        "cubin_sha256": "60c0a0b670daf09f52389604d8eeb8310bec28888ae20a42759c108433ab8930"
+      }
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/tiled_matmul_sm_100.ptx",
+      "sha256": "5b303e4ec6b5179fa98c197983b7b1952a334f83a03efc1524741be11c0b6053",
+      "kind": "natural_compiler_emission",
+      "target": "sm_100",
+      "descriptive_instruction_count": 272,
+      "descriptive_roots": [
+        "add",
+        "and",
+        "bar",
+        "bra",
+        "cvta",
+        "fma",
+        "ld",
+        "mad",
+        "max",
+        "mov",
+        "mul",
+        "neg",
+        "or",
+        "setp",
+        "shl",
+        "shr",
+        "st"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/tiled_matmul_sm_100.ptx"
+        ],
+        "returncode": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_100",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/generated/tiled_matmul_sm_100.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/tiled_matmul_sm_100.cubin"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "accepted",
+        "cubin_sha256": "b7ff0528aaf04d313d565e0e562b119b12da474941586fcfc29a3e42e090a0b5"
+      }
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/upstream/matrixMul_kernel_32.ptx",
+      "sha256": "0abd6995836f0ab1a81d8c7c2ab0a10ee6caa5673462b3e72dcd0c7151224478",
+      "kind": "upstream_compiler_output",
+      "target": "sm_20",
+      "descriptive_instruction_count": 584,
+      "descriptive_roots": [
+        "add",
+        "and",
+        "bar",
+        "bra",
+        "cvt",
+        "ld",
+        "mad",
+        "mov",
+        "mul",
+        "mul24",
+        "setp",
+        "shr",
+        "st",
+        "sub"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/upstream/matrixMul_kernel_32.ptx"
+        ],
+        "returncode": 3,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=40\nstage=Binding kind=UnresolvedReference range=32:7-32:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=34:7-34:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=89:7-89:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=92:7-92:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=95:7-95:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=97:7-97:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=146:7-146:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=148:7-148:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=159:7-159:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=169:7-169:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=186:7-186:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=188:7-188:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=240:7-240:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=243:7-243:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=246:7-246:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=248:7-248:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=297:7-297:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=299:7-299:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=311:7-311:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=321:7-321:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=338:7-338:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=340:7-340:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=395:7-395:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=398:7-398:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=401:7-401:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=403:7-403:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=500:7-500:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=502:7-502:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=513:7-513:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=523:7-523:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=540:7-540:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=542:7-542:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=594:7-594:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=597:7-597:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=600:7-600:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=602:7-602:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=699:7-699:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=701:7-701:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=713:7-713:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=723:7-723:9 message=\"Unresolved debug file '16'.\"\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_20",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/upstream/matrixMul_kernel_32.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/matrixMul_kernel_32.cubin"
+        ],
+        "returncode": 255,
+        "stdout": "",
+        "stderr": "ptxas fatal   : Value 'sm_20' is not defined for option 'gpu-name'\n",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "unsupported_target",
+        "cubin_sha256": null
+      }
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/upstream/matrixMul_kernel_64.ptx",
+      "sha256": "d5497aa5bfb904de37103142cb9644788cce5f4ea724a51f3b4d6fce00616ce9",
+      "kind": "upstream_compiler_output",
+      "target": "sm_20",
+      "descriptive_instruction_count": 592,
+      "descriptive_roots": [
+        "add",
+        "and",
+        "bar",
+        "bra",
+        "cvt",
+        "ld",
+        "mad",
+        "mov",
+        "mul",
+        "mul24",
+        "setp",
+        "shr",
+        "st",
+        "sub"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/upstream/matrixMul_kernel_64.ptx"
+        ],
+        "returncode": 3,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=40\nstage=Binding kind=UnresolvedReference range=33:7-33:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=35:7-35:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=93:7-93:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=96:7-96:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=99:7-99:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=101:7-101:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=150:7-150:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=152:7-152:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=164:7-164:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=175:7-175:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=192:7-192:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=194:7-194:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=245:7-245:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=248:7-248:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=251:7-251:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=253:7-253:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=302:7-302:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=304:7-304:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=316:7-316:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=326:7-326:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=344:7-344:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=346:7-346:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=404:7-404:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=407:7-407:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=410:7-410:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=412:7-412:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=509:7-509:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=511:7-511:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=523:7-523:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=534:7-534:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=551:7-551:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=553:7-553:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=604:7-604:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=607:7-607:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=610:7-610:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=612:7-612:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=709:7-709:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=711:7-711:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=723:7-723:9 message=\"Unresolved debug file '16'.\"\nstage=Binding kind=UnresolvedReference range=733:7-733:9 message=\"Unresolved debug file '16'.\"\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_20",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/upstream/matrixMul_kernel_64.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/matrixMul_kernel_64.cubin"
+        ],
+        "returncode": 255,
+        "stdout": "",
+        "stderr": "ptxas fatal   : Value 'sm_20' is not defined for option 'gpu-name'\n",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "unsupported_target",
+        "cubin_sha256": null
+      }
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/upstream/matrixMul_kernel_32_embedded.ptx",
+      "sha256": "da8c72187c67b336d571119a7253d1dce9f837a13be574c0b6e6e8550c6df561",
+      "kind": "upstream_encoded_compiler_output",
+      "target": "sm_10",
+      "descriptive_instruction_count": 584,
+      "descriptive_roots": [
+        "add",
+        "and",
+        "bar",
+        "bra",
+        "cvt",
+        "ld",
+        "mad",
+        "mov",
+        "mul",
+        "mul24",
+        "setp",
+        "shr",
+        "st",
+        "sub"
+      ],
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/upstream/matrixMul_kernel_32_embedded.ptx"
+        ],
+        "returncode": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "timed_out": false,
+        "timeout_seconds": 60
+      },
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-arch=sm_10",
+          "/workspace/ptx_frontend/corpus/ptx93_real_inputs/upstream/matrixMul_kernel_32_embedded.ptx",
+          "-o",
+          "/tmp/ptx93-real-assembly-__f4p9w5/matrixMul_kernel_32_embedded.cubin"
+        ],
+        "returncode": 255,
+        "stdout": "",
+        "stderr": "ptxas fatal   : Value 'sm_10' is not defined for option 'gpu-name'\n",
+        "timed_out": false,
+        "timeout_seconds": 60,
+        "outcome": "unsupported_target",
+        "cubin_sha256": null
+      }
+    }
+  ]
+}

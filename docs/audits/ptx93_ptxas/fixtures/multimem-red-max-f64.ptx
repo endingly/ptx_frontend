@@ -1,0 +1,11 @@
+.version 9.3
+.target sm_90
+.address_size 64
+.visible .entry k(.param .u64 output) {
+.reg .u64 addr;
+ld.param.u64 addr, [output];
+.reg .f64 value;
+mov.f64 value, 0d3ff0000000000000;
+multimem.red.relaxed.gpu.max.f64 [addr], value;
+ret;
+}

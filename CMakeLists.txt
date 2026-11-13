@@ -34,6 +34,7 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 option(PTX_USE_CCACHE "Use ccache to speed up compilation" ON)
 option(BUILD_TESTING "enable test program building" OFF)
+option(PTX_FRONTEND_BUILD_FUZZERS "Build bounded Clang frontend fuzzers with ASan/UBSan" OFF)
 
 if(PTX_USE_CCACHE)
     find_program(CCACHE_EXECUTABLE ccache)
@@ -54,6 +55,7 @@ if(BUILD_TESTING)
 endif()
 
 add_subdirectory(submod)
+include(frontend_fuzz)
 
 if(BUILD_SHARED_LIBS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # Keep installed sibling components discoverable after prefix relocation.

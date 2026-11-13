@@ -1,0 +1,11 @@
+.version 9.3
+.target sm_80
+.address_size 64
+.visible .entry k(.param .u64 output) {
+.reg .u64 addr;
+ld.param.u64 addr, [output];
+.reg .b32 value;
+bmsk.clamp.b32 value, 1, 33;
+st.volatile.global.b32 [addr], value;
+ret;
+}

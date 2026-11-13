@@ -1,0 +1,716 @@
+anchor	parent	title
+introduction		1. Introduction
+scalable-data-parallel-computing-using-gpus	introduction	1.1. Scalable Data-Parallel Computing using GPUs
+goals-of-ptx	introduction	1.2. Goals of PTX
+ptx-isa-version-9-3	introduction	1.3. PTX ISA Version 9.3
+document-structure	introduction	1.4. Document Structure
+programming-model		2. Programming Model
+highly-multithreaded-coprocessor	programming-model	2.1. A Highly Multithreaded Coprocessor
+thread-hierarchy	programming-model	2.2. Thread Hierarchy
+cooperative-thread-arrays	thread-hierarchy	2.2.1. Cooperative Thread Arrays
+cluster-of-cooperative-thread-arrays	thread-hierarchy	2.2.2. Cluster of Cooperative Thread Arrays
+grid-of-clusters	thread-hierarchy	2.2.3. Grid of Clusters
+memory-hierarchy	programming-model	2.3. Memory Hierarchy
+ptx-machine-model		3. PTX Machine Model
+set-of-simt-multiprocessors	ptx-machine-model	3.1. A Set of SIMT Multiprocessors
+independent-thread-scheduling	ptx-machine-model	3.2. Independent Thread Scheduling
+on-chip-shared-memory	ptx-machine-model	3.3. On-chip Shared Memory
+syntax		4. Syntax
+source-format	syntax	4.1. Source Format
+comments	syntax	4.2. Comments
+statements	syntax	4.3. Statements
+directive-statements	statements	4.3.1. Directive Statements
+instruction-statements	statements	4.3.2. Instruction Statements
+identifiers	syntax	4.4. Identifiers
+constants	syntax	4.5. Constants
+integer-constants	constants	4.5.1. Integer Constants
+floating-point-constants	constants	4.5.2. Floating-Point Constants
+predicate-constants	constants	4.5.3. Predicate Constants
+constant-expressions	constants	4.5.4. Constant Expressions
+integer-constant-expression-evaluation	constants	4.5.5. Integer Constant Expression Evaluation
+summary-of-constant-expression-evaluation-rules	constants	4.5.6. Summary of Constant Expression Evaluation Rules
+state-spaces-types-and-variables		5. State Spaces, Types, and Variables
+state-spaces	state-spaces-types-and-variables	5.1. State Spaces
+register-state-space	state-spaces	5.1.1. Register State Space
+special-register-state-space	state-spaces	5.1.2. Special Register State Space
+constant-state-space	state-spaces	5.1.3. Constant State Space
+banked-constant-state-space-deprecated	constant-state-space	5.1.3.1. Banked Constant State Space (deprecated)
+global-state-space	state-spaces	5.1.4. Global State Space
+local-state-space	state-spaces	5.1.5. Local State Space
+parameter-state-space	state-spaces	5.1.6. Parameter State Space
+kernel-function-parameters	parameter-state-space	5.1.6.1. Kernel Function Parameters
+kernel-function-parameter-attributes	parameter-state-space	5.1.6.2. Kernel Function Parameter Attributes
+kernel-parameter-attribute-ptr	parameter-state-space	5.1.6.3. Kernel Parameter Attribute: .ptr
+device-function-parameters	parameter-state-space	5.1.6.4. Device Function Parameters
+shared-state-space	state-spaces	5.1.7. Shared State Space
+texture-state-space-deprecated	state-spaces	5.1.8. Texture State Space (deprecated)
+types	state-spaces-types-and-variables	5.2. Types
+fundamental-types	types	5.2.1. Fundamental Types
+restricted-use-of-sub-word-sizes	types	5.2.2. Restricted Use of Sub-Word Sizes
+alternate-floating-point-data-formats	types	5.2.3. Alternate Floating-Point Data Formats
+fixed-point-data-formats	types	5.2.4. Fixed-point Data format
+packed-data-types	types	5.2.5. Packed Data Types
+packed-floating-point-data-types	packed-data-types	5.2.5.1. Packed Floating Point Data Types
+packed-integer-data-types	packed-data-types	5.2.5.2. Packed Integer Data Types
+packed-fixed-point-data-types	packed-data-types	5.2.5.3. Packed Fixed-Point Data Types
+texture-sampler-and-surface-types	state-spaces-types-and-variables	5.3. Texture Sampler and Surface Types
+texture-surface-properties	texture-sampler-and-surface-types	5.3.1. Texture and Surface Properties
+sampler-properties	texture-sampler-and-surface-types	5.3.2. Sampler Properties
+channel-data-type-and-channel-order-fields	texture-sampler-and-surface-types	5.3.3. Channel Data Type and Channel Order Fields
+variables	state-spaces-types-and-variables	5.4. Variables
+variable-declarations	variables	5.4.1. Variable Declarations
+vectors	variables	5.4.2. Vectors
+array-declarations	variables	5.4.3. Array Declarations
+initializers	variables	5.4.4. Initializers
+alignment	variables	5.4.5. Alignment
+parameterized-variable-names	variables	5.4.6. Parameterized Variable Names
+variable-attributes	variables	5.4.7. Variable Attributes
+variable-and-function-attribute-directive-attribute	variables	5.4.8. Variable and Function Attribute Directive: .attribute
+tensors	state-spaces-types-and-variables	5.5. Tensors
+tensor-dimension-size-format	tensors	5.5.1. Tensor Dimension, size and format
+tensor-dimension-size-format-sub-bytes	tensor-dimension-size-format	5.5.1.1. Sub-byte Types
+tensor-dimension-size-format-sub-bytes-padding-align	tensor-dimension-size-format-sub-bytes	5.5.1.1.1. Padding and alignment of the sub-byte types
+tensor-access-modes	tensors	5.5.2. Tensor Access Modes
+tensor-tiled-mode	tensors	5.5.3. Tiled Mode
+tensor-tiled-mode-bounding-box	tensor-tiled-mode	5.5.3.1. Bounding Box
+tensor-tiled-mode-traversal-stride	tensor-tiled-mode	5.5.3.2. Traversal-Stride
+tensor-tiled-mode-oob-access	tensor-tiled-mode	5.5.3.3. Out of Boundary Access
+tensor-tiled-scatter4-gather4-modes	tensor-tiled-mode	5.5.3.4. .tile::scatter4 and .tile::gather4 modes
+tensor-tiled-scatter4-gather4-modes-bounding-box	tensor-tiled-scatter4-gather4-modes	5.5.3.4.1. Bounding Box
+tensor-im2col-mode	tensors	5.5.4. im2col mode
+tensor-im2col-mode-bounding-box	tensor-im2col-mode	5.5.4.1. Bounding Box
+tensor-im2col-mode-traversal-stride	tensor-im2col-mode	5.5.4.2. Traversal Stride
+tensor-im2col-mode-oob-access	tensor-im2col-mode	5.5.4.3. Out of Boundary Access
+tensor-im2col-w-w128-modes	tensors	5.5.5. im2col::w and im2col::w::128 modes
+tensor-im2col-w-w128-modes-bounding-box	tensor-im2col-w-w128-modes	5.5.5.1. Bounding Box
+tensor-im2col-w-w128-modes-traversal-stride	tensor-im2col-w-w128-modes	5.5.5.2. Traversal Stride
+tensor-im2col-w-w128-modes-whalo	tensor-im2col-w-w128-modes	5.5.5.3. wHalo
+tensor-im2col-w-w128-modes-woffset	tensor-im2col-w-w128-modes	5.5.5.4. wOffset
+tensor-interleaved-layout	tensors	5.5.6. Interleave layout
+tensor-swizzling-modes	tensors	5.5.7. Swizzling Modes
+tensor-tensormap	tensors	5.5.8. Tensor-map
+instruction-operands		6. Instruction Operands
+operand-type-information	instruction-operands	6.1. Operand Type Information
+source-operands	instruction-operands	6.2. Source Operands
+destination-operands	instruction-operands	6.3. Destination Operands
+using-addresses-arrays-and-vectors	instruction-operands	6.4. Using Addresses, Arrays, and Vectors
+addresses-as-operands	using-addresses-arrays-and-vectors	6.4.1. Addresses as Operands
+generic-addressing	addresses-as-operands	6.4.1.1. Generic Addressing
+arrays-as-operands	using-addresses-arrays-and-vectors	6.4.2. Arrays as Operands
+vectors-as-operands	using-addresses-arrays-and-vectors	6.4.3. Vectors as Operands
+labels-and-function-names-as-operands	using-addresses-arrays-and-vectors	6.4.4. Labels and Function Names as Operands
+type-conversion	instruction-operands	6.5. Type Conversion
+scalar-conversions	type-conversion	6.5.1. Scalar Conversions
+rounding-modifiers	type-conversion	6.5.2. Rounding Modifiers
+operand-costs	instruction-operands	6.6. Operand Costs
+abstracting-abi		7. Abstracting the ABI
+function-declarations-and-definitions	abstracting-abi	7.1. Function Declarations and Definitions
+changes-from-ptx-isa-version-1-x	function-declarations-and-definitions	7.1.1. Changes from PTX ISA Version 1.x
+variadic-functions	abstracting-abi	7.2. Variadic Functions
+alloca	abstracting-abi	7.3. Alloca
+memory-consistency-model		8. Memory Consistency Model
+scope-and-applicability	memory-consistency-model	8.1. Scope and applicability of the model
+limitations-system-scope-atomicity	scope-and-applicability	8.1.1. Limitations on atomicity at system scope
+memory-operations	memory-consistency-model	8.2. Memory operations
+overlap	memory-operations	8.2.1. Overlap
+aliases	memory-operations	8.2.2. Aliases
+multimem-addresses	memory-operations	8.2.3. Multimem Addresses
+memory-operations-on-vector-data-types	memory-operations	8.2.4. Memory Operations on Vector Data Types
+memory-operations-on-packed-data-types	memory-operations	8.2.5. Memory Operations on Packed Data Types
+initialization	memory-operations	8.2.6. Initialization
+memory-consistency-state-spaces	memory-consistency-model	8.3. State spaces
+operation-types	memory-consistency-model	8.4. Operation types
+mmio-operation	operation-types	8.4.1. mmio Operation
+volatile-operation	operation-types	8.4.2. volatile Operation
+scope	memory-consistency-model	8.5. Scope
+proxies	memory-consistency-model	8.6. Proxies
+strong-proxy-accesses	proxies	8.6.1. Strong Proxy Accesses
+morally-strong-operations	memory-consistency-model	8.7. Morally strong operations
+conflict-and-data-races	morally-strong-operations	8.7.1. Conflict and Data-races
+mixed-size-limitations	morally-strong-operations	8.7.2. Limitations on Mixed-size Data-races
+release-acquire-patterns	memory-consistency-model	8.8. Release and Acquire Patterns
+ordering-memory-operations	memory-consistency-model	8.9. Ordering of memory operations
+program-order	ordering-memory-operations	8.9.1. Program Order
+program-order-async-operations	program-order	8.9.1.1. Asynchronous Operations
+observation-order	ordering-memory-operations	8.9.2. Observation Order
+fence-sc-order	ordering-memory-operations	8.9.3. Fence-SC Order
+memory-synchronization	ordering-memory-operations	8.9.4. Memory synchronization
+causality-order	ordering-memory-operations	8.9.5. Causality Order
+coherence-order	ordering-memory-operations	8.9.6. Coherence Order
+communication-order	ordering-memory-operations	8.9.7. Communication Order
+axioms	memory-consistency-model	8.10. Axioms
+coherence-axiom	axioms	8.10.1. Coherence
+fence-sc-axiom	axioms	8.10.2. Fence-SC
+atomicity-axiom	axioms	8.10.3. Atomicity
+no-thin-air-axiom	axioms	8.10.4. No Thin Air
+sc-per-loc-axiom	axioms	8.10.5. Sequential Consistency Per Location
+causality-axiom	axioms	8.10.6. Causality
+special-cases	memory-consistency-model	8.11. Special Cases
+red-read	special-cases	8.11.1. Reductions do not form Acquire Patterns
+instruction-set		9. Instruction Set
+format-and-semantics-of-instruction-descriptions	instruction-set	9.1. Format and Semantics of Instruction Descriptions
+ptx-instructions	instruction-set	9.2. PTX Instructions
+predicated-execution	instruction-set	9.3. Predicated Execution
+comparisons	predicated-execution	9.3.1. Comparisons
+integer-and-bit-size-comparisons	comparisons	9.3.1.1. Integer and Bit-Size Comparisons
+floating-point-comparisons	comparisons	9.3.1.2. Floating Point Comparisons
+manipulating-predicates	predicated-execution	9.3.2. Manipulating Predicates
+type-information-for-instructions-and-operands	instruction-set	9.4. Type Information for Instructions and Operands
+operand-size-exceeding-instruction-type-size	type-information-for-instructions-and-operands	9.4.1. Operand Size Exceeding Instruction-Type Size
+divergence-of-threads-in-control-constructs	instruction-set	9.5. Divergence of Threads in Control Constructs
+semantics	instruction-set	9.6. Semantics
+machine-specific-semantics-of-16-bit-code	semantics	9.6.1. Machine-Specific Semantics of 16-bit Code
+instructions	instruction-set	9.7. Instructions
+integer-arithmetic-instructions	instructions	9.7.1. Integer Arithmetic Instructions
+integer-arithmetic-instructions-add	integer-arithmetic-instructions	9.7.1.1. Integer Arithmetic Instructions: add
+integer-arithmetic-instructions-sub	integer-arithmetic-instructions	9.7.1.2. Integer Arithmetic Instructions: sub
+integer-arithmetic-instructions-mul	integer-arithmetic-instructions	9.7.1.3. Integer Arithmetic Instructions: mul
+integer-arithmetic-instructions-mad	integer-arithmetic-instructions	9.7.1.4. Integer Arithmetic Instructions: mad
+integer-arithmetic-instructions-clmad	integer-arithmetic-instructions	9.7.1.5. Integer Arithmetic Instructions: clmad
+integer-arithmetic-instructions-mul24	integer-arithmetic-instructions	9.7.1.6. Integer Arithmetic Instructions: mul24
+integer-arithmetic-instructions-mad24	integer-arithmetic-instructions	9.7.1.7. Integer Arithmetic Instructions: mad24
+integer-arithmetic-instructions-sad	integer-arithmetic-instructions	9.7.1.8. Integer Arithmetic Instructions: sad
+integer-arithmetic-instructions-div	integer-arithmetic-instructions	9.7.1.9. Integer Arithmetic Instructions: div
+integer-arithmetic-instructions-rem	integer-arithmetic-instructions	9.7.1.10. Integer Arithmetic Instructions: rem
+integer-arithmetic-instructions-abs	integer-arithmetic-instructions	9.7.1.11. Integer Arithmetic Instructions: abs
+integer-arithmetic-instructions-neg	integer-arithmetic-instructions	9.7.1.12. Integer Arithmetic Instructions: neg
+integer-arithmetic-instructions-min	integer-arithmetic-instructions	9.7.1.13. Integer Arithmetic Instructions: min
+integer-arithmetic-instructions-max	integer-arithmetic-instructions	9.7.1.14. Integer Arithmetic Instructions: max
+integer-arithmetic-instructions-popc	integer-arithmetic-instructions	9.7.1.15. Integer Arithmetic Instructions: popc
+integer-arithmetic-instructions-clz	integer-arithmetic-instructions	9.7.1.16. Integer Arithmetic Instructions: clz
+integer-arithmetic-instructions-bfind	integer-arithmetic-instructions	9.7.1.17. Integer Arithmetic Instructions: bfind
+integer-arithmetic-instructions-fns	integer-arithmetic-instructions	9.7.1.18. Integer Arithmetic Instructions: fns
+integer-arithmetic-instructions-brev	integer-arithmetic-instructions	9.7.1.19. Integer Arithmetic Instructions: brev
+integer-arithmetic-instructions-bfe	integer-arithmetic-instructions	9.7.1.20. Integer Arithmetic Instructions: bfe
+integer-arithmetic-instructions-bfi	integer-arithmetic-instructions	9.7.1.21. Integer Arithmetic Instructions: bfi
+integer-arithmetic-instructions-szext	integer-arithmetic-instructions	9.7.1.22. Integer Arithmetic Instructions: szext
+integer-arithmetic-instructions-bmsk	integer-arithmetic-instructions	9.7.1.23. Integer Arithmetic Instructions: bmsk
+integer-arithmetic-instructions-dp4a	integer-arithmetic-instructions	9.7.1.24. Integer Arithmetic Instructions: dp4a
+integer-arithmetic-instructions-dp2a	integer-arithmetic-instructions	9.7.1.25. Integer Arithmetic Instructions: dp2a
+extended-precision-integer-arithmetic-instructions	instructions	9.7.2. Extended-Precision Integer Arithmetic Instructions
+extended-precision-arithmetic-instructions-add-cc	extended-precision-integer-arithmetic-instructions	9.7.2.1. Extended-Precision Arithmetic Instructions: add.cc
+extended-precision-arithmetic-instructions-addc	extended-precision-integer-arithmetic-instructions	9.7.2.2. Extended-Precision Arithmetic Instructions: addc
+extended-precision-arithmetic-instructions-sub-cc	extended-precision-integer-arithmetic-instructions	9.7.2.3. Extended-Precision Arithmetic Instructions: sub.cc
+extended-precision-arithmetic-instructions-subc	extended-precision-integer-arithmetic-instructions	9.7.2.4. Extended-Precision Arithmetic Instructions: subc
+extended-precision-arithmetic-instructions-mad-cc	extended-precision-integer-arithmetic-instructions	9.7.2.5. Extended-Precision Arithmetic Instructions: mad.cc
+extended-precision-arithmetic-instructions-madc	extended-precision-integer-arithmetic-instructions	9.7.2.6. Extended-Precision Arithmetic Instructions: madc
+floating-point-instructions	instructions	9.7.3. Floating-Point Instructions
+floating-point-instructions-testp	floating-point-instructions	9.7.3.1. Floating Point Instructions: testp
+floating-point-instructions-copysign	floating-point-instructions	9.7.3.2. Floating Point Instructions: copysign
+floating-point-instructions-add	floating-point-instructions	9.7.3.3. Floating Point Instructions: add
+floating-point-instructions-sub	floating-point-instructions	9.7.3.4. Floating Point Instructions: sub
+floating-point-instructions-mul	floating-point-instructions	9.7.3.5. Floating Point Instructions: mul
+floating-point-instructions-fma	floating-point-instructions	9.7.3.6. Floating Point Instructions: fma
+floating-point-instructions-mad	floating-point-instructions	9.7.3.7. Floating Point Instructions: mad
+floating-point-instructions-div	floating-point-instructions	9.7.3.8. Floating Point Instructions: div
+floating-point-instructions-abs	floating-point-instructions	9.7.3.9. Floating Point Instructions: abs
+floating-point-instructions-neg	floating-point-instructions	9.7.3.10. Floating Point Instructions: neg
+floating-point-instructions-min	floating-point-instructions	9.7.3.11. Floating Point Instructions: min
+floating-point-instructions-max	floating-point-instructions	9.7.3.12. Floating Point Instructions: max
+floating-point-instructions-rcp	floating-point-instructions	9.7.3.13. Floating Point Instructions: rcp
+floating-point-instructions-rcp-approx-ftz-f64	floating-point-instructions	9.7.3.14. Floating Point Instructions: rcp.approx.ftz.f64
+floating-point-instructions-sqrt	floating-point-instructions	9.7.3.15. Floating Point Instructions: sqrt
+floating-point-instructions-rsqrt	floating-point-instructions	9.7.3.16. Floating Point Instructions: rsqrt
+floating-point-instructions-rsqrt-approx-ftz-f64	floating-point-instructions	9.7.3.17. Floating Point Instructions: rsqrt.approx.ftz.f64
+floating-point-instructions-sin	floating-point-instructions	9.7.3.18. Floating Point Instructions: sin
+floating-point-instructions-cos	floating-point-instructions	9.7.3.19. Floating Point Instructions: cos
+floating-point-instructions-lg2	floating-point-instructions	9.7.3.20. Floating Point Instructions: lg2
+floating-point-instructions-ex2	floating-point-instructions	9.7.3.21. Floating Point Instructions: ex2
+floating-point-instructions-tanh	floating-point-instructions	9.7.3.22. Floating Point Instructions: tanh
+half-precision-floating-point-instructions	instructions	9.7.4. Half Precision Floating-Point Instructions
+half-precision-floating-point-instructions-add	half-precision-floating-point-instructions	9.7.4.1. Half Precision Floating Point Instructions: add
+half-precision-floating-point-instructions-sub	half-precision-floating-point-instructions	9.7.4.2. Half Precision Floating Point Instructions: sub
+half-precision-floating-point-instructions-mul	half-precision-floating-point-instructions	9.7.4.3. Half Precision Floating Point Instructions: mul
+half-precision-floating-point-instructions-fma	half-precision-floating-point-instructions	9.7.4.4. Half Precision Floating Point Instructions: fma
+half-precision-floating-point-instructions-neg	half-precision-floating-point-instructions	9.7.4.5. Half Precision Floating Point Instructions: neg
+half-precision-floating-point-instructions-abs	half-precision-floating-point-instructions	9.7.4.6. Half Precision Floating Point Instructions: abs
+half-precision-floating-point-instructions-min	half-precision-floating-point-instructions	9.7.4.7. Half Precision Floating Point Instructions: min
+half-precision-floating-point-instructions-max	half-precision-floating-point-instructions	9.7.4.8. Half Precision Floating Point Instructions: max
+half-precision-floating-point-instructions-tanh	half-precision-floating-point-instructions	9.7.4.9. Half Precision Floating Point Instructions: tanh
+half-precision-floating-point-instructions-ex2	half-precision-floating-point-instructions	9.7.4.10. Half Precision Floating Point Instructions: ex2
+mixed-precision-floating-point-instructions	instructions	9.7.5. Mixed Precision Floating-Point Instructions
+mixed-precision-floating-point-instructions-add	mixed-precision-floating-point-instructions	9.7.5.1. Mixed Precision Floating Point Instructions: add
+mixed-precision-floating-point-instructions-sub	mixed-precision-floating-point-instructions	9.7.5.2. Mixed Precision Floating Point Instructions: sub
+mixed-precision-floating-point-instructions-fma	mixed-precision-floating-point-instructions	9.7.5.3. Mixed Precision Floating Point Instructions: fma
+comparison-and-selection-instructions	instructions	9.7.6. Comparison and Selection Instructions
+comparison-and-selection-instructions-set	comparison-and-selection-instructions	9.7.6.1. Comparison and Selection Instructions: set
+comparison-and-selection-instructions-setp	comparison-and-selection-instructions	9.7.6.2. Comparison and Selection Instructions: setp
+comparison-and-selection-instructions-selp	comparison-and-selection-instructions	9.7.6.3. Comparison and Selection Instructions: selp
+comparison-and-selection-instructions-slct	comparison-and-selection-instructions	9.7.6.4. Comparison and Selection Instructions: slct
+half-precision-comparison-instructions	instructions	9.7.7. Half Precision Comparison Instructions
+half-precision-comparison-instructions-set	half-precision-comparison-instructions	9.7.7.1. Half Precision Comparison Instructions: set
+half-precision-comparison-instructions-setp	half-precision-comparison-instructions	9.7.7.2. Half Precision Comparison Instructions: setp
+logic-and-shift-instructions	instructions	9.7.8. Logic and Shift Instructions
+logic-and-shift-instructions-and	logic-and-shift-instructions	9.7.8.1. Logic and Shift Instructions: and
+logic-and-shift-instructions-or	logic-and-shift-instructions	9.7.8.2. Logic and Shift Instructions: or
+logic-and-shift-instructions-xor	logic-and-shift-instructions	9.7.8.3. Logic and Shift Instructions: xor
+logic-and-shift-instructions-not	logic-and-shift-instructions	9.7.8.4. Logic and Shift Instructions: not
+logic-and-shift-instructions-cnot	logic-and-shift-instructions	9.7.8.5. Logic and Shift Instructions: cnot
+logic-and-shift-instructions-lop3	logic-and-shift-instructions	9.7.8.6. Logic and Shift Instructions: lop3
+logic-and-shift-instructions-shf	logic-and-shift-instructions	9.7.8.7. Logic and Shift Instructions: shf
+logic-and-shift-instructions-shl	logic-and-shift-instructions	9.7.8.8. Logic and Shift Instructions: shl
+logic-and-shift-instructions-shr	logic-and-shift-instructions	9.7.8.9. Logic and Shift Instructions: shr
+data-movement-and-conversion-instructions	instructions	9.7.9. Data Movement and Conversion Instructions
+cache-operators	data-movement-and-conversion-instructions	9.7.9.1. Cache Operators
+cache-eviction-priority-hints	data-movement-and-conversion-instructions	9.7.9.2. Cache Eviction Priority Hints
+data-movement-and-conversion-instructions-mov	data-movement-and-conversion-instructions	9.7.9.3. Data Movement and Conversion Instructions: mov
+data-movement-and-conversion-instructions-mov-2	data-movement-and-conversion-instructions	9.7.9.4. Data Movement and Conversion Instructions: mov
+data-movement-and-conversion-instructions-shfl	data-movement-and-conversion-instructions	9.7.9.5. Data Movement and Conversion Instructions: shfl (deprecated)
+data-movement-and-conversion-instructions-shfl-sync	data-movement-and-conversion-instructions	9.7.9.6. Data Movement and Conversion Instructions: shfl.sync
+data-movement-and-conversion-instructions-prmt	data-movement-and-conversion-instructions	9.7.9.7. Data Movement and Conversion Instructions: prmt
+data-movement-and-conversion-instructions-ld	data-movement-and-conversion-instructions	9.7.9.8. Data Movement and Conversion Instructions: ld
+data-movement-and-conversion-instructions-ld-global-nc	data-movement-and-conversion-instructions	9.7.9.9. Data Movement and Conversion Instructions: ld.global.nc
+data-movement-and-conversion-instructions-ldu	data-movement-and-conversion-instructions	9.7.9.10. Data Movement and Conversion Instructions: ldu
+data-movement-and-conversion-instructions-st	data-movement-and-conversion-instructions	9.7.9.11. Data Movement and Conversion Instructions: st
+data-movement-and-conversion-instructions-st-async	data-movement-and-conversion-instructions	9.7.9.12. Data Movement and Conversion Instructions: st.async
+data-movement-and-conversion-instructions-multimem-st-async	data-movement-and-conversion-instructions	9.7.9.13. Data Movement and Conversion Instructions: multimem.st.async
+data-movement-and-conversion-instructions-st-bulk	data-movement-and-conversion-instructions	9.7.9.14. Data Movement and Conversion Instructions: st.bulk
+data-movement-and-conversion-instructions-multimem	data-movement-and-conversion-instructions	9.7.9.15. Data Movement and Conversion Instructions: multimem.ld_reduce, multimem.st, multimem.red
+data-movement-and-conversion-instructions-prefetch-prefetchu	data-movement-and-conversion-instructions	9.7.9.16. Data Movement and Conversion Instructions: prefetch, prefetchu
+data-movement-and-conversion-instructions-applypriority	data-movement-and-conversion-instructions	9.7.9.17. Data Movement and Conversion Instructions: applypriority
+data-movement-and-conversion-instructions-discard	data-movement-and-conversion-instructions	9.7.9.18. Data Movement and Conversion Instructions: discard
+data-movement-and-conversion-instructions-createpolicy	data-movement-and-conversion-instructions	9.7.9.19. Data Movement and Conversion Instructions: createpolicy
+data-movement-and-conversion-instructions-isspacep	data-movement-and-conversion-instructions	9.7.9.20. Data Movement and Conversion Instructions: isspacep
+data-movement-and-conversion-instructions-cvta	data-movement-and-conversion-instructions	9.7.9.21. Data Movement and Conversion Instructions: cvta
+data-movement-and-conversion-instructions-cvt	data-movement-and-conversion-instructions	9.7.9.22. Data Movement and Conversion Instructions: cvt
+data-movement-and-conversion-instructions-cvt-pack	data-movement-and-conversion-instructions	9.7.9.23. Data Movement and Conversion Instructions: cvt.pack
+data-movement-and-conversion-instructions-mapa	data-movement-and-conversion-instructions	9.7.9.24. Data Movement and Conversion Instructions: mapa
+data-movement-and-conversion-instructions-getctarank	data-movement-and-conversion-instructions	9.7.9.25. Data Movement and Conversion Instructions: getctarank
+data-movement-and-conversion-instructions-asynchronous-copy	data-movement-and-conversion-instructions	9.7.9.26. Data Movement and Conversion Instructions: Asynchronous copy
+data-movement-and-conversion-instructions-asynchronous-copy-completion-mechanisms	data-movement-and-conversion-instructions-asynchronous-copy	9.7.9.26.1. Completion Mechanisms for Asynchronous Copy Operations
+data-movement-and-conversion-instructions-asynchronous-copy-completion-mechanisms-async-group	data-movement-and-conversion-instructions-asynchronous-copy-completion-mechanisms	9.7.9.26.1.1. Async-group mechanism
+data-movement-and-conversion-instructions-asynchronous-copy-completion-mechanisms-mbarrier	data-movement-and-conversion-instructions-asynchronous-copy-completion-mechanisms	9.7.9.26.1.2. Mbarrier-based mechanism
+async-proxy	data-movement-and-conversion-instructions-asynchronous-copy	9.7.9.26.2. Async Proxy
+data-movement-and-conversion-instructions-non-bulk-copy	data-movement-and-conversion-instructions-asynchronous-copy	9.7.9.26.3. Data Movement and Conversion Instructions: Non-bulk copy
+data-movement-and-conversion-instructions-cp-async	data-movement-and-conversion-instructions-non-bulk-copy	9.7.9.26.3.1. Data Movement and Conversion Instructions: cp.async
+data-movement-and-conversion-instructions-cp-async-commit-group	data-movement-and-conversion-instructions-non-bulk-copy	9.7.9.26.3.2. Data Movement and Conversion Instructions: cp.async.commit_group
+data-movement-and-conversion-instructions-cp-async-wait-group	data-movement-and-conversion-instructions-non-bulk-copy	9.7.9.26.3.3. Data Movement and Conversion Instructions: cp.async.wait_group / cp.async.wait_all
+data-movement-and-conversion-instructions-bulk-copy	data-movement-and-conversion-instructions-asynchronous-copy	9.7.9.26.4. Data Movement and Conversion Instructions: Bulk copy
+data-movement-and-conversion-instructions-cp-async-bulk	data-movement-and-conversion-instructions-bulk-copy	9.7.9.26.4.1. Data Movement and Conversion Instructions: cp.async.bulk
+data-movement-and-conversion-instructions-cp-reduce-async-bulk	data-movement-and-conversion-instructions-bulk-copy	9.7.9.26.4.2. Data Movement and Conversion Instructions: cp.reduce.async.bulk
+data-movement-and-conversion-instructions-cp-async-bulk-prefetch	data-movement-and-conversion-instructions-bulk-copy	9.7.9.26.4.3. Data Movement and Conversion Instructions: cp.async.bulk.prefetch
+data-movement-and-conversion-instructions-multimem-cp-async-bulk	data-movement-and-conversion-instructions-bulk-copy	9.7.9.26.4.4. Data Movement and Conversion Instructions: multimem.cp.async.bulk
+data-movement-and-conversion-instructions-multimem-cp-reduce-async-bulk	data-movement-and-conversion-instructions-bulk-copy	9.7.9.26.4.5. Data Movement and Conversion Instructions: multimem.cp.reduce.async.bulk
+data-movement-and-conversion-instructions-tensor-copy	data-movement-and-conversion-instructions-asynchronous-copy	9.7.9.26.5. Data Movement and Conversion Instructions: Tensor copy
+data-movement-and-conversion-instructions-tensor-copy-restrictions	data-movement-and-conversion-instructions-tensor-copy	9.7.9.26.5.1. Restriction on Tensor Copy instructions
+data-movement-and-conversion-instructions-cp-async-bulk-tensor	data-movement-and-conversion-instructions-tensor-copy	9.7.9.26.5.2. Data Movement and Conversion Instructions: cp.async.bulk.tensor
+data-movement-and-conversion-instructions-cp-reduce-async-bulk-tensor	data-movement-and-conversion-instructions-tensor-copy	9.7.9.26.5.3. Data Movement and Conversion Instructions: cp.reduce.async.bulk.tensor
+data-movement-and-conversion-instructions-cp-async-bulk-prefetch-tensor	data-movement-and-conversion-instructions-tensor-copy	9.7.9.26.5.4. Data Movement and Conversion Instructions: cp.async.bulk.prefetch.tensor
+data-movement-and-conversion-instructions-bulk-tensor-copy-completion	data-movement-and-conversion-instructions-asynchronous-copy	9.7.9.26.6. Data Movement and Conversion Instructions: Bulk and Tensor copy completion instructions
+data-movement-and-conversion-instructions-cp-async-bulk-commit-group	data-movement-and-conversion-instructions-bulk-tensor-copy-completion	9.7.9.26.6.1. Data Movement and Conversion Instructions: cp.async.bulk.commit_group
+data-movement-and-conversion-instructions-cp-async-bulk-wait-group	data-movement-and-conversion-instructions-bulk-tensor-copy-completion	9.7.9.26.6.2. Data Movement and Conversion Instructions: cp.async.bulk.wait_group
+data-movement-and-conversion-instructions-tensormap-replace	data-movement-and-conversion-instructions	9.7.9.27. Data Movement and Conversion Instructions: tensormap.replace
+fabric-instructions	instructions	9.7.10. Fabric Instructions
+cft-handles	fabric-instructions	9.7.10.1. CFT Handles
+cft-handles-overview	fabric-instructions	9.7.10.2. CFT Handles Overview
+fabric-proxy	cft-handles-overview	9.7.10.2.1. Fabric Proxy
+fabric-operations-lifecycle	fabric-instructions	9.7.10.3. Life of a Fabric Operation
+issue-fabric-operation	fabric-operations-lifecycle	9.7.10.3.1. Issue a Fabric Operation
+fabric-submit-then-arrive-mbarrier	fabric-operations-lifecycle	9.7.10.3.2. Submit and then arrive at mbarrier
+fabric-wait-for-completion	fabric-operations-lifecycle	9.7.10.3.3. Wait for completion
+fabric-inspect-status-handle-errors	fabric-operations-lifecycle	9.7.10.3.4. Inspect status and handle errors
+fabric-completion-mechanisms	fabric-instructions	9.7.10.4. Completion mechanisms of fabric operations
+fabric-reporting-mechanism	fabric-completion-mechanisms	9.7.10.4.1. Fabric Reporting Mechanism
+fabric-read-completion-mechanism	fabric-completion-mechanisms	9.7.10.4.2. Fabric-read completion mechanism
+fabric-counted-completion-mechanism	fabric-completion-mechanisms	9.7.10.4.3. Counted completion mechanism
+fabric-operations	fabric-instructions	9.7.10.5. Fabric operations
+fabric-instructions-try-get	fabric-operations	9.7.10.5.1. Fabric Instructions: fabric.try_get
+fabric-instructions-try-put	fabric-operations	9.7.10.5.2. Fabric Instructions: fabric.try_put
+fabric-instructions-try-red	fabric-operations	9.7.10.5.3. Fabric Instructions: fabric.try_red
+fabric-instructions-try-pullred	fabric-operations	9.7.10.5.4. Fabric Instructions: fabric.try_pullred
+fabric-instructions-submit	fabric-operations	9.7.10.5.5. Fabric Instructions: fabric.submit
+fabric-instructions-wait	fabric-operations	9.7.10.5.6. Fabric Instructions: fabric.wait
+texture-instructions	instructions	9.7.11. Texture Instructions
+texturing-modes	texture-instructions	9.7.11.1. Texturing Modes
+mipmaps	texture-instructions	9.7.11.2. Mipmaps
+texture-instructions-tex	texture-instructions	9.7.11.3. Texture Instructions: tex
+texture-instructions-tld4	texture-instructions	9.7.11.4. Texture Instructions: tld4
+texture-instructions-txq	texture-instructions	9.7.11.5. Texture Instructions: txq
+texture-instructions-istypep	texture-instructions	9.7.11.6. Texture Instructions: istypep
+surface-instructions	instructions	9.7.12. Surface Instructions
+surface-instructions-suld	surface-instructions	9.7.12.1. Surface Instructions: suld
+surface-instructions-sust	surface-instructions	9.7.12.2. Surface Instructions: sust
+surface-instructions-sured	surface-instructions	9.7.12.3. Surface Instructions: sured
+surface-instructions-suq	surface-instructions	9.7.12.4. Surface Instructions: suq
+control-flow-instructions	instructions	9.7.13. Control Flow Instructions
+control-flow-instructions-curly-braces	control-flow-instructions	9.7.13.1. Control Flow Instructions: {}
+control-flow-instructions-at	control-flow-instructions	9.7.13.2. Control Flow Instructions: @
+control-flow-instructions-bra	control-flow-instructions	9.7.13.3. Control Flow Instructions: bra
+control-flow-instructions-brx-idx	control-flow-instructions	9.7.13.4. Control Flow Instructions: brx.idx
+control-flow-instructions-call	control-flow-instructions	9.7.13.5. Control Flow Instructions: call
+control-flow-instructions-ret	control-flow-instructions	9.7.13.6. Control Flow Instructions: ret
+control-flow-instructions-exit	control-flow-instructions	9.7.13.7. Control Flow Instructions: exit
+parallel-synchronization-and-communication-instructions	instructions	9.7.14. Parallel Synchronization and Communication Instructions
+parallel-synchronization-and-communication-instructions-bar	parallel-synchronization-and-communication-instructions	9.7.14.1. Parallel Synchronization and Communication Instructions: bar, barrier
+parallel-synchronization-and-communication-instructions-bar-warp-sync	parallel-synchronization-and-communication-instructions	9.7.14.2. Parallel Synchronization and Communication Instructions: bar.warp.sync
+parallel-synchronization-and-communication-instructions-barrier-cluster	parallel-synchronization-and-communication-instructions	9.7.14.3. Parallel Synchronization and Communication Instructions: barrier.cluster
+parallel-synchronization-and-communication-instructions-membar	parallel-synchronization-and-communication-instructions	9.7.14.4. Parallel Synchronization and Communication Instructions: membar / fence
+parallel-synchronization-and-communication-instructions-atom	parallel-synchronization-and-communication-instructions	9.7.14.5. Parallel Synchronization and Communication Instructions: atom
+parallel-synchronization-and-communication-instructions-red	parallel-synchronization-and-communication-instructions	9.7.14.6. Parallel Synchronization and Communication Instructions: red
+parallel-synchronization-and-communication-instructions-red-async	parallel-synchronization-and-communication-instructions	9.7.14.7. Parallel Synchronization and Communication Instructions: red.async
+parallel-synchronization-and-communication-instructions-multimem-red-async	parallel-synchronization-and-communication-instructions	9.7.14.8. Parallel Synchronization and Communication Instructions: multimem.red.async
+parallel-synchronization-and-communication-instructions-vote	parallel-synchronization-and-communication-instructions	9.7.14.9. Parallel Synchronization and Communication Instructions: vote (deprecated)
+parallel-synchronization-and-communication-instructions-vote-sync	parallel-synchronization-and-communication-instructions	9.7.14.10. Parallel Synchronization and Communication Instructions: vote.sync
+parallel-synchronization-and-communication-instructions-match-sync	parallel-synchronization-and-communication-instructions	9.7.14.11. Parallel Synchronization and Communication Instructions: match.sync
+parallel-synchronization-and-communication-instructions-activemask	parallel-synchronization-and-communication-instructions	9.7.14.12. Parallel Synchronization and Communication Instructions: activemask
+parallel-synchronization-and-communication-instructions-redux-sync	parallel-synchronization-and-communication-instructions	9.7.14.13. Parallel Synchronization and Communication Instructions: redux.sync
+parallel-synchronization-and-communication-instructions-griddepcontrol	parallel-synchronization-and-communication-instructions	9.7.14.14. Parallel Synchronization and Communication Instructions: griddepcontrol
+parallel-synchronization-and-communication-instructions-elect-sync	parallel-synchronization-and-communication-instructions	9.7.14.15. Parallel Synchronization and Communication Instructions: elect.sync
+parallel-synchronization-and-communication-instructions-mbarrier	parallel-synchronization-and-communication-instructions	9.7.14.16. Parallel Synchronization and Communication Instructions: mbarrier
+parallel-synchronization-and-communication-instructions-mbarrier-size-alignment	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.1. Size and alignment of mbarrier object
+parallel-synchronization-and-communication-instructions-mbarrier-object-layout	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.2. Layouts of the mbarrier object
+parallel-synchronization-and-communication-instructions-mbarrier-contents	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.3. Contents of the mbarrier object
+parallel-synchronization-and-communication-instructions-mbarrier-lifecycle	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.4. Lifecycle of the mbarrier object
+parallel-synchronization-and-communication-instructions-mbarrier-phase	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.5. Phases of the mbarrier object
+parallel-synchronization-and-communication-instructions-mbarrier-primary-phase	parallel-synchronization-and-communication-instructions-mbarrier-phase	9.7.14.16.5.1. Primary phase
+parallel-synchronization-and-communication-instructions-mbarrier-conditional-phase	parallel-synchronization-and-communication-instructions-mbarrier-phase	9.7.14.16.5.2. Conditional phase
+parallel-synchronization-and-communication-instructions-mbarrier-tracking-async-operations	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.6. Tracking asynchronous operations by the mbarrier object
+parallel-synchronization-and-communication-instructions-mbarrier-expect-tx-operation	parallel-synchronization-and-communication-instructions-mbarrier-tracking-async-operations	9.7.14.16.6.1. expect-tx operation
+parallel-synchronization-and-communication-instructions-mbarrier-complete-tx-operation	parallel-synchronization-and-communication-instructions-mbarrier-tracking-async-operations	9.7.14.16.6.2. complete-tx operation
+parallel-synchronization-and-communication-instructions-mbarrier-tracking	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.7. Tracking successful completion of an operation using the mbarrier object
+parallel-synchronization-and-communication-instructions-mbarrier-phase-completion	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.8. Phase Completion of the mbarrier object
+parallel-synchronization-and-communication-instructions-mbarrier-arrive-on	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.9. Arrive-on operation on mbarrier object
+parallel-synchronization-and-communication-instructions-mbarrier-report-on	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.10. Report-on operation on mbarrier object
+parallel-synchronization-and-communication-instructions-mbarrier-smem	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.11. mbarrier support with shared memory
+parallel-synchronization-and-communication-instructions-mbarrier-init	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.12. Parallel Synchronization and Communication Instructions: mbarrier.init
+parallel-synchronization-and-communication-instructions-mbarrier-inval	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.13. Parallel Synchronization and Communication Instructions: mbarrier.inval
+parallel-synchronization-and-communication-instructions-mbarrier-expect-tx	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.14. Parallel Synchronization and Communication Instructions: mbarrier.expect_tx
+parallel-synchronization-and-communication-instructions-mbarrier-complete-tx	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.15. Parallel Synchronization and Communication Instructions: mbarrier.complete_tx
+parallel-synchronization-and-communication-instructions-mbarrier-arrive	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.16. Parallel Synchronization and Communication Instructions: mbarrier.arrive
+parallel-synchronization-and-communication-instructions-mbarrier-arrive-drop	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.17. Parallel Synchronization and Communication Instructions: mbarrier.arrive_drop
+parallel-synchronization-and-communication-instructions-cp-async-mbarrier-arrive	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.18. Parallel Synchronization and Communication Instructions: cp.async.mbarrier.arrive
+parallel-synchronization-and-communication-instructions-mbarrier-test-wait-try-wait	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.19. Parallel Synchronization and Communication Instructions: mbarrier.test_wait / mbarrier.try_wait
+parallel-synchronization-and-communication-instructions-mbarrier-pending-count	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.20. Parallel Synchronization and Communication Instructions: mbarrier.pending_count
+parallel-synchronization-and-communication-instructions-mbarrier-check-layout	parallel-synchronization-and-communication-instructions-mbarrier	9.7.14.16.21. Parallel Synchronization and Communication Instructions: mbarrier.check_layout
+parallel-synchronization-and-communication-instructions-tensormap-cp-fenceproxy	parallel-synchronization-and-communication-instructions	9.7.14.17. Parallel Synchronization and Communication Instructions: tensormap.cp_fenceproxy
+parallel-synchronization-and-communication-instructions-clusterlaunchcontrol-try-cancel	parallel-synchronization-and-communication-instructions	9.7.14.18. Parallel Synchronization and Communication Instructions: clusterlaunchcontrol.try_cancel
+parallel-synchronization-and-communication-instructions-clusterlaunchcontrol-query-cancel	parallel-synchronization-and-communication-instructions	9.7.14.19. Parallel Synchronization and Communication Instructions: clusterlaunchcontrol.query_cancel
+warp-level-matrix-instructions	instructions	9.7.15. Warp Level Matrix Multiply-Accumulate Instructions
+warp-level-matrix-shape	warp-level-matrix-instructions	9.7.15.1. Matrix Shape
+warp-level-matrix-data-types	warp-level-matrix-instructions	9.7.15.2. Matrix Data-types
+warp-level-block-scaling	warp-level-matrix-instructions	9.7.15.3. Block Scaling for mma.sync
+warp-level-matrix-instructions-wmma	warp-level-matrix-instructions	9.7.15.4. Matrix multiply-accumulate operation using wmma instructions
+warp-level-matrix-fragment	warp-level-matrix-instructions-wmma	9.7.15.4.1. Matrix Fragments for WMMA
+warp-level-matrix-storage	warp-level-matrix-instructions-wmma	9.7.15.4.2. Matrix Storage for WMMA
+warp-level-matrix-instructions-wmma-ld	warp-level-matrix-instructions-wmma	9.7.15.4.3. Warp-level Matrix Load Instruction: wmma.load
+warp-level-matrix-instructions-wmma-st	warp-level-matrix-instructions-wmma	9.7.15.4.4. Warp-level Matrix Store Instruction: wmma.store
+warp-level-matrix-instructions-wmma-mma	warp-level-matrix-instructions-wmma	9.7.15.4.5. Warp-level Matrix Multiply-and-Accumulate Instruction: wmma.mma
+warp-level-matrix-instructions-for-mma	warp-level-matrix-instructions	9.7.15.5. Matrix multiply-accumulate operation using mma instruction
+warp-level-matrix-fragment-mma-884-f16	warp-level-matrix-instructions-for-mma	9.7.15.5.1. Matrix Fragments for mma.m8n8k4 with .f16 floating point type
+warp-level-matrix-fragment-mma-884-f64	warp-level-matrix-instructions-for-mma	9.7.15.5.2. Matrix Fragments for mma.m8n8k4 with .f64 floating point type
+warp-level-matrix-fragment-mma-8816	warp-level-matrix-instructions-for-mma	9.7.15.5.3. Matrix Fragments for mma.m8n8k16
+warp-level-matrix-fragment-mma-8832	warp-level-matrix-instructions-for-mma	9.7.15.5.4. Matrix Fragments for mma.m8n8k32
+warp-level-matrix-fragment-mma-88128	warp-level-matrix-instructions-for-mma	9.7.15.5.5. Matrix Fragments for mma.m8n8k128
+warp-level-matrix-fragment-mma-1684	warp-level-matrix-instructions-for-mma	9.7.15.5.6. Matrix Fragments for mma.m16n8k4
+warp-level-matrix-fragment-mma-1688	warp-level-matrix-instructions-for-mma	9.7.15.5.7. Matrix Fragments for mma.m16n8k8
+warp-level-matrix-fragment-mma-16816-float	warp-level-matrix-instructions-for-mma	9.7.15.5.8. Matrix Fragments for mma.m16n8k16 with floating point type
+warp-level-matrix-fragment-mma-16816-i8-f8	warp-level-matrix-instructions-for-mma	9.7.15.5.9. Matrix Fragments for mma.m16n8k16 with integer type
+warp-level-matrix-fragment-mma-16832	warp-level-matrix-instructions-for-mma	9.7.15.5.10. Matrix Fragments for mma.m16n8k32
+warp-level-matrix-fragment-mma-16864	warp-level-matrix-instructions-for-mma	9.7.15.5.11. Matrix Fragments for mma.m16n8k64
+warp-level-matrix-fragment-mma-168128	warp-level-matrix-instructions-for-mma	9.7.15.5.12. Matrix Fragments for mma.m16n8k128
+warp-level-matrix-fragment-mma-168256	warp-level-matrix-instructions-for-mma	9.7.15.5.13. Matrix Fragments for mma.m16n8k256
+warp-level-matrix-instructions-mma	warp-level-matrix-instructions-for-mma	9.7.15.5.14. Multiply-and-Accumulate Instruction: mma
+warp-level-matrix-instructions-ldmatrix	warp-level-matrix-instructions-for-mma	9.7.15.5.15. Warp-level matrix load instruction: ldmatrix
+warp-level-matrix-instructions-stmatrix	warp-level-matrix-instructions-for-mma	9.7.15.5.16. Warp-level matrix store instruction: stmatrix
+warp-level-matrix-instructions-movmatrix	warp-level-matrix-instructions-for-mma	9.7.15.5.17. Warp-level matrix transpose instruction: movmatrix
+warp-level-matrix-instructions-for-sparse-mma	warp-level-matrix-instructions	9.7.15.6. Matrix multiply-accumulate operation using mma.sp instruction with sparse matrix A
+warp-level-sparse-matrix-storage	warp-level-matrix-instructions-for-sparse-mma	9.7.15.6.1. Sparse matrix storage
+warp-level-matrix-fragments-for-sparse-mma	warp-level-matrix-instructions-for-sparse-mma	9.7.15.6.2. Matrix fragments for multiply-accumulate operation with sparse matrix A
+warp-level-matrix-fragment-sparse-mma-16816-f16bf16	warp-level-matrix-fragments-for-sparse-mma	9.7.15.6.2.1. Matrix Fragments for sparse mma.m16n8k16 with .f16 and .bf16 types
+warp-level-matrix-fragment-sparse-mma-16832-f16bf16	warp-level-matrix-fragments-for-sparse-mma	9.7.15.6.2.2. Matrix Fragments for sparse mma.m16n8k32 with .f16 and .bf16 types
+warp-level-matrix-fragment-sparse-mma-16816-tf32	warp-level-matrix-fragments-for-sparse-mma	9.7.15.6.2.3. Matrix Fragments for sparse mma.m16n8k16 with .tf32 floating point type
+warp-level-matrix-fragment-sparse-mma-1688-tf32	warp-level-matrix-fragments-for-sparse-mma	9.7.15.6.2.4. Matrix Fragments for sparse mma.m16n8k8 with .tf32 floating point type
+warp-level-matrix-fragment-sparse-mma-16832-u8s8	warp-level-matrix-fragments-for-sparse-mma	9.7.15.6.2.5. Matrix Fragments for sparse mma.m16n8k32 with .u8 / .s8 integer type
+warp-level-matrix-fragment-sparse-mma-16864-u8s8-fp8	warp-level-matrix-fragments-for-sparse-mma	9.7.15.6.2.6. Matrix Fragments for sparse mma.m16n8k64 with .u8 / .s8 / .e4m3 / .e5m2 type
+warp-level-matrix-fragment-sparse-mma-16864-u4s4	warp-level-matrix-fragments-for-sparse-mma	9.7.15.6.2.7. Matrix Fragments for sparse mma.m16n8k64 with .u4 / .s4 integer type
+warp-level-matrix-fragment-sparse-mma-168128-u4s4	warp-level-matrix-fragments-for-sparse-mma	9.7.15.6.2.8. Matrix Fragments for sparse mma.m16n8k128 with .u4 / .s4 integer type
+warp-level-matrix-instructions-sparse-mma	warp-level-matrix-instructions-for-sparse-mma	9.7.15.6.3. Multiply-and-Accumulate Instruction: mma.sp / mma.sp::ordered_metadata
+asynchronous-warpgroup-level-matrix-instructions	instructions	9.7.16. Asynchronous Warpgroup Level Matrix Multiply-Accumulate Instructions
+asynchronous-warpgroup-level-matrix-instructions-warpgroup	asynchronous-warpgroup-level-matrix-instructions	9.7.16.1. Warpgroup
+asynchronous-warpgroup-level-matrix-shape	asynchronous-warpgroup-level-matrix-instructions	9.7.16.2. Matrix Shape
+asynchronous-warpgroup-level-matrix-data-types	asynchronous-warpgroup-level-matrix-instructions	9.7.16.3. Matrix Data-types
+asynchronous-warpgroup-level-matrix-async-proxy	asynchronous-warpgroup-level-matrix-instructions	9.7.16.4. Async Proxy
+asynchronous-warpgroup-level-matrix-operation-wgmma-mma-async	asynchronous-warpgroup-level-matrix-instructions	9.7.16.5. Asynchronous Warpgroup Level Matrix Multiply-Accumulate Operation using wgmma.mma_async instruction
+asynchronous-warpgroup-level-matrix-fragment	asynchronous-warpgroup-level-matrix-operation-wgmma-mma-async	9.7.16.5.1. Register Fragments and Shared Memory Matrix Layouts
+asynchronous-warpgroup-level-matrix-register-fragment	asynchronous-warpgroup-level-matrix-fragment	9.7.16.5.1.1. Register Fragments
+asynchronous-warpgroup-level-matrix-register-fragment-wgmma-64n16	asynchronous-warpgroup-level-matrix-register-fragment	9.7.16.5.1.1.1. Matrix Fragments for wgmma.mma_async.m64nNk16
+asynchronous-warpgroup-level-matrix-register-fragment-wgmma-64n8	asynchronous-warpgroup-level-matrix-register-fragment	9.7.16.5.1.1.2. Matrix Fragments for wgmma.mma_async.m64nNk8
+asynchronous-warpgroup-level-matrix-register-fragment-wgmma-64n32	asynchronous-warpgroup-level-matrix-register-fragment	9.7.16.5.1.1.3. Matrix Fragments for wgmma.mma_async.m64nNk32
+asynchronous-warpgroup-level-matrix-register-fragment-wgmma-64n256	asynchronous-warpgroup-level-matrix-register-fragment	9.7.16.5.1.1.4. Matrix Fragments for wgmma.mma_async.m64nNk256
+asynchronous-warpgroup-level-matrix-shared-memory-layout	asynchronous-warpgroup-level-matrix-fragment	9.7.16.5.1.2. Shared Memory Matrix Layout
+asynchronous-warpgroup-level-majorness-supported-by-strides	asynchronous-warpgroup-level-matrix-shared-memory-layout	9.7.16.5.1.2.1. Major-ness supported by Strides
+asynchronous-warpgroup-level-leading-dimension-byte-offset	asynchronous-warpgroup-level-majorness-supported-by-strides	9.7.16.5.1.2.1.1. Leading Dimension Byte Offset
+asynchronous-warpgroup-level-stride-dimension-byte-offset	asynchronous-warpgroup-level-majorness-supported-by-strides	9.7.16.5.1.2.1.2. Stride Dimension Byte Offset
+asynchronous-warpgroup-level-canonical-layouts	asynchronous-warpgroup-level-majorness-supported-by-strides	9.7.16.5.1.2.1.3. Canonical Layouts
+asynchronous-warpgroup-level-matrix-shared-memory-layout-matrix-descriptor	asynchronous-warpgroup-level-matrix-shared-memory-layout	9.7.16.5.1.2.2. Matrix Descriptor Format
+asynchronous-warpgroup-level-matrix-instructions-wgmma-mma	asynchronous-warpgroup-level-matrix-operation-wgmma-mma-async	9.7.16.5.2. Asynchronous Multiply-and-Accumulate Instruction: wgmma.mma_async
+asynchronous-warpgroup-level-matrix-instructions-for-sparse-wgmma	asynchronous-warpgroup-level-matrix-instructions	9.7.16.6. Asynchronous Warpgroup Level Multiply-and-Accumulate Operation using wgmma.mma_async.sp instruction
+asynchronous-warpgroup-level-sparse-matrix-storage	asynchronous-warpgroup-level-matrix-instructions-for-sparse-wgmma	9.7.16.6.1. Sparse matrix storage
+asynchronous-warpgroup-level-matrix-fragments-for-sparse-wgmma	asynchronous-warpgroup-level-matrix-instructions-for-sparse-wgmma	9.7.16.6.2. Matrix fragments for warpgroup-level multiply-accumulate operation with sparse matrix A
+asynchronous-warpgroup-level-matrix-fragment-sparse-wgmma-64n32	asynchronous-warpgroup-level-matrix-fragments-for-sparse-wgmma	9.7.16.6.2.1. Matrix Fragments for sparse wgmma.mma_async.m64nNk32
+asynchronous-warpgroup-level-matrix-fragment-sparse-wgmma-64n16	asynchronous-warpgroup-level-matrix-fragments-for-sparse-wgmma	9.7.16.6.2.2. Matrix Fragments for sparse wgmma.mma_async.m64nNk16
+asynchronous-warpgroup-level-matrix-fragment-sparse-wgmma-64n64	asynchronous-warpgroup-level-matrix-fragments-for-sparse-wgmma	9.7.16.6.2.3. Matrix Fragments for sparse wgmma.mma_async.m64nNk64
+asynchronous-warpgroup-level-matrix-instructions-wgmma-mma-sp	asynchronous-warpgroup-level-matrix-instructions-for-sparse-wgmma	9.7.16.6.3. Asynchronous Multiply-and-Accumulate Instruction: wgmma.mma_async.sp
+asynchronous-wgmma-proxy-operations	asynchronous-warpgroup-level-matrix-instructions	9.7.16.7. Asynchronous wgmma Proxy Operations
+asynchronous-warpgroup-level-matrix-instructions-wgmma-fence	asynchronous-wgmma-proxy-operations	9.7.16.7.1. Asynchronous Multiply-and-Accumulate Instruction: wgmma.fence
+asynchronous-warpgroup-level-matrix-instructions-wgmma-commit-group	asynchronous-wgmma-proxy-operations	9.7.16.7.2. Asynchronous Multiply-and-Accumulate Instruction: wgmma.commit_group
+asynchronous-warpgroup-level-matrix-instructions-wgmma-wait-group	asynchronous-wgmma-proxy-operations	9.7.16.7.3. Asynchronous Multiply-and-Accumulate Instruction: wgmma.wait_group
+tensorcore-5th-generation-instructions	instructions	9.7.17. TensorCore 5th Generation Family Instructions
+tensor-memory	tensorcore-5th-generation-instructions	9.7.17.1. Tensor Memory
+tensor-memory-addressing	tensor-memory	9.7.17.1.1. Tensor Memory Addressing
+tensor-memory-allocation	tensor-memory	9.7.17.1.2. Tensor Memory Allocation
+tcgen05-matrix-data-movement-shape	tensorcore-5th-generation-instructions	9.7.17.2. Matrix and Data Movement Shape
+tcgen05-matrix-shape	tcgen05-matrix-data-movement-shape	9.7.17.2.1. Matrix Shape
+tcgen05-matrix-shape-target-isa-note	tcgen05-matrix-shape	9.7.17.2.1.1. Target ISA Note
+tcgen05-specify-matrix-shape	tcgen05-matrix-data-movement-shape	9.7.17.2.2. Specifying Matrix Shape
+tcgen05-data-movement-shape	tcgen05-matrix-data-movement-shape	9.7.17.2.3. Data Movement Shape
+tcgen05-memory-layout	tcgen05-data-movement-shape	9.7.17.2.3.1. Memory Layout
+tcgen05-matrix-fragments-shape-3232b	tcgen05-memory-layout	9.7.17.2.3.1.1. Matrix fragments for shape .32x32b
+tcgen05-matrix-fragments-shape-6464b	tcgen05-memory-layout	9.7.17.2.3.1.2. Matrix fragments for shape .16x64b
+tcgen05-matrix-fragments-shape-16128b	tcgen05-memory-layout	9.7.17.2.3.1.3. Matrix fragments for shape .16x128b
+tcgen05-matrix-fragments-shape-16256b	tcgen05-memory-layout	9.7.17.2.3.1.4. Matrix fragments for shape .16x256b
+tcgen05-matrix-fragments-shape-1632b2	tcgen05-memory-layout	9.7.17.2.3.1.5. Matrix fragments for shape .16x32bx2
+tcgen05-majorness-supported-by-strides	tensorcore-5th-generation-instructions	9.7.17.3. Major-ness supported by Strides
+tcgen05-leading-dimension-byte-offset	tcgen05-majorness-supported-by-strides	9.7.17.3.1. Leading Dimension Stride: relative offset or absolute address
+tcgen05-leading-dimension-byte-offset-relative-offset	tcgen05-leading-dimension-byte-offset	9.7.17.3.1.1. Relative offset mode
+tcgen05-leading-dimension-byte-offset-absolute-address	tcgen05-leading-dimension-byte-offset	9.7.17.3.1.2. Absolute address mode for K dimension being 48B
+tcgen05-leading-dimension-byte-offset-absolute-address-restriction	tcgen05-leading-dimension-byte-offset-absolute-address	9.7.17.3.1.2.1. Restrictions on the Leading Dimension Absolute Address Stride
+tcgen05-stride-dimension-byte-offset	tcgen05-majorness-supported-by-strides	9.7.17.3.2. Stride Dimension Byte Offset
+tcgen05-canonical-layouts	tcgen05-majorness-supported-by-strides	9.7.17.3.3. Canonical Layouts
+tcgen05-matrix-descriptors	tensorcore-5th-generation-instructions	9.7.17.4. Matrix Descriptors
+tcgen05-shared-memory-descriptor	tcgen05-matrix-descriptors	9.7.17.4.1. Shared memory descriptor
+tcgen05-shared-memory-descriptor-target-isa-note	tcgen05-shared-memory-descriptor	9.7.17.4.1.1. Target ISA Note
+tcgen05-instruction-descriptor	tcgen05-matrix-descriptors	9.7.17.4.2. Instruction descriptor
+tcgen05-zero-column-mask-descriptor	tcgen05-matrix-descriptors	9.7.17.4.3. Zero-Column Mask Descriptor
+tcgen05-issue-granularity	tensorcore-5th-generation-instructions	9.7.17.5. Issue Granularity
+tcgen05-cta-pair	tcgen05-issue-granularity	9.7.17.5.1. CTA Pair
+tcgen05-peer-cta	tcgen05-issue-granularity	9.7.17.5.2. Peer CTA
+tcgen05-memory-consistency-model	tensorcore-5th-generation-instructions	9.7.17.6. Memory Consistency Model for 5th generation of TensorCore operations
+tcgen05-memory-consistency-model-async-operations	tcgen05-memory-consistency-model	9.7.17.6.1. Asynchronous Operations
+tcgen05-memory-consistency-model-pipelined-instructions	tcgen05-memory-consistency-model	9.7.17.6.2. Pipelined tcgen05 Instructions
+tcgen05-memory-consistency-model-pipelined-instructions-implicit	tcgen05-memory-consistency-model-pipelined-instructions	9.7.17.6.2.1. Implicitly pipelined tcgen05 Instructions
+tcgen05-memory-consistency-model-mbarrier-completion	tcgen05-memory-consistency-model-pipelined-instructions-implicit	9.7.17.6.2.1.1. mbarrier based completion mechanism
+tcgen05-memory-consistency-model-wait-completion	tcgen05-memory-consistency-model-pipelined-instructions-implicit	9.7.17.6.2.1.2. tcgen05.wait instruction based completion mechanism
+tcgen05-memory-consistency-model-inter-thread-sync	tcgen05-memory-consistency-model	9.7.17.6.3. Specialized Inter-thread Synchronization for tcgen05 instructions
+tcgen05-memory-consistency-model-canonical-sync-patterns	tcgen05-memory-consistency-model	9.7.17.6.4. Canonical synchronization patterns
+tcgen05-memory-consistency-model-canonical-sync-patterns-pipelined-same-thread	tcgen05-memory-consistency-model-canonical-sync-patterns	9.7.17.6.4.1. Pipelined instructions, same thread
+tcgen05-memory-consistency-model-canonical-sync-patterns-non-pipelined-same-thread	tcgen05-memory-consistency-model-canonical-sync-patterns	9.7.17.6.4.2. Non-pipelined instructions, same thread
+tcgen05-memory-consistency-model-canonical-sync-patterns-pipelined-diff-thread	tcgen05-memory-consistency-model-canonical-sync-patterns	9.7.17.6.4.3. Pipelined instructions, different thread
+tcgen05-memory-consistency-model-canonical-sync-patterns-non-pipelined-diff-thread	tcgen05-memory-consistency-model-canonical-sync-patterns	9.7.17.6.4.4. Non-pipelined instructions, different thread
+tcgen05-memory-consistency-model-canonical-sync-patterns-reg-dependency-same-thread	tcgen05-memory-consistency-model-canonical-sync-patterns	9.7.17.6.4.5. Register dependencies, same thread
+tcgen05-memory-consistency-model-smem-access	tcgen05-memory-consistency-model	9.7.17.6.5. Shared Memory Accesses
+tcgen05-memory-alloc-manage-instructions	tensorcore-5th-generation-instructions	9.7.17.7. Tensor Memory Allocation and Management Instructions
+tcgen05-instructions-tcgen05-alloc-dealloc-relinquish-alloc-permit	tcgen05-memory-alloc-manage-instructions	9.7.17.7.1. Tensorcore 5th Generation Instructions: tcgen05.alloc, tcgen05.dealloc, tcgen05.relinquish_alloc_permit
+tcgen05-tensor-memory-ld-st	tensorcore-5th-generation-instructions	9.7.17.8. Tensor Memory and Register Load/Store Instructions
+tcgen05-tensor-memory-ld-st-access-restrictions	tcgen05-tensor-memory-ld-st	9.7.17.8.1. Access restrictions
+tcgen05-tensor-memory-ld-st-packing-unpacking	tcgen05-tensor-memory-ld-st	9.7.17.8.2. Packing and Unpacking
+tcgen05-instructions-tcgen05-ld	tcgen05-tensor-memory-ld-st	9.7.17.8.3. Tensorcore 5th Generation Instructions: tcgen05.ld
+tcgen05-instructions-tcgen05-st	tcgen05-tensor-memory-ld-st	9.7.17.8.4. Tensorcore 5th Generation Instructions: tcgen05.st
+tcgen05-instructions-tcgen05-wait	tcgen05-tensor-memory-ld-st	9.7.17.8.5. Tensorcore 5th Generation Instructions: tcgen05.wait
+tcgen05-data-movement-instructions	tensorcore-5th-generation-instructions	9.7.17.9. Tensor Memory Data Movement Instructions
+tcgen05-optional-decompression	tcgen05-data-movement-instructions	9.7.17.9.1. Optional Decompression
+tcgen05-optional-decompression-4bit-8bit	tcgen05-optional-decompression	9.7.17.9.1.1. Decompression of 4-bit floating point to 8-bit type
+tcgen05-optional-decompression-6bit-8bit	tcgen05-optional-decompression	9.7.17.9.1.2. Decompression of 6-bit floating point to 8-bit type
+tcgen05-instructions-tcgen05-cp	tcgen05-data-movement-instructions	9.7.17.9.2. Tensorcore 5th Generation Instructions: tcgen05.cp
+tcgen05-instructions-tcgen05-shift	tcgen05-data-movement-instructions	9.7.17.9.3. Tensorcore 5th Generation Instructions: tcgen05.shift
+tcgen05-mma	tensorcore-5th-generation-instructions	9.7.17.10. TensorCore 5th Generation Matrix Multiply and accumulate Operations
+tcgen05-transpose-and-negate-operations	tcgen05-mma	9.7.17.10.1. Transpose and Negate operations
+tcgen05-matrix-layout-organization	tcgen05-mma	9.7.17.10.2. Matrix Layout Organization
+tcgen05-matrix-layout-organization-valid-comb-type-size-majorness-swizzle	tcgen05-mma	9.7.17.10.3. Valid Combinations of Type-Size, Major-ness and Swizzling
+tcgen05-packing-formats	tcgen05-mma	9.7.17.10.4. Packing formats of elements in Tensor and Shared memory
+tcgen05-packing-formats-mat-d	tcgen05-packing-formats	9.7.17.10.4.1. Packing format for matrix D in Tensor Memory
+tcgen05-packing-formats-mat-a-b	tcgen05-packing-formats	9.7.17.10.4.2. Packing format for matrix A and B
+tcgen05-packing-formats-mxf8f6f4-tmem	tcgen05-packing-formats	9.7.17.10.4.3. Packing format used for matrix A by .kind::mxf8f6f4 in Tensor Memory
+tcgen05-packing-formats-mxf8f6f4-smem	tcgen05-packing-formats	9.7.17.10.4.4. Packing format used for matrix A and B by .kind::mxf8f6f4 in Shared Memory
+tcgen05-packing-formats-mxf4-tmem	tcgen05-packing-formats	9.7.17.10.4.5. Packing format used for matrix A by .kind::mxf4 and .kind::mxf4nvf4 in Tensor Memory
+tcgen05-packing-formats-mxf4-smem	tcgen05-packing-formats	9.7.17.10.4.6. Packing format used for matrix A and B by .kind::mxf4 and .kind::mxf4nvf4 in Shared Memory
+tcgen05-data-path-layout-organization	tcgen05-mma	9.7.17.10.5. Data Path Layout Organization
+tcgen05-data-path-layout-a	tcgen05-data-path-layout-organization	9.7.17.10.5.1. Layout A (M = 256)
+tcgen05-data-path-layout-b	tcgen05-data-path-layout-organization	9.7.17.10.5.2. Layout B (M = 128 + cta-group::2 + Dense A matrix)
+tcgen05-data-path-layout-c	tcgen05-data-path-layout-organization	9.7.17.10.5.3. Layout C (M = 128 + cta-group::2 + Sparse A matrix)
+tcgen05-data-path-layout-d	tcgen05-data-path-layout-organization	9.7.17.10.5.4. Layout D (M = 128 + cta-group::1)
+tcgen05-data-path-layout-e	tcgen05-data-path-layout-organization	9.7.17.10.5.5. Layout E (M = 64 + .ws mode)
+tcgen05-data-path-layout-f	tcgen05-data-path-layout-organization	9.7.17.10.5.6. Layout F (M = 64 + non .ws mode)
+tcgen05-data-path-layout-g	tcgen05-data-path-layout-organization	9.7.17.10.5.7. Layout G (M = 32)
+tcgen05-shared-memory-layout-swizzling	tcgen05-mma	9.7.17.10.6. Shared Memory Layout and Swizzling
+tcgen05-block-scaling	tcgen05-mma	9.7.17.10.7. Block Scaling for tcgen05.mma
+tcgen05-mma-scale-valid-vec-size	tcgen05-block-scaling	9.7.17.10.7.1. Valid combinations of scale_vectorsize with types and MMA-Kind
+tcgen05-mma-scale-factor-a	tcgen05-block-scaling	9.7.17.10.7.2. Scale Factor A ID
+tcgen05-mma-scale-factor-a-layout-1x	tcgen05-mma-scale-factor-a	9.7.17.10.7.2.1. Layout of the Scale Factor A Matrix for scale_vec::1X/block32 with K=32/K=64
+tcgen05-mma-scale-factor-a-layout-2x	tcgen05-mma-scale-factor-a	9.7.17.10.7.2.2. Layout of the Scale Factor A Matrix for scale_vec::2X/block32 with K=64/K=128
+tcgen05-mma-scale-factor-a-layout-4x	tcgen05-mma-scale-factor-a	9.7.17.10.7.2.3. Layout of the Scale Factor A Matrix for scale_vec::4X/block16 with K=64/K=128
+tcgen05-mma-scale-factor-a-layout-block32-k96	tcgen05-mma-scale-factor-a	9.7.17.10.7.2.4. Layout of the Scale Factor A Matrix for block32 with K=96 (Semantically equivalent to scale_vec::3X)
+tcgen05-mma-scale-factor-a-layout-block16-k96	tcgen05-mma-scale-factor-a	9.7.17.10.7.2.5. Layout of the Scale Factor A Matrix for block16 with K=96 (Semantically equivalent to scale_vec::6X)
+tcgen05-mma-scale-factor-b	tcgen05-block-scaling	9.7.17.10.7.3. Scale Factor B ID
+tcgen05-mma-scale-factor-b-layout-1x	tcgen05-mma-scale-factor-b	9.7.17.10.7.3.1. Layout of the Scale Factor B Matrix for scale_vec::1X/block32 with K=32/K=64
+tcgen05-mma-scale-factor-b-layout-2x	tcgen05-mma-scale-factor-b	9.7.17.10.7.3.2. Layout of the Scale Factor B Matrix for scale_vec::2X/block32 with K=64/K=128
+tcgen05-mma-scale-factor-b-layout-4x	tcgen05-mma-scale-factor-b	9.7.17.10.7.3.3. Layout of the Scale Factor B Matrix for scale_vec::4X/block16 with K=64/K=128
+tcgen05-mma-scale-factor-b-layout-block32-k96	tcgen05-mma-scale-factor-b	9.7.17.10.7.3.4. Layout of the Scale Factor B Matrix for block32 with K=96 (Semantically equivalent to scale_vec::3X)
+tcgen05-mma-scale-factor-b-layout-block16-k96	tcgen05-mma-scale-factor-b	9.7.17.10.7.3.5. Layout of the Scale Factor B Matrix for block16 with K=96 (Semantically equivalent to scale_vec::6X)
+tcgen05-sparse-matrices	tcgen05-mma	9.7.17.10.8. Sparse Matrices
+tcgen05-sparse-matrices-kind-tf32	tcgen05-sparse-matrices	9.7.17.10.8.1. Sparse tcgen05.mma.sp with .kind::tf32
+tcgen05-sparse-matrices-kind-f16-f8f8f4-mxf8f6f4	tcgen05-sparse-matrices	9.7.17.10.8.2. Sparse tcgen05.mma.sp with .kind::f16, .kind::f8f6f4, .kind::mxf8f6f4, .kind::i8
+tcgen05-sparse-matrices-kind-mxf4	tcgen05-sparse-matrices	9.7.17.10.8.3. Sparse tcgen05.mma.sp with .kind::mxf4 and .kind::mxf4nvf4
+tcgen05-sparse-matrices-sparsity-selector	tcgen05-sparse-matrices	9.7.17.10.8.4. Sparsity selector
+tcgen05-sparse-matrices-sparsity-selector-kind-f16-m64	tcgen05-sparse-matrices-sparsity-selector	9.7.17.10.8.4.1. Layout of the Sparsity Metadata Matrix for M = 64 for .kind::f16
+tcgen05-sparse-matrices-sparsity-selector-kind-f16-m128-256	tcgen05-sparse-matrices-sparsity-selector	9.7.17.10.8.4.2. Layout of the Sparsity Metadata Matrix for M = 128 / M = 256 for .kind::f16
+tcgen05-sparse-matrices-sparsity-selector-kind-tf32-m64	tcgen05-sparse-matrices-sparsity-selector	9.7.17.10.8.4.3. Layout of the Sparsity Metadata Matrix for M = 64 for .kind::tf32
+tcgen05-sparse-matrices-sparsity-selector-kind-tf32-m128-256	tcgen05-sparse-matrices-sparsity-selector	9.7.17.10.8.4.4. Layout of the Sparsity Metadata Matrix for M = 128 / M = 256 for .kind::tf32
+tcgen05-sparse-matrices-sparsity-selector-kind-f8f6f4-mxf8f6f4-m64	tcgen05-sparse-matrices-sparsity-selector	9.7.17.10.8.4.5. Layout of the Sparsity Metadata Matrix for M = 64 for .kind::f8f6f4, .kind::mxf8f6f4, .kind::i8, .kind::mxf4, .kind::mxf4nvf4
+tcgen05-sparse-matrices-sparsity-selector-kind-f8f6f4-mxf8f6f4-m128-256	tcgen05-sparse-matrices-sparsity-selector	9.7.17.10.8.4.6. Layout of the Sparsity Metadata Matrix for M = 128 / M = 256 for .kind::f8f6f4, .kind::mxf8f6f4, .kind::i8, .kind::mxf4, .kind::mxf4nvf4
+tcgen05-sparse-matrices-alignment-restriction	tcgen05-sparse-matrices	9.7.17.10.8.5. Alignment restriction
+tcgen05-mma-instructions	tcgen05-mma	9.7.17.10.9. TensorCore 5th Generation of MMA Instructions
+tcgen05-mma-instructions-mma	tcgen05-mma-instructions	9.7.17.10.9.1. TensorCore 5th Generation Instructions: tcgen05.mma
+tcgen05-mma-instructions-mma-sp	tcgen05-mma-instructions	9.7.17.10.9.2. TensorCore 5th Generation Instructions: tcgen05.mma.sp
+tcgen05-mma-instructions-mma-ws	tcgen05-mma-instructions	9.7.17.10.9.3. TensorCore 5th Generation Instructions: tcgen05.mma.ws
+tcgen05-mma-instructions-mma-ws-sp	tcgen05-mma-instructions	9.7.17.10.9.4. TensorCore 5th Generation Instructions: tcgen05.mma.ws.sp
+tcgen05-special-sync-operations	tensorcore-5th-generation-instructions	9.7.17.11. TensorCore 5th Generation Specialized Synchronization Operations
+tcgen05-special-sync-operations-fence	tcgen05-special-sync-operations	9.7.17.11.1. TensorCore 5th Generation Instructions: tcgen05.fence
+tcgen-async-sync-operations	tensorcore-5th-generation-instructions	9.7.17.12. TensorCore 5th Generation Async Synchronization Operations
+tcgen-async-sync-operations-commit	tcgen-async-sync-operations	9.7.17.12.1. TensorCore 5th Generation Instructions: tcgen05.commit
+stack-manipulation-instructions	instructions	9.7.18. Stack Manipulation Instructions
+stack-manipulation-instructions-stacksave	stack-manipulation-instructions	9.7.18.1. Stack Manipulation Instructions: stacksave
+stack-manipulation-instructions-stackrestore	stack-manipulation-instructions	9.7.18.2. Stack Manipulation Instructions: stackrestore
+stack-manipulation-instructions-alloca	stack-manipulation-instructions	9.7.18.3. Stack Manipulation Instructions: alloca
+video-instructions	instructions	9.7.19. Video Instructions
+scalar-video-instructions	video-instructions	9.7.19.1. Scalar Video Instructions
+scalar-video-instructions-vadd-vsub-vabsdiff-vmin-vmax	scalar-video-instructions	9.7.19.1.1. Scalar Video Instructions: vadd, vsub, vabsdiff, vmin, vmax
+scalar-video-instructions-vshl-vshr	scalar-video-instructions	9.7.19.1.2. Scalar Video Instructions: vshl, vshr
+scalar-video-instructions-vmad	scalar-video-instructions	9.7.19.1.3. Scalar Video Instructions: vmad
+scalar-video-instructions-vset	scalar-video-instructions	9.7.19.1.4. Scalar Video Instructions: vset
+simd-video-instructions	video-instructions	9.7.19.2. SIMD Video Instructions
+simd-video-instructions-vadd2-vsub2-vavrg2-vabsdiff2-vmin2-vmax2	simd-video-instructions	9.7.19.2.1. SIMD Video Instructions: vadd2, vsub2, vavrg2, vabsdiff2, vmin2, vmax2
+simd-video-instructions-vset2	simd-video-instructions	9.7.19.2.2. SIMD Video Instructions: vset2
+simd-video-instructions-vadd4-vsub4-vavrg4-vabsdiff4-vmin4-vmax4	simd-video-instructions	9.7.19.2.3. SIMD Video Instructions: vadd4, vsub4, vavrg4, vabsdiff4, vmin4, vmax4
+simd-video-instructions-vset4	simd-video-instructions	9.7.19.2.4. SIMD Video Instructions: vset4
+miscellaneous-instructions	instructions	9.7.20. Miscellaneous Instructions
+miscellaneous-instructions-brkpt	miscellaneous-instructions	9.7.20.1. Miscellaneous Instructions: brkpt
+miscellaneous-instructions-nanosleep	miscellaneous-instructions	9.7.20.2. Miscellaneous Instructions: nanosleep
+miscellaneous-instructions-pmevent	miscellaneous-instructions	9.7.20.3. Miscellaneous Instructions: pmevent
+miscellaneous-instructions-trap	miscellaneous-instructions	9.7.20.4. Miscellaneous Instructions: trap
+miscellaneous-instructions-setmaxnreg	miscellaneous-instructions	9.7.20.5. Miscellaneous Instructions: setmaxnreg
+special-registers		10. Special Registers
+special-registers-tid	special-registers	10.1. Special Registers: %tid
+special-registers-ntid	special-registers	10.2. Special Registers: %ntid
+special-registers-laneid	special-registers	10.3. Special Registers: %laneid
+special-registers-warpid	special-registers	10.4. Special Registers: %warpid
+special-registers-nwarpid	special-registers	10.5. Special Registers: %nwarpid
+special-registers-ctaid	special-registers	10.6. Special Registers: %ctaid
+special-registers-nctaid	special-registers	10.7. Special Registers: %nctaid
+special-registers-smid	special-registers	10.8. Special Registers: %smid
+special-registers-nsmid	special-registers	10.9. Special Registers: %nsmid
+special-registers-gridid	special-registers	10.10. Special Registers: %gridid
+special-registers-is-explicit-cluster	special-registers	10.11. Special Registers: %is_explicit_cluster
+special-registers-clusterid	special-registers	10.12. Special Registers: %clusterid
+special-registers-nclusterid	special-registers	10.13. Special Registers: %nclusterid
+special-registers-cluster-ctaid	special-registers	10.14. Special Registers: %cluster_ctaid
+special-registers-cluster-nctaid	special-registers	10.15. Special Registers: %cluster_nctaid
+special-registers-cluster-ctarank	special-registers	10.16. Special Registers: %cluster_ctarank
+special-registers-cluster-nctarank	special-registers	10.17. Special Registers: %cluster_nctarank
+special-registers-lanemask-eq	special-registers	10.18. Special Registers: %lanemask_eq
+special-registers-lanemask-le	special-registers	10.19. Special Registers: %lanemask_le
+special-registers-lanemask-lt	special-registers	10.20. Special Registers: %lanemask_lt
+special-registers-lanemask-ge	special-registers	10.21. Special Registers: %lanemask_ge
+special-registers-lanemask-gt	special-registers	10.22. Special Registers: %lanemask_gt
+special-registers-clock	special-registers	10.23. Special Registers: %clock, %clock_hi
+special-registers-clock64	special-registers	10.24. Special Registers: %clock64
+special-registers-pm0-pm7	special-registers	10.25. Special Registers: %pm0 … %pm7
+special-registers-pm0-64-pm7-64	special-registers	10.26. Special Registers: %pm0_64 … %pm7_64
+special-registers-envreg-32	special-registers	10.27. Special Registers: %envreg<32>
+special-registers-globaltimer	special-registers	10.28. Special Registers: %globaltimer, %globaltimer_lo, %globaltimer_hi
+special-registers-reserved-smem	special-registers	10.29. Special Registers: %reserved_smem_offset_begin, %reserved_smem_offset_end, %reserved_smem_offset_cap, %reserved_smem_offset_<2>
+special-registers-total-smem-size	special-registers	10.30. Special Registers: %total_smem_size
+special-registers-aggr-smem-size	special-registers	10.31. Special Registers: %aggr_smem_size
+special-registers-dynamic-smem-size	special-registers	10.32. Special Registers: %dynamic_smem_size
+special-registers-current-graph-exec	special-registers	10.33. Special Registers: %current_graph_exec
+directives		11. Directives
+ptx-module-directives	directives	11.1. PTX Module Directives
+ptx-module-directives-version	ptx-module-directives	11.1.1. PTX Module Directives: .version
+ptx-module-directives-target	ptx-module-directives	11.1.2. PTX Module Directives: .target
+ptx-module-directives-address-size	ptx-module-directives	11.1.3. PTX Module Directives: .address_size
+specifying-kernel-entry-points-and-functions	directives	11.2. Specifying Kernel Entry Points and Functions
+kernel-and-function-directives-entry	specifying-kernel-entry-points-and-functions	11.2.1. Kernel and Function Directives: .entry
+kernel-and-function-directives-func	specifying-kernel-entry-points-and-functions	11.2.2. Kernel and Function Directives: .func
+kernel-and-function-directives-alias	specifying-kernel-entry-points-and-functions	11.2.3. Kernel and Function Directives: .alias
+control-flow-directives	directives	11.3. Control Flow Directives
+control-flow-directives-branchtargets	control-flow-directives	11.3.1. Control Flow Directives: .branchtargets
+control-flow-directives-calltargets	control-flow-directives	11.3.2. Control Flow Directives: .calltargets
+control-flow-directives-callprototype	control-flow-directives	11.3.3. Control Flow Directives: .callprototype
+performance-tuning-directives	directives	11.4. Performance-Tuning Directives
+performance-tuning-directives-maxnreg	performance-tuning-directives	11.4.1. Performance-Tuning Directives: .maxnreg
+performance-tuning-directives-maxntid	performance-tuning-directives	11.4.2. Performance-Tuning Directives: .maxntid
+performance-tuning-directives-reqntid	performance-tuning-directives	11.4.3. Performance-Tuning Directives: .reqntid
+performance-tuning-directives-minnctapersm	performance-tuning-directives	11.4.4. Performance-Tuning Directives: .minnctapersm
+performance-tuning-directives-maxnctapersm	performance-tuning-directives	11.4.5. Performance-Tuning Directives: .maxnctapersm (deprecated)
+performance-tuning-directives-noreturn	performance-tuning-directives	11.4.6. Performance-Tuning Directives: .noreturn
+performance-tuning-directives-pragma	performance-tuning-directives	11.4.7. Performance-Tuning Directives: .pragma
+performance-tuning-directives-abi-preserve	performance-tuning-directives	11.4.8. Performance-Tuning Directives: .abi_preserve
+performance-tuning-directives-abi-preserve-control	performance-tuning-directives	11.4.9. Performance-Tuning Directives: .abi_preserve_control
+debugging-directives	directives	11.5. Debugging Directives
+debugging-directives-atatdwarf	debugging-directives	11.5.1. Debugging Directives: @@dwarf
+debugging-directives-section	debugging-directives	11.5.2. Debugging Directives: .section
+debugging-directives-file	debugging-directives	11.5.3. Debugging Directives: .file
+debugging-directives-loc	debugging-directives	11.5.4. Debugging Directives: .loc
+linking-directives	directives	11.6. Linking Directives
+linking-directives-extern	linking-directives	11.6.1. Linking Directives: .extern
+linking-directives-visible	linking-directives	11.6.2. Linking Directives: .visible
+linking-directives-weak	linking-directives	11.6.3. Linking Directives: .weak
+linking-directives-common	linking-directives	11.6.4. Linking Directives: .common
+cluster-dimension-directives	directives	11.7. Cluster Dimension Directives
+cluster-dimension-directives-reqnctapercluster	cluster-dimension-directives	11.7.1. Cluster Dimension Directives: .reqnctapercluster
+cluster-dimension-directives-explicitcluster	cluster-dimension-directives	11.7.2. Cluster Dimension Directives: .explicitcluster
+cluster-dimension-directives-maxclusterrank	cluster-dimension-directives	11.7.3. Cluster Dimension Directives: .maxclusterrank
+miscellaneous-directives	directives	11.8. Miscellaneous Directives
+miscellaneous-directives-blocksareclusters	miscellaneous-directives	11.8.1. Miscellaneous Directives: .blocksareclusters
+miscellaneous-directives-language	miscellaneous-directives	11.8.2. Miscellaneous Directives: .language
+descriptions-pragma-strings		12. Descriptions of .pragma Strings
+pragma-strings-nounroll	descriptions-pragma-strings	12.1. Pragma Strings: "nounroll"
+pragma-strings-used-bytes-mask	descriptions-pragma-strings	12.2. Pragma Strings: "used_bytes_mask"
+pragma-strings-enable-smem-spilling	descriptions-pragma-strings	12.3. Pragma Strings: "enable_smem_spilling"
+pragma-strings-frequency	descriptions-pragma-strings	12.4. Pragma Strings: "frequency"
+pragma-strings-mma-throughput	descriptions-pragma-strings	12.5. Pragma Strings: "mma_throughput"
+release-notes		13. Release Notes
+changes-in-ptx-isa-version-9-3	release-notes	13.1. Changes in PTX ISA Version 9.3
+changes-in-ptx-isa-version-9-2	release-notes	13.2. Changes in PTX ISA Version 9.2
+changes-in-ptx-isa-version-9-1	release-notes	13.3. Changes in PTX ISA Version 9.1
+changes-in-ptx-isa-version-9-0	release-notes	13.4. Changes in PTX ISA Version 9.0
+changes-in-ptx-isa-version-8-8	release-notes	13.5. Changes in PTX ISA Version 8.8
+changes-in-ptx-isa-version-8-7	release-notes	13.6. Changes in PTX ISA Version 8.7
+changes-in-ptx-isa-version-8-6	release-notes	13.7. Changes in PTX ISA Version 8.6
+changes-in-ptx-isa-version-8-5	release-notes	13.8. Changes in PTX ISA Version 8.5
+changes-in-ptx-isa-version-8-4	release-notes	13.9. Changes in PTX ISA Version 8.4
+changes-in-ptx-isa-version-8-3	release-notes	13.10. Changes in PTX ISA Version 8.3
+changes-in-ptx-isa-version-8-2	release-notes	13.11. Changes in PTX ISA Version 8.2
+changes-in-ptx-isa-version-8-1	release-notes	13.12. Changes in PTX ISA Version 8.1
+changes-in-ptx-isa-version-8-0	release-notes	13.13. Changes in PTX ISA Version 8.0
+changes-in-ptx-isa-version-7-8	release-notes	13.14. Changes in PTX ISA Version 7.8
+changes-in-ptx-isa-version-7-7	release-notes	13.15. Changes in PTX ISA Version 7.7
+changes-in-ptx-isa-version-7-6	release-notes	13.16. Changes in PTX ISA Version 7.6
+changes-in-ptx-isa-version-7-5	release-notes	13.17. Changes in PTX ISA Version 7.5
+changes-in-ptx-isa-version-7-4	release-notes	13.18. Changes in PTX ISA Version 7.4
+changes-in-ptx-isa-version-7-3	release-notes	13.19. Changes in PTX ISA Version 7.3
+changes-in-ptx-isa-version-7-2	release-notes	13.20. Changes in PTX ISA Version 7.2
+changes-in-ptx-isa-version-7-1	release-notes	13.21. Changes in PTX ISA Version 7.1
+changes-in-ptx-isa-version-7-0	release-notes	13.22. Changes in PTX ISA Version 7.0
+changes-in-ptx-isa-version-6-5	release-notes	13.23. Changes in PTX ISA Version 6.5
+changes-in-ptx-isa-version-6-4	release-notes	13.24. Changes in PTX ISA Version 6.4
+changes-in-ptx-isa-version-6-3	release-notes	13.25. Changes in PTX ISA Version 6.3
+changes-in-ptx-isa-version-6-2	release-notes	13.26. Changes in PTX ISA Version 6.2
+changes-in-ptx-isa-version-6-1	release-notes	13.27. Changes in PTX ISA Version 6.1
+changes-in-ptx-isa-version-6-0	release-notes	13.28. Changes in PTX ISA Version 6.0
+changes-in-ptx-isa-version-5-0	release-notes	13.29. Changes in PTX ISA Version 5.0
+changes-in-ptx-isa-version-4-3	release-notes	13.30. Changes in PTX ISA Version 4.3
+changes-in-ptx-isa-version-4-2	release-notes	13.31. Changes in PTX ISA Version 4.2
+changes-in-ptx-isa-version-4-1	release-notes	13.32. Changes in PTX ISA Version 4.1
+changes-in-ptx-isa-version-4-0	release-notes	13.33. Changes in PTX ISA Version 4.0
+changes-in-ptx-isa-version-3-2	release-notes	13.34. Changes in PTX ISA Version 3.2
+changes-in-ptx-isa-version-3-1	release-notes	13.35. Changes in PTX ISA Version 3.1
+changes-in-ptx-isa-version-3-0	release-notes	13.36. Changes in PTX ISA Version 3.0
+changes-in-ptx-isa-version-2-3	release-notes	13.37. Changes in PTX ISA Version 2.3
+changes-in-ptx-isa-version-2-2	release-notes	13.38. Changes in PTX ISA Version 2.2
+changes-in-ptx-isa-version-2-1	release-notes	13.39. Changes in PTX ISA Version 2.1
+changes-in-ptx-isa-version-2-0	release-notes	13.40. Changes in PTX ISA Version 2.0
+notices		14. Notices
+notice	notices	14.1. Notice
+opencl	notices	14.2. OpenCL
+trademarks	notices	14.3. Trademarks

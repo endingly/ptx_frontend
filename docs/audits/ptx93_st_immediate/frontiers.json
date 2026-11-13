@@ -1,0 +1,394 @@
+[
+  {
+    "id": "sm75_floor_6.3_imm",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_75",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/sm75_floor_6.3_imm.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "4d599e8b5bfdd249193a9c9352a3a7f830b162be694570f21ece59b3fdb2788e",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "sm75_floor_6.3_reg",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_75",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/sm75_floor_6.3_reg.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "7c3fb05759bf02e668276744c0efee947df97898d2409bd06c0b73043d7e7779",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "sm75_floor_6.4_imm",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_75",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/sm75_floor_6.4_imm.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "14149617951c3c11193bfcdbc579df41ae872db49d9008c5b066b2ff0de26807",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "sm75_floor_6.4_reg",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_75",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/sm75_floor_6.4_reg.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "ab43b4d60942923c2990a63935ed55d8a8764006a782ba66f845a0f8f1b6c09e",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "sm75_floor_7.0_imm",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_75",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/sm75_floor_7.0_imm.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "ebcd153f3db59ad6a9662b487048db68e2ed0409fe573ead1175492bf6d3a701",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "sm75_floor_7.0_reg",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_75",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/sm75_floor_7.0_reg.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "92c8bf2f66fbb7a1395bbbc93830fb8940ec58924938c7d559ecbcf4680fb632",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "st_shared__cta_b32_imm",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/st_shared__cta_b32_imm.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "a9a32b3d948b3f900caed0c25a9a441f5c034ec5a48743023354dd652a522da5",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "st_shared__cta_b32_reg",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/st_shared__cta_b32_reg.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "e7eff0ee92ee3e9b7c0b11b861c6bd563257e7f6035b63334122b624dc1eccf5",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "st_relaxed_cluster_shared__cluster_b32_imm",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/st_relaxed_cluster_shared__cluster_b32_imm.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "44dd4450be1b5bc863b0e6357c4e74e3ed82c8b33d77b12aceb08dd3ccf52087",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "st_relaxed_cluster_shared__cluster_b32_reg",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/st_relaxed_cluster_shared__cluster_b32_reg.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "1f96997cb62afd6ce853cbe8ce1caabc6ae608dba8563ad6ff60499de4f6bef7",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "st_global_L1__evict_last_b32_imm",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/st_global_L1__evict_last_b32_imm.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "3b30addb488ed14e6da1add30e98cf4c2c60b9756945511e0876c1e64399bc7f",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "st_global_L1__evict_last_b32_reg",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/st_global_L1__evict_last_b32_reg.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "e477aed19319ce949099416753864a2bdcd88269834b7d0688df6ec09bc4b0b6",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "st_L1__evict_last_b32_imm",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/st_L1__evict_last_b32_imm.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "fd5ba589190470351d7ec935a2a4b1d139d7afb6054108dd6a236707ec10bf4b",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "st_L1__evict_last_b32_reg",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/st_L1__evict_last_b32_reg.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "12c4b6ee96597dfbe4bad8b112a18070c277c6ad37eed448bf3b1c84ed88a07c",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "st_global_L2__cache_hint_b32_imm",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/st_global_L2__cache_hint_b32_imm.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "16385fdd546cd2d0c10ef2e3d25f64a5cc0823ee0a96920585f852e7f836382a",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "st_global_L2__cache_hint_b32_reg",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/st_global_L2__cache_hint_b32_reg.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "a34f1dc4a8be89c83b9c992f4d399e3e7573c57e505a7c2761666edf59606c60",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "st_L2__cache_hint_b32_imm",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/st_L2__cache_hint_b32_imm.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "4ac3841f1275fac04ad9d443b7795c59cca910ca9ca3132c593a41f9a7f3f9d8",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "st_L2__cache_hint_b32_reg",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/st_L2__cache_hint_b32_reg.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "1fa411506ce5b8f8b622f6ea485c7ec8ddb50930b2cd6d701fb7c00d2423b82d",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "bad_policy_immediate_imm",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/bad_policy_immediate_imm.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "e7f1747cec9ee5394d22b49e9a3f12aa42d02be72931deb98fe37052fdd4f9b0",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "bad_policy_immediate_reg",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/bad_policy_immediate_reg.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "1f135e235a55c723592546a6165f794daa796e75ac4c98c64cb78acfdb8b5a8c",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "call_param_imm",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/call_param_imm.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "c466782ad8e7c5e5af3d94a4d5564f65b5c1479773cdcedbc133227c1d9151d6",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "call_param_reg",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/call_param_reg.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "2c7bb0f292eda488ecdfa73cdf7e237d1963efe490d5572598163e5aba0258bd",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "call_param__func_imm",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/call_param__func_imm.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "535ba4db05d019a1a9d6f3a9d9ac73c9146a9893b39e0b954f6df2dc860b3047",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "call_param__func_reg",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/call_param__func_reg.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "7a2313868981572580dff4f83fbbddb8c074815ccbf49287a503ec5a54e1163c",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "return_param_imm",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/return_param_imm.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "3ebad5c8b519a305b707a36e6efd94015500b6ef14f197701c446f7006c57183",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "return_param_reg",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/return_param_reg.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "2bf9eaa3919e8391d28ccd74a2eded8e052a015441c6578e0d89582b61497930",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "return_param__func_imm",
+    "control": false,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/return_param__func_imm.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "5a0ed91958e47ea5a180550bed420da78ebd8c6fe32a71829eedb12f5be94c32",
+    "returncode": 0,
+    "diagnostic": ""
+  },
+  {
+    "id": "return_param__func_reg",
+    "control": true,
+    "command": [
+      "/tmp/ptx93-ptxas/cuda_nvcc-linux-x86_64-13.3.33-archive/bin/ptxas",
+      "-arch=sm_100",
+      "/workspace/ptx_frontend/docs/audits/ptx93_st_immediate/return_param__func_reg.ptx",
+      "-o",
+      "/tmp/st_front.cubin"
+    ],
+    "source_sha256": "3279528288c550eca0e976985e631a7032e386766f2e4284b1be6252e6ae03ed",
+    "returncode": 0,
+    "diagnostic": ""
+  }
+]

@@ -15,6 +15,7 @@ records, audits, and closeout matrices are grouped under `converage/`.
 | Detailed topic | English | 中文 |
 | --- | --- | --- |
 | Bitwise constant-expression signedness | [EN](bitwise_constant_policy.md) | [中文](../zh-han/bitwise_constant_policy.md) |
+| Bounded frontend fuzzing | [EN](fuzzing.md) | [中文](../zh-han/fuzzing.md) |
 | Generated-model build scalability | [EN](build_scalability.md) | [中文](../zh-han/build_scalability.md) |
 | Installed CMake Components | [EN](cmake_components.md) | [中文](../zh-han/cmake_components.md) |
 | C++ naming and legacy-interface policy | [EN](code_conventions.md) | [中文](../zh-han/code_conventions.md) |

@@ -1,0 +1,15 @@
+.version 9.3
+.target sm_100
+.address_size 64
+.func sink(.param .b32 arg) { .reg .b32 %a; .reg .b64 %p; ld.param.b32 %a,[arg]; cvt.u64.u32 %p,%a; st.global.b32 [%p],%a; ret; }
+
+.visible .entry probe(.param .u64 output) {
+.reg .b64 %out, %policy;
+.reg .b32 %v;
+.shared .align 16 .b8 slot[16];
+ld.param.u64 %out, [output];
+ld.global.b32 %v, [%out];
+ld.global.b64 %policy, [%out];
+{ .param .b32 arg; st.param.b32 [arg], %v; call sink,(arg); }
+ret;
+}

@@ -1,0 +1,65 @@
+[
+  {
+    "fixture": "fixtures/global-v2-pred.ptx",
+    "expected": "reject",
+    "official_url": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#vectors",
+    "basis": "5.4.2 permits vectors only of non-predicate fundamental types.",
+    "observed": "reject"
+  },
+  {
+    "fixture": "fixtures/reg-v4-f64.ptx",
+    "expected": "reject",
+    "official_url": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#vectors",
+    "basis": "5.4.2 explicitly forbids .v4 .f64; vector size cannot exceed 128 bits.",
+    "observed": "reject"
+  },
+  {
+    "fixture": "fixtures/array-fixed-exact.ptx",
+    "expected": "accept",
+    "official_url": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#initializers",
+    "basis": "5.4.3 reserves two elements and 5.4.4 permits an initializer list matching the array extent.",
+    "observed": "accept"
+  },
+  {
+    "fixture": "fixtures/array-fixed-excess.ptx",
+    "expected": "reject",
+    "official_url": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#initializers",
+    "basis": "5.4.3 reserves the declared number of elements; 5.4.4 follows C initializer syntax and permits fewer elements, not excess elements.",
+    "observed": "reject"
+  },
+  {
+    "fixture": "fixtures/array-inferred.ptx",
+    "expected": "accept",
+    "official_url": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#array-declarations",
+    "basis": "5.4.3 explicitly allows omitted first dimension inferred from initializer element count.",
+    "observed": "accept"
+  },
+  {
+    "fixture": "fixtures/envreg31.ptx",
+    "expected": "accept",
+    "official_url": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#special-registers-envreg-32",
+    "basis": "10.27 defines .sreg .b32 %envreg<32>; 5.2.1 allows same-size bit/unsigned compatibility.",
+    "observed": "accept"
+  },
+  {
+    "fixture": "fixtures/envreg32.ptx",
+    "expected": "reject",
+    "official_url": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#special-registers-envreg-32",
+    "basis": "10.27 defines exactly 32 predefined registers, so index 32 is outside the set.",
+    "observed": "reject"
+  },
+  {
+    "fixture": "fixtures/address-size64.ptx",
+    "expected": "accept",
+    "official_url": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-address-size",
+    "basis": "11.1.3 lists only 32 and 64 as address-size values.",
+    "observed": "accept"
+  },
+  {
+    "fixture": "fixtures/address-size16.ptx",
+    "expected": "reject",
+    "official_url": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-address-size",
+    "basis": "11.1.3 lists only 32 and 64 as address-size values.",
+    "observed": "reject"
+  }
+]

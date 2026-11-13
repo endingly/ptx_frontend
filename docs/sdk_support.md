@@ -1266,7 +1266,7 @@ Technical reference and evidence: [carry_coverage.md](us-en/converage/carry_cove
 The canonical arithmetic YAML models all 48 documented §9.7.2 type/mode/effect
 combinations: `add.cc`, `addc{.cc}`, `sub.cc`, `subc{.cc}`, `mad.{hi|lo}.cc`,
 and `madc.{hi|lo}{.cc}` for `.u32/.s32/.u64/.s64`, following the
-[PTX 9.3 extended-precision arithmetic specification](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#extended-precision-arithmetic-instructions).
+[PTX 9.3 extended-precision arithmetic specification](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#extended-precision-integer-arithmetic-instructions).
 The existing add/sub 32-bit forms require PTX 1.2; their 64-bit forms require
 PTX 4.3 and SM 20. `mad` and `madc` 32-bit forms require PTX 3.0 and SM 20;
 their 64-bit forms require PTX 4.3 and SM 20. Their `.hi` or `.lo` mode is
@@ -1834,7 +1834,7 @@ Technical reference and evidence: [fence_coverage.md](us-en/converage/fence_cove
 ### Ordinary `fence` coverage
 
 The frontend models the thread-fence syntax in
-[PTX ISA 9.3 §9.7.14.4](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-membar-fence):
+[PTX ISA 9.3 §9.7.14.4](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-membar):
 `fence{.sem}.scope;`. A scope is required. The supported scopes are `.cta`,
 `.gpu`, `.sys`, and `.cluster`; the supported explicit semantics are `.sc`,
 `.acq_rel`, `.acquire`, and `.release`. The frontend also accepts
@@ -2598,7 +2598,7 @@ Technical reference and evidence: [mbarrier_test_wait_coverage.md](us-en/convera
 ### `mbarrier.test_wait` qualifier coverage
 
 The frontend models the `.sem.scope` pair for each of the ten existing
-`mbarrier.test_wait` shapes in [PTX ISA 9.3 §9.7.14.16.19](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-mbarrier-test-wait-mbarrier-try-wait).
+`mbarrier.test_wait` shapes in [PTX ISA 9.3 §9.7.14.16.19](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-mbarrier-test-wait-try-wait).
 Both qualifiers must be written, in order, before the shared-space qualifier and
 `.b64`: `.acquire|.relaxed` followed by `.cta|.cluster`. A lone qualifier, the
 reverse order, and `.shared::cluster` wait objects are rejected. The scope
@@ -2638,7 +2638,7 @@ Technical reference and evidence: [mbarrier_try_wait_coverage.md](us-en/converag
 ### `mbarrier.try_wait` qualifier coverage
 
 The frontend models the `.sem.scope` pair for all ten existing
-`mbarrier.try_wait` shapes in [PTX ISA 9.3 §9.7.14.16.19](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-mbarrier-test-wait-mbarrier-try-wait).
+`mbarrier.try_wait` shapes in [PTX ISA 9.3 §9.7.14.16.19](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-mbarrier-test-wait-try-wait).
 Both qualifiers must be explicit and ordered: `.acquire|.relaxed` immediately
 followed by `.cta|.cluster`, before the object space and `.b64`. A lone
 qualifier, reversed pair, or `.shared::cluster` wait object is rejected.
@@ -2678,7 +2678,7 @@ Technical reference and evidence: [membar_coverage.md](us-en/converage/membar_co
 ### `membar` coverage
 
 The frontend models the three plain memory-barrier levels from
-[PTX ISA 9.3 §9.7.14.4](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-membar-fence):
+[PTX ISA 9.3 §9.7.14.4](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-membar):
 
 | Source form | Minimum PTX | Minimum target | Owned IR scope |
 | --- | --- | --- | --- |
@@ -2790,7 +2790,7 @@ The frontend models the five opcodes in [PTX ISA 9.3 §9.7.20](https://docs.nvid
 | `trap` | Bare instruction, optionally predicated | 1.0 | All targets |
 | `setmaxnreg` | `.inc.sync.aligned.u32` and `.dec.sync.aligned.u32`, each with an immediate count `24..256` divisible by eight | 8.0 | See below |
 
-The target catalog starts at `sm_13`, so `sm_11` is a documented floor for `brkpt`, not a separately modeled target. `pmevent` always requires an immediate; `.mask` selects a mask rather than an index. `nanosleep` accepts both register and immediate sources and preserves the programmer's source form. Its integer constants follow the general [PTX constant conversion rule](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-constants): for example, `-1` narrows to `0xffffffff` and `4294967296` narrows to zero at the `.u32` use.
+The target catalog includes `sm_10`, `sm_11`, and `sm_12`; `brkpt` is accepted from `sm_11` and rejected on `sm_10`. `pmevent` always requires an immediate; `.mask` selects a mask rather than an index. `nanosleep` accepts both register and immediate sources and preserves the programmer's source form. Its integer constants follow the general [PTX constant conversion rule](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-constants): for example, `-1` narrows to `0xffffffff` and `4294967296` narrows to zero at the `.u32` use.
 
 `setmaxnreg` accepts exact `sm_90a` from PTX 8.0, exact `sm_100a` from PTX 8.6, exact `sm_120a` from PTX 8.7, enabled `sm_100f` and `sm_120f` families from PTX 8.8, and the enabled `sm_110f` family from PTX 9.0. The model follows the repository's explicit target catalog; it does not infer unknown target spellings. Both action modifiers are distinct resolved variants. `.sync`, `.aligned`, and `.u32` are mandatory. The checker validates the literal count but cannot prove the runtime warpgroup participation, synchronization, register pool state, or launch configuration required for effective register adjustment.
 
@@ -3439,6 +3439,57 @@ the selected instruction width; PTX store execution uses the source's low bits.
 The checker also retains known
 address alignment and write-permission validation.
 
+Ordinary synchronous **scalar** store data also accepts the following explicit
+NVIDIA producer compatibility extension. The PTX 9.3 manual's Notes still say
+“Operand b must be in the .reg state space.” Natural nvcc 13.3.33 histogram
+output nevertheless writes immediate zero with `st.shared.b32`; matched
+ptxas 13.3.33 probes also accept nonzero data. This is a compiler/assembler
+compatibility contract, not a claim that the manual permits immediate sources.
+
+- Integer literals and existing legal integer constant expressions feed
+  `.b8/.b16/.b32/.b64`, `.u8/.u16/.u32/.u64`, and `.s8/.s16/.s32/.s64`.
+  The evaluated source remains 64 bits. Conversion keeps the selected use
+  width's low bits, including negative and out-of-use-width values; the owned
+  immediate retains both original source bits/sign and converted bits.
+- `.f32/.f64` accept numeric floating producers, including decimal and `0f`/`0d`
+  words with existing numeric precision conversion. Equal-width exact words
+  preserve their payload, including NaN payloads. Integer-origin constants do
+  not become floating store producers.
+- `.b32` additionally accepts a bare `0f` exact word; `.b64` accepts decimal
+  floating producers and bare `0d` words. Bit carriers require the lexical
+  floating width to match, so decimal/`0d` to `.b32`, `0f` to `.b64`, and floating
+  producers to other integer/bit widths remain rejected.
+
+The extension applies to the scalar data source across existing legal generic,
+global, local, shared/CTA/cluster and parameter forms, including device returns
+and adjacent call staging, with the same address, ABI, alignment, qualifier and
+target gates. No immediate-specific availability floor is added. Current-tool
+probes cover PTX 6.3 / SM75 through PTX 9.3 / SM100; they do not establish
+historical assembler or GPU execution behavior. `.b128` immediate data and
+integer source magnitudes beyond the evaluated 64-bit domain remain unsupported,
+even where ptxas accepts them. Existing `.b128` register sources remain valid.
+Vector stores, asynchronous stores, multimem stores, and auxiliary cache-policy
+operands retain their existing producer contracts. In particular, cache-policy
+operands stay register-only even though a separate ptxas probe accepts zero.
+The existing modifier-order grammar also rejects reversed cache/state spellings
+such as `st.cg.global`, including register controls, although ptxas accepts
+them; canonical `st.global.cg` is supported.
+See the [finite probe packet](audits/ptx93_st_immediate/README.md).
+
+Generated ordinary scalar ST `src` members now use `WithLocs<RegOrImm>`.
+For direct-field classes, consumers replacing direct register-member access must inspect
+`std::get_if<ResolvedRegisterRef>(&store.src.value)` or
+`std::get_if<ResolvedImmediate>(&store.src.value)`, then rebuild against matching
+headers and libraries. Scalar cache-policy forms share this direct `src` union
+across their policy-present and policy-omitted layouts; the optional
+`cache_policy` member remains a register.
+The union preserves the written operand and source
+range; no synthetic register or extra instruction is inserted. Owned validation
+rechecks canonical scalar payload width, original integer-bit consistency and
+floating-origin metadata. It accepts coherent current words without recovering
+erased lexical history. Supplied-AST validation separately authenticates supplied
+syntax identity; coherent current-value edits can pass both entry points.
+
 The qualified shared forms `.shared::cta` and `.shared::cluster` retain their
 state-space identity. They require PTX 7.8; `::cta` requires SM 30 and
 `::cluster` requires SM 90 with cluster capability. An unqualified `.shared`
@@ -3507,7 +3558,7 @@ The canonical catalogue implements PTX ISA 9.3 [§9.7.18 Stack Manipulation Inst
 
 `StackInstructionDescriptor` exposes the immutable operation, width, and default minimum alignment of eight bytes. `ResolvedStackToken` owns its register reference and function context; it is a runtime-opaque stack position. `ResolvedLocalAllocationResult` owns the same context plus the local address-space role. Both accept scalar integer/bit registers of the selected width. Neither operand is a generic address expression. Module validation cross-checks wrapper context and nested register bindings against the owning function after the AST has been destroyed. A context-free fragment keeps unknown function context and cannot stand in for a fully bound module. An explicit partial `ResolveContext` may retain a bound register while omitting the owning function scope. Individual checking validates the function-kind/scope pair but cannot authenticate binding identity without a symbol table; full module checking supplies that proof and rejects partial or unbound payloads.
 
-The allocation byte count uses the ordinary typed `RegOrImm` unsigned width conversion. Zero is accepted; it does not prove a valid runtime allocation. Register and immediate sizes follow the general operand domain in [§4.3.2](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#operands); support for an immediate size is an inference from that general rule together with `alloca`'s unsigned-value description.
+The allocation byte count uses the ordinary typed `RegOrImm` unsigned width conversion. Zero is accepted; it does not prove a valid runtime allocation. Register and immediate sizes follow the general operand domain in [§4.3.2](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#instruction-statements); support for an immediate size is an inference from that general rule together with `alloca`'s unsigned-value description.
 
 Explicit alignment is an integer constant used as `.u32`. Following [§4.5.1 Integer Constants](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-constants) and the [alloca contract](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#alloca), the frontend evaluates the 64-bit source constant, converts it to the independent unsigned 32-bit alignment use, and checks that the converted value is a nonzero power of two at most `2^23`. Thus `4294967297` and `-4294967295` convert to one and are accepted; `4294967296` converts to zero and is rejected. The IR retains the original integer bits and negativity, and its checker verifies the conversion again. This is a combined interpretation of the general constant conversion rules and the instruction contract, corroborated by CUDA 13.3 `ptxas`.
 
@@ -3603,7 +3654,7 @@ execution evidence for eleven commonly used operation names.
 | Resolved storage declarations | Supported subset | Owned global/constant/shared/local declaration metadata with identity/scope, typed shape, checked byte extent, alignment, linkage, and initializer constants/relocations; external unsized shared data remains dynamic and size-unknown. See the [storage contract](#storage-declarations) for normalization boundaries; no memory allocation or runtime instances |
 | Other directives | Partial | Same-module `.alias` canonicalizes direct-call ABI lookup and is retained as an owned alias contract. Typed `.managed`/`.unified` attributes are retained as typed function/storage contracts (`.unified` owns its two numeric UUID halves); documented header directives are likewise owned. LD/ST validate unified-address and read-only contracts. Linker/backend behavior and runtime allocation remain unsupported. |
 | Structured control syntax | Supported subset | `.callprototype`, `.calltargets`, and `.branchtargets` have dedicated function-local CST/AST syntax; binding and declaration semantics validate their labels/members/contracts. Resolved module contracts retain bound metadata-label identities, scope, canonical call signatures, ordered call targets, and expanded logical branch-target entries. Generated `IndirectCall` layouts resolve a `.reg` target plus bound prototype/target-set metadata at PTX 2.1 / SM 20, and module resolution applies the shared call ABI contract. `brx.idx` resolves a `.u32` index and current-function `.branchtargets` identity at PTX 6.0 / SM 30; it does not build a CFG or prove dynamic control flow. |
-| Recovery/editing | Supported subset | `parseModule()` emits ordered diagnostics plus inserted/skipped/error CST recovery nodes and resumes at bounded structural/module anchors; a partial nested block retains its valid body but has no closing-brace token. Standalone instruction parsing remains fail-fast. Recovered modules lower only valid neighboring nodes; recovery markers remain CST-only and parser diagnostics return once in source order. The installed consumer covers legal PTX 9.3 directive text, semantic directive failure, and recovered unknown directives. Round-trip serialization uses the original token buffer rather than recovery markers. An opt-in Clang lexer/CST libFuzzer target has a GTest seed smoke, but no ASan/UBSan or CI matrix yet |
+| Recovery/editing | Supported subset | `parseModule()` emits ordered diagnostics plus inserted/skipped/error CST recovery nodes and resumes at bounded structural/module anchors; a partial nested block retains its valid body but has no closing-brace token. Standalone instruction parsing remains fail-fast. Recovered modules lower only valid neighboring nodes; recovery markers remain CST-only and parser diagnostics return once in source order. The installed consumer covers legal PTX 9.3 directive text, semantic directive failure, and recovered unknown directives. Round-trip serialization uses the original token buffer rather than recovery markers. Opt-in Clang lexer/CST and bounded frontend libFuzzer targets use private ASan/UBSan instrumentation, deterministic seed replay and bounded CI smoke; internal canaries cover strict source/AST-free ownership checks. See the [fuzz guide](us-en/fuzzing.md) |
 | Resolved opcodes | Partial | The documented supported forms and their parser/resolver/checker tests define the current opcode boundary; the [ISA-wide audit](us-en/converage/coverage_status.md) distinguishes root inventory from form completeness. The M12 common-kernel corpus validates 60 frozen forms through parse, resolve, and target-aware checking on `sm_80`, `sm_90a`, and `sm_100`; its `setmaxnreg.inc.sync.aligned.u32` occurrence is only in the `sm_90a` corpus fixture. Corpus presence is distinct from checker availability and complete ISA coverage. The current `setmaxnreg` target matrix and all five miscellaneous opcodes are described in [miscellaneous coverage](#miscellaneous-coverage). Uncatalogued official spellings report `UnknownTarget`; translation compatibility is not inferred. Other frozen slices remain partial; simulator execution remains unsupported. |
 | PTX 9.3 miscellaneous instructions | Supported | `brkpt`, `nanosleep.u32`, `pmevent` index/mask, `trap`, and `setmaxnreg.inc`/`.dec` with operand and target checks. See [miscellaneous coverage](#miscellaneous-coverage). |
 
@@ -3798,7 +3849,7 @@ Technical reference and evidence: [tcgen_mma_a_collector_coverage.md](us-en/conv
 
 ### Non-WS activation collector and ashift
 
-The fixed [CUDA 13.3 PTX 9.3 TCGEN MMA syntax](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma) permits `.ashift` and `.collector::a::{fill|use|lastuse|discard}` after the kind, in that order, on ordinary non-WS dense and sparse f16, tf32, f8f6f4 and i8 forms. These optional modifiers extend the existing eight source identities and keep their original A placement, mask, D-scale, metadata, shape and target rules. Collector before ashift has no source alias. Shared A may use an A collector without ashift. Ashift requires Tensor Memory A; it may stand alone or pair with lastuse/discard, but not fill/use.
+The fixed [CUDA 13.3 PTX 9.3 TCGEN MMA syntax](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-mma-instructions-mma) permits `.ashift` and `.collector::a::{fill|use|lastuse|discard}` after the kind, in that order, on ordinary non-WS dense and sparse f16, tf32, f8f6f4 and i8 forms. These optional modifiers extend the existing eight source identities and keep their original A placement, mask, D-scale, metadata, shape and target rules. Collector before ashift has no source alias. Shared A may use an A collector without ashift. Ashift requires Tensor Memory A; it may stand alone or pair with lastuse/discard, but not fill/use.
 
 The source qualifier resolves to `TcgenCollectorControl`, with separate typed buffer and operation fields. The all-Unspecified value and empty location represent omission; a written `.collector::a::discard` has a distinct value and source range. For non-WS operation semantics, omission derives effective A/discard without changing the owned source. Generic modifier checks compare the whole typed value, and the selected source check rejects malformed pairs, invalid enum values, wrong buffer, missing or extra locations and illegal ashift pairing. `tcgen_mma_a_collector_view` borrows controls only from a matching exact final class; full owned-module validation still works after syntax-tree destruction.
 
@@ -3818,7 +3869,7 @@ Technical reference and evidence: [tcgen_mma_coverage.md](us-en/converage/tcgen_
 ### TCGEN dense f16 MMA coverage
 
 This page describes the first source slice of the four
-[`tcgen05.mma` spellings in fixed PTX 9.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma).
+[`tcgen05.mma` spellings in fixed PTX 9.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-mma-instructions).
 The initial slice is dense, non-weight-stationary kind f16 without block scaling, with both
 CTA groups and both A placements. The required lane mask and optional D scale
 are source topology choices settled by the fixed manual, a matched complete-module
@@ -3857,7 +3908,7 @@ use the narrower exact100a/family100f target lineage. The single observed
 `.mma.kind.cta_group` order is an alias of canonical `.mma.cta_group.kind`;
 other modifier permutations are not admitted.
 
-The operational catalogue uses [Table 42](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma)
+The operational catalogue uses [Table 42](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-kind-shapes)
 for group 1 M64/128, N8..256 step8, K16 and group 2 M128/256,
 N16..256 step16, K16. D=f16 requires A/B f16; D=f32 permits each A/B type in
 the documented f16/bf16 domain. The combined table does not settle mixed
@@ -3920,7 +3971,7 @@ Technical reference and evidence: [tcgen_mma_f8f6f4_coverage.md](us-en/converage
 
 This page specifies the dense, non-WS, non-sparse,
 non-convolution `.kind::f8f6f4` frontend slice. The fixed
-[CUDA 13.3 PTX 9.3 `tcgen05.mma` specification](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma)
+[CUDA 13.3 PTX 9.3 `tcgen05.mma` specification](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-mma-instructions-mma)
 is the source. The accepted Table 43/45 descriptor catalogue owns field
 encodings; the known-operation query never reads live descriptor registers.
 
@@ -4008,7 +4059,7 @@ Technical reference and evidence: [tcgen_mma_family_coverage.md](us-en/converage
 
 ### TCGEN MMA frontend family coverage
 
-The fixed [CUDA 13.3 / PTX 9.3 TCGEN MMA clauses](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma) define four source families. In the current target catalogue, all **22 `(family, kind)` identities** below have canonical syntax, direct typed instruction classes, owned-module validation and conditional caller-known queries. This is frontend coverage of those fixed forms, not authentication of live descriptor bits or GPU execution. The [canonical source data](../python/src/ptx_frontend/spec/resources/ptx_spec/tensor_memory_data_movement.yaml), [normalizer](../python/src/ptx_frontend/spec/normalize/tcgen_mma.py), [operational rows](../python/src/ptx_frontend/spec/tcgen_mma_operations.py), [descriptor fields](../python/src/ptx_frontend/spec/tcgen_descriptor_domains.py) and [C++ emitter](../python/src/ptx_frontend/code_gen/emit/tcgen_mma_operations.py) are the respective owners; the source census does not derive identities from the seven encoded descriptor kinds.
+The fixed [CUDA 13.3 / PTX 9.3 TCGEN MMA clauses](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-mma-instructions) define four source families. In the current target catalogue, all **22 `(family, kind)` identities** below have canonical syntax, direct typed instruction classes, owned-module validation and conditional caller-known queries. This is frontend coverage of those fixed forms, not authentication of live descriptor bits or GPU execution. The [canonical source data](../python/src/ptx_frontend/spec/resources/ptx_spec/tensor_memory_data_movement.yaml), [normalizer](../python/src/ptx_frontend/spec/normalize/tcgen_mma.py), [operational rows](../python/src/ptx_frontend/spec/tcgen_mma_operations.py), [descriptor fields](../python/src/ptx_frontend/spec/tcgen_descriptor_domains.py) and [C++ emitter](../python/src/ptx_frontend/code_gen/emit/tcgen_mma_operations.py) are the respective owners; the source census does not derive identities from the seven encoded descriptor kinds.
 
 | Fixed source family | Kinds | Structural operand layouts | Focused contracts |
 | --- | --- | ---: | --- |
@@ -4078,7 +4129,7 @@ This page describes the dense, non-weight-stationary, non-convolution
 `.kind::i8` frontend slice. Its packaged source, owned form, operational
 catalogue and borrowed view remain independent of live descriptor contents.
 The fixed
-[CUDA 13.3 PTX 9.3 `tcgen05.mma` section](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma)
+[CUDA 13.3 PTX 9.3 `tcgen05.mma` section](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-mma-instructions-mma)
 is the normative source; the accepted Table 43/45 descriptor catalogue remains
 the sole encoding authority.
 
@@ -4104,7 +4155,7 @@ contains exactly four/eight scalar General 32-bit registers; B32/U32/S32/F32
 declarations are compatible as **bits**, not floating arithmetic. Absence and an explicit empty vector are both invalid. The owned resolved form must retain
 source ranges, declarations and register identity after the syntax tree dies.
 
-[Table 42](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma)
+[Table 42](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-kind-shapes)
 gives S8/U8 multiplicands, S32 accumulator/output and uniquely determined
 K32. Dense group 1 permits M64/128 and N8,16,24,32, then N48..256 in steps
 of 16; group 2 permits M128/256 and N32..256 in steps of 32. K is not a
@@ -4188,7 +4239,7 @@ Technical reference and evidence: [tcgen_mma_mx8_coverage.md](us-en/converage/tc
 
 ### Dense MX8 TCGEN MMA coverage
 
-This page covers the dense, non-WS `.kind::mxf8f6f4.block_scale` source form in fixed [CUDA 13.3 / PTX 9.3 §9.7.17.10.9.1](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma). The canonical statement is `tcgen05.mma.cta_group::{1|2}.kind::mxf8f6f4.block_scale{.scale_vec::1X|.block32} [d], a, b-desc, idesc, [scale-A], [scale-B], enable-input-d`. A is either a scalar 64-bit shared-descriptor register or a bracketed Tensor Memory address. D, scale A, and scale B are bracketed Tensor Memory addresses; the instruction descriptor is a scalar 32-bit register. This block-scaled syntax has **two** A-placement layouts and has no output-lane mask or D-scale operand. The predicate may be a scalar predicate register, including written negation, or an integer truth constant.
+This page covers the dense, non-WS `.kind::mxf8f6f4.block_scale` source form in fixed [CUDA 13.3 / PTX 9.3 §9.7.17.10.9.1](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-mma-instructions-mma). The canonical statement is `tcgen05.mma.cta_group::{1|2}.kind::mxf8f6f4.block_scale{.scale_vec::1X|.block32} [d], a, b-desc, idesc, [scale-A], [scale-B], enable-input-d`. A is either a scalar 64-bit shared-descriptor register or a bracketed Tensor Memory address. D, scale A, and scale B are bracketed Tensor Memory addresses; the instruction descriptor is a scalar 32-bit register. This block-scaled syntax has **two** A-placement layouts and has no output-lane mask or D-scale operand. The predicate may be a scalar predicate register, including written negation, or an integer truth constant.
 
 The Tensor Memory addresses are scalar General 32-bit lane/column carriers; B32/U32/S32 declarations are accepted by the frontend. F32, predicate, vector, and 64-bit declarations are rejected. A bounded CUDA 13.3 `ptxas` role-width probe rejected U32/S32 at D/A/scale-A/scale-B, although fixed §9.7.17.1.1 states a 32-bit-wide address without an exact `.b32` declaration requirement. This tool-specific difference does not change the frontend's existing width-compatible contract or establish runtime address values.
 
@@ -4213,7 +4264,7 @@ Technical reference and evidence: [tcgen_mma_mx_a_collector_coverage.md](us-en/c
 
 ### MX activation collector
 
-The fixed [CUDA 13.3 PTX 9.3 TCGEN MMA syntax](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma) permits `.collector::a::{fill|use|lastuse|discard}` after the optional or required scale selector on the existing dense and sparse `mxf8f6f4`, `mxf4`, and `mxf4nvf4` source identities. The six identities retain two A placements, their original scale-A/B operands, sparse metadata placement, shape rows, packing, selector omission rules and target intersections. MX NV still requires a written selector. None of these MX forms accepts ashift, a lane mask, D-scale, a B collector, or weight-stationary syntax.
+The fixed [CUDA 13.3 PTX 9.3 TCGEN MMA syntax](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-mma-instructions-mma) permits `.collector::a::{fill|use|lastuse|discard}` after the optional or required scale selector on the existing dense and sparse `mxf8f6f4`, `mxf4`, and `mxf4nvf4` source identities. The six identities retain two A placements, their original scale-A/B operands, sparse metadata placement, shape rows, packing, selector omission rules and target intersections. MX NV still requires a written selector. None of these MX forms accepts ashift, a lane mask, D-scale, a B collector, or weight-stationary syntax.
 
 The qualifier reuses the typed `TcgenCollectorControl` buffer/action pair. Its all-Unspecified value with no source range preserves omission; written A/discard has its own value and range. A source checker verifies the whole typed pair and provenance, and `tcgen_mma_mx_a_collector_view` borrows controls only after the existing exact dense/sparse MX layout view succeeds. `TcgenMxACollectorKnownFacts` exposes only the collector and an optional prior-validity assertion; its query reuses the A-buffer history rule without exposing ashift or an M constraint. Unknown history remains an obligation; a false validity assertion contradicts use/lastuse, while a true assertion does not prove prior fill or ordering. Sources may be reread until completion, so A/B source stability remains an obligation.
 
@@ -4253,9 +4304,9 @@ Technical reference and evidence: [tcgen_mma_sparse_coverage.md](us-en/converage
 
 ### Ordinary sparse TCGEN MMA
 
-The fixed [CUDA 13.3 PTX 9.3 manual](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma) defines the non-WS `.mma.sp.cta_group.kind` source forms for f16, tf32, f8f6f4 and i8. Each has a mandatory bracketed Tensor Memory metadata address **after B and before `idesc`**. A may be shared or Tensor Memory; groups 1 and 2 are supported. The f16/tf32 forms keep the ordinary required lane mask and optional D-scale; f8f6f4/i8 keep the mask but forbid D-scale. The group 1 mask has four scalar 32-bit register entries and group 2 has eight. The `Tcgen05MmaSp*` final classes own these roles, and `tcgen_mma_sparse_view` borrows them only from a matching class and layout. Module checks retain binding and source-location integrity after the parser tree is destroyed.
+The fixed [CUDA 13.3 PTX 9.3 manual](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-mma-instructions-mma-sp) defines the non-WS `.mma.sp.cta_group.kind` source forms for f16, tf32, f8f6f4 and i8. Each has a mandatory bracketed Tensor Memory metadata address **after B and before `idesc`**. A may be shared or Tensor Memory; groups 1 and 2 are supported. The f16/tf32 forms keep the ordinary required lane mask and optional D-scale; f8f6f4/i8 keep the mask but forbid D-scale. The group 1 mask has four scalar 32-bit register entries and group 2 has eight. The `Tcgen05MmaSp*` final classes own these roles, and `tcgen_mma_sparse_view` borrows them only from a matching class and layout. Module checks retain binding and source-location integrity after the parser tree is destroyed.
 
-The generated [Table 42](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma) sparse rows use logical K 32/16/64/64 for f16/tf32/f8f6f4/i8. Sparse A stores half that K; B retains logical K. The independent known-value query checks shape, type, supported target and PTX version, the source kind against a caller-supplied instruction word, and its sparse bit. The sole [Table 45](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma) descriptor catalogue owns encoded fields and the sparsity selector. Known selector values 0–3 are accepted for f16/tf32; f8f6f4/i8 require zero. The query does not read the live `idesc` register.
+The generated [Table 42](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-kind-shapes) sparse rows use logical K 32/16/64/64 for f16/tf32/f8f6f4/i8. Sparse A stores half that K; B retains logical K. The independent known-value query checks shape, type, supported target and PTX version, the source kind against a caller-supplied instruction word, and its sparse bit. The sole [Table 45](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-instuction-desc-kind-tf32-f16-f8f6f4) descriptor catalogue owns encoded fields and the sparsity selector. Known selector values 0–3 are accepted for f16/tf32; f8f6f4/i8 require zero. The query does not read the live `idesc` register.
 
 The fixed metadata encoding is 1:2 for tf32 (nibbles `E` or `4`) and 2:4 for the other three kinds (nibbles `4,8,C,9,D,6,E`). Caller-supplied nibble values are checked individually, while the live metadata contents and compressed A contents remain obligations. The F (group 1, M64) and C (group 2, M128) half paths allow lane-half identities 0 or 16 and compare every independently known applicable Tensor Memory A, D and metadata identity. The D (group 1, M128) and A (group 2, M256) full paths require zero for each applicable known identity. Shared A removes only the A lane comparison; known D and metadata still obey the path rule. These values are lane-half identities, not byte address alignments. Missing values remain explicit obligations, not presumed equality. For f8f6f4 E2M1/E2M3/E3M2 inputs, low-bit packing rules remain separate obligations because source and known words do not prove live layout contents.
 
@@ -4274,11 +4325,11 @@ Technical reference and evidence: [tcgen_mma_sparse_mx_coverage.md](us-en/conver
 
 ### Sparse block-scaled TCGEN MMA
 
-The fixed [CUDA 13.3 PTX 9.3 manual](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma) provides three non-WS sparse block-scaled source kinds: `mxf8f6f4`, `mxf4`, and `mxf4nvf4`. Each `tcgen05.mma.sp` form has two A placements, a bracketed Tensor Memory metadata address after B and before `idesc`, and Tensor Memory scale-A/B addresses after `idesc`. These forms allow an optional [A collector](#tcgen-mma-mx-a-collector-coverage), but no lane mask, D-scale, ashift, B collector, or weight-stationary suffix. The exact final classes own typed operands and written selector locations. `tcgen_mma_sparse_mx_view` borrows the metadata and scale roles only from a matching final class and layout; full module checking retains source and binding integrity after syntax-tree destruction.
+The fixed [CUDA 13.3 PTX 9.3 manual](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-mma-instructions-mma-sp) provides three non-WS sparse block-scaled source kinds: `mxf8f6f4`, `mxf4`, and `mxf4nvf4`. Each `tcgen05.mma.sp` form has two A placements, a bracketed Tensor Memory metadata address after B and before `idesc`, and Tensor Memory scale-A/B addresses after `idesc`. These forms allow an optional [A collector](#tcgen-mma-mx-a-collector-coverage), but no lane mask, D-scale, ashift, B collector, or weight-stationary suffix. The exact final classes own typed operands and written selector locations. `tcgen_mma_sparse_mx_view` borrows the metadata and scale roles only from a matching final class and layout; full module checking retains source and binding integrity after syntax-tree destruction.
 
-[Table 42](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma) gives sparse MX8 logical K64 and sparse MX4/MX NV logical K128. Group 1 has M128 and N8–256 by eight. Group 2 has **only M256**, with N16–256 by sixteen; dense group-2 M128 and dense K96 are not sparse rows. The Table 47 K-choice bit for a caller-known MX4/MX NV word must select the sparse-compatible K128 state. The sole descriptor catalogue checks encoded fields, including the sparse bit; the independent query compares its known kind and sparse bit with the source identity. Neither reads live `idesc` contents.
+[Table 42](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-kind-shapes) gives sparse MX8 logical K64 and sparse MX4/MX NV logical K128. Group 1 has M128 and N8–256 by eight. Group 2 has **only M256**, with N16–256 by sixteen; dense group-2 M128 and dense K96 are not sparse rows. The Table 47 K-choice bit for a caller-known MX4/MX NV word must select the sparse-compatible K128 state. The sole descriptor catalogue checks encoded fields, including the sparse bit; the independent query compares its known kind and sparse bit with the source identity. Neither reads live `idesc` contents.
 
-The selector may be omitted for sparse MX8 (effective `scale_vec::1X`) or MX4 (effective `block32`), while MX NV requires a written selector. Omission remains distinct from a written suffix. Sparse MX8 has one scale factor, one-byte required sub-column alignment, and valid scale IDs 0–3. Sparse MX4 `scale_vec::2X`/`block32` has two factors, two-byte alignment, IDs 0/2. Sparse MX NV `scale_vec::2X`/`block32` has two UE8M0 factors and IDs 0/2; `scale_vec::4X`/`block16` has four UE8M0 or UE4M3 factors, four-byte alignment, and ID 0. The generated [Tables 59/60](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma) rows are explicit; factor counts are not inferred by dividing K by a block length. Caller-known alignment is a positive power-of-two guarantee satisfying the row, and byte-slot IDs must be consistent with that guarantee. Live selected scale placement and values remain obligations.
+The selector may be omitted for sparse MX8 (effective `scale_vec::1X`) or MX4 (effective `block32`), while MX NV requires a written selector. Omission remains distinct from a written suffix. Sparse MX8 has one scale factor, one-byte required sub-column alignment, and valid scale IDs 0–3. Sparse MX4 `scale_vec::2X`/`block32` has two factors, two-byte alignment, IDs 0/2. Sparse MX NV `scale_vec::2X`/`block32` has two UE8M0 factors and IDs 0/2; `scale_vec::4X`/`block16` has four UE8M0 or UE4M3 factors, four-byte alignment, and ID 0. The generated [Tables 59/60](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-mma-scale-valid-comb) rows are explicit; factor counts are not inferred by dividing K by a block length. Caller-known alignment is a positive power-of-two guarantee satisfying the row, and byte-slot IDs must be consistent with that guarantee. Live selected scale placement and values remain obligations.
 
 The base sparse MX4/MX NV target identities are exact `sm_100a`, `sm_110a`, or `sm_103a` at their fixed PTX floors; written vector selectors independently require exact `sm_100a`, and written block selectors require the `sm_100f`/`sm_110f` family feature and PTX 8.8/9.0. The sparse MX NV kind begins at PTX 8.7 on `sm_100a`. These are intersected source and known-operation checks, rather than a broad family-only base gate. The packed four/six-bit A/B rules from their corresponding dense kinds remain conditional caller-known checks.
 
@@ -4297,7 +4348,7 @@ Technical reference and evidence: [tcgen_mma_tf32_coverage.md](us-en/converage/t
 
 This page describes the dense, non-weight-stationary, non-convolution
 `.kind::tf32` source form and its caller-known operational query. The fixed
-[PTX 9.3 `tcgen05.mma` clause](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma)
+[PTX 9.3 `tcgen05.mma` clause](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-mma-instructions-mma)
 and the accepted descriptor catalogue set the field and source rules. A finite
 complete-module CUDA 13.3 assembler checkpoint corroborated source spelling;
 assembly alone cannot prove GPU behavior or live descriptor register values.
@@ -4326,7 +4377,7 @@ integer is 0..15; a low-bit alias of a wider value is outside this range.
 Located owned payloads must retain and recheck these roles after the parser's
 syntax tree is released.
 
-[Table 42](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma)
+[Table 42](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-kind-shapes)
 fixes D=F32 and A=B=TF32. Dense group 1 has M=64/128 and N=8..256 in steps
 of 8; group 2 has M=128/256 and N=16..256 in steps of 16. K=8 is uniquely
 determined and is not a separate source operand. The accepted Table 45
@@ -4376,7 +4427,7 @@ Technical reference and evidence: [tcgen_mma_ws_dense_coverage.md](us-en/convera
 
 ### Dense weight-stationary TCGEN MMA
 
-The fixed [CUDA 13.3 PTX 9.3 TCGEN MMA specification](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma) defines dense `.mma.ws.cta_group::1.kind` forms for f16, tf32, f8f6f4 and i8. The frontend preserves these as four exact final source classes. Each has shared or Tensor Memory A and an optional final scalar 64-bit zero-column descriptor register: `D, A, B, idesc, enableD[, zeroColumnDesc]`. The optional B0–B3 `fill`, `use`, `lastuse` or `discard` collector follows the kind. CTA group 2, A collector, block scaling, ashift, lane mask and D-scale are excluded from these forms. The written collector is an owned typed buffer/action pair with a source range; omission stays an all-Unspecified pair with no range and derives effective B0/discard only for operational interpretation. The [installed consumer](../examples/tcgen_mma_ws_dense_consumer) exercises the public source, borrowed `tcgen_mma_ws_view` and known-value query after syntax-tree destruction.
+The fixed [CUDA 13.3 PTX 9.3 TCGEN MMA specification](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-mma-instructions-mma-ws) defines dense `.mma.ws.cta_group::1.kind` forms for f16, tf32, f8f6f4 and i8. The frontend preserves these as four exact final source classes. Each has shared or Tensor Memory A and an optional final scalar 64-bit zero-column descriptor register: `D, A, B, idesc, enableD[, zeroColumnDesc]`. The optional B0–B3 `fill`, `use`, `lastuse` or `discard` collector follows the kind. CTA group 2, A collector, block scaling, ashift, lane mask and D-scale are excluded from these forms. The written collector is an owned typed buffer/action pair with a source range; omission stays an all-Unspecified pair with no range and derives effective B0/discard only for operational interpretation. The [installed consumer](../examples/tcgen_mma_ws_dense_consumer) exercises the public source, borrowed `tcgen_mma_ws_view` and known-value query after syntax-tree destruction.
 
 The Table 42 known-shape rows permit M32, M64 or M128 and N64, N128 or N256. K is 16 for f16, 8 for tf32, and 32 for f8f6f4 or i8. The selected paths are M32/G1×4, M64/E2×2 and M128/D4×1; each permits only lane-half zero. The shared-descriptor major/swizzle and low-bit transpose constraints retain their independent role checks. Low-bit f8 input packing remains an explicit obligation when applicable. An independently supplied Table 48 zero-column word is checked only when the source names the optional register; its absence then remains missing. Neither this word nor the register source authenticates live bits.
 
@@ -4393,7 +4444,7 @@ Technical reference and evidence: [tcgen_mma_ws_sparse_coverage.md](us-en/conver
 
 ### Sparse weight-stationary TCGEN MMA
 
-The fixed [CUDA 13.3 PTX 9.3 TCGEN MMA specification](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma) defines `.mma.ws.sp.cta_group::1.kind` for f16, tf32, f8f6f4 and i8. Four exact source classes each retain shared or Tensor Memory A and optional final scalar 64-bit zero-column register: `D, A, B, [metadata], idesc, enableD[, zeroColumnDesc]`. The bracketed Tensor Memory metadata address is mandatory between B and `idesc`. The B0–B3 collector has four written actions or canonical omission; omission derives B0/discard only in the operational report. `.mma.sp.ws`, CTA group 2, A collector, ashift, block scaling, lane mask and D-scale have no source form here. The [installed consumer](../examples/tcgen_mma_ws_sparse_consumer) exercises an owned source after AST destruction and the conditional report.
+The fixed [CUDA 13.3 PTX 9.3 TCGEN MMA specification](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-mma-instructions-mma-ws-sp) defines `.mma.ws.sp.cta_group::1.kind` for f16, tf32, f8f6f4 and i8. Four exact source classes each retain shared or Tensor Memory A and optional final scalar 64-bit zero-column register: `D, A, B, [metadata], idesc, enableD[, zeroColumnDesc]`. The bracketed Tensor Memory metadata address is mandatory between B and `idesc`. The B0–B3 collector has four written actions or canonical omission; omission derives B0/discard only in the operational report. `.mma.sp.ws`, CTA group 2, A collector, ashift, block scaling, lane mask and D-scale have no source form here. The [installed consumer](../examples/tcgen_mma_ws_sparse_consumer) exercises an owned source after AST destruction and the conditional report.
 
 The Table 42 rows have M32/M64/M128, N64/N128 and logical K32/16/64/64 for f16/tf32/f8f6f4/i8. Sparse A stores K/2 elements while B retains logical K. The shared WS path data select M32/G1×4, M64/E2×2 or M128/D4×1 and require independently known A (when in Tensor Memory), D and metadata lane-half identities to be zero. The M32 metadata subcolumn mapping lacks an established fixed diagram, so the report retains a `MetadataLayoutRule` obligation even if a caller supplies lane claims. This does not reject the canonical M32 source.
 
@@ -4432,7 +4483,7 @@ Commit records the protocol for prior applicable async TCGEN operations issued b
 
 These forms require exact `sm_100a` from PTX 8.6, family `sm_100f` from 8.8, or exact `sm_110a`/family `sm_110f` from 9.0. Generic and unrelated targets do not substitute. Official 13.3.73 assembler evidence corroborated all eight layouts, both fences, compatible 16-bit register masks, and these valid target endpoints. Direct literal masks failed with matched register controls; the assembler does not prove runtime mask values or synchronization behavior. The [TCGEN MMA frontend family coverage](#tcgen-mma-family-coverage) records how these completion forms meet the dense/sparse/WS source families without proving runtime protocol history.
 
-Source: [CUDA 13.3 / PTX 9.3 commit and fence clauses](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-commit). [Copy and shift](#tensor-memory-copy-shift-coverage) are eligible prior TCGEN work for a matching group; their source forms do not themselves signal the barrier.
+Source: [CUDA 13.3 / PTX 9.3 commit and fence clauses](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen-async-sync-operations-commit). [Copy and shift](#tensor-memory-copy-shift-coverage) are eligible prior TCGEN work for a matching group; their source forms do not themselves signal the barrier.
 
 
 <a id="tensor-async-closeout"></a>
@@ -4716,7 +4767,7 @@ Copy uses exact `sm_100a` from PTX 8.6, family `sm_100f` from 8.8, or exact `sm_
 
 Official 13.3.73 assembler evidence accepted all 36 copy tuples, both shift orders for both groups, compatible U64/S64 descriptor carriers, and the supported target endpoints. Partial format pairs and tested invalid carriers and targets failed with matched controls. The PTX 8.5 `sm_100a` directive control failed, so those two below-floor instruction candidates were skipped and supply no isolated instruction-floor evidence. Assembly does not prove runtime descriptor layout, decompression behavior, data motion, peer participation, or completion. No GPU execution was performed.
 
-Sources: [fixed CUDA 13.3 / PTX 9.3 copy](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-cp), [shift](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-shift), and [shared-memory descriptor Table 43](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#shared-memory-descriptor).
+Sources: [fixed CUDA 13.3 / PTX 9.3 copy](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-instructions-tcgen05-cp), [shift](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-instructions-tcgen05-shift), and [shared-memory descriptor Table 43](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tcgen05-shared-memory-descriptor).
 
 
 <a id="tensor-memory-coverage"></a>
@@ -6222,8 +6273,13 @@ explicit-component registers, numeric literals/constant expressions and scalar
 special reads. Each special lane retains its real registry identity, component,
 historical scalar MOV type compatibility and PTX/SM/capability checks.
 
-Whole hardware vectors remain separate width-four intrinsic-u32 reads, usable
-only with u32/s32/b32 and their existing availability. No fourth scalar hardware
+Whole hardware vectors remain separate width-four intrinsic-u32 reads. Native
+u32/s32/b32 uses retain their existing availability. Whole `%tid`, `%ntid`,
+`%ctaid`, and `%nctaid` also accept u16/s16/b16 through the existing contextual
+MOV compatibility descriptors, with PTX 1.0 availability; their native-u32 uses
+require PTX 2.0. The operand retains its intrinsic identity and u32 registry
+metadata. Other whole hardware vectors do not gain 16-bit compatibility, and
+cluster vectors retain their PTX/SM/capability gates. No fourth scalar hardware
 selector is invented. Sinks, predicate lanes, nested whole vectors, addresses,
 functions and symbols are not source lanes. Bare scalar vector sources such as
 `mov.v2.u32 V, 1` remain an unsupported frontend subset, not an ISA-invalid claim
@@ -8874,12 +8930,24 @@ the original parser diagnostics once and in source order. Round-trip
 serialization uses the original token buffer rather than recovery markers. A
 nested block missing its required `}`
 retains its parsed body and an inserted marker, with no `right_brace` token.
-The opt-in Clang `PTX_FRONTEND_BUILD_FUZZERS` target fuzzes raw lexer and CST
-input; its entry point is also exercised by a small GTest seed smoke. It has no
-ASan/UBSan or CI matrix yet. From the source root, run
-`cmake -S . -B out/fuzz -DPTX_FRONTEND_BUILD_FUZZERS=ON -DBUILD_TESTING=OFF`,
-`cmake --build out/fuzz --target fuzz_lexer_cst`, then
-`out/fuzz/submod/cst/fuzz_lexer_cst submod/cst/fuzz/corpus`.
+The default-OFF Clang `PTX_FRONTEND_BUILD_FUZZERS` build provides
+`fuzz_lexer_cst` and a bounded (64 KiB) `fuzz_frontend` pipeline. The latter
+exercises instruction/module AST parsing and clean-AST binding, resolution and
+strict validation; expected parse/recovery/semantic failures return normally.
+After strict success, it checks source/AST-free owned validation and module,
+function and instruction copy/move/clone preservation under the same
+`RequireCompleteContext` policy. It does not fuzz public-IR mutation or call
+ptxas per input. Private libFuzzer coverage plus nonrecovering ASan/UBSan
+instrument base through resolved IR, including generated sources and common
+inline code through consumers. A separate `BUILD_TESTING=OFF` build is required;
+ordinary SDK target interfaces are unchanged. Internal canaries prove 16-bit whole hardware-vector MOV and
+scalar immediate ST reach strict ownership checks and replay malformed/deep
+inputs; the canary also runs in ordinary CTest builds. A bounded CI smoke
+replays hand-authored/recovery and existing MIT natural seeds, then runs both
+fixed-seed campaigns with failure artifacts. See the reproducible
+[English fuzz guide](us-en/fuzzing.md) / [中文指南](zh-han/fuzzing.md) for build,
+budget, scratch corpus and replay commands. These checks are bounded robustness
+evidence, not exhaustive semantic conformance.
 The module grammar does not yet accept
 other kernel-tuning directives or a token-edit API. The parser validates initializer
 grammar shape and state-space/linkage constraints; the following declaration

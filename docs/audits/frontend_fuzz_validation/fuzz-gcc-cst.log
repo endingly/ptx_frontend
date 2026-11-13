@@ -1,0 +1,57 @@
+Running main() from /tmp/ptx93-audit-deps/googletest/googletest/src/gtest_main.cc
+Note: Google Test filter = PtxCstFuzz.*:*Depth*:*Recover*:*Comment*
+[==========] Running 22 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 20 tests from PtxCstParser
+[ RUN      ] PtxCstParser.RetainsExactNestedBlockDepthBoundary
+[       OK ] PtxCstParser.RetainsExactNestedBlockDepthBoundary (2 ms)
+[ RUN      ] PtxCstParser.RecoversMalformedTrailingDecimalPointFloats
+[       OK ] PtxCstParser.RecoversMalformedTrailingDecimalPointFloats (0 ms)
+[ RUN      ] PtxCstParser.RecoversMalformedBinaryBeforeReturn
+[       OK ] PtxCstParser.RecoversMalformedBinaryBeforeReturn (0 ms)
+[ RUN      ] PtxCstParser.RecoversInternalPercentIdentifiersBeforeValidEntry
+[       OK ] PtxCstParser.RecoversInternalPercentIdentifiersBeforeValidEntry (0 ms)
+[ RUN      ] PtxCstParser.RecoversMissingSectionBraceBeforeFollowingFunction
+[       OK ] PtxCstParser.RecoversMissingSectionBraceBeforeFollowingFunction (0 ms)
+[ RUN      ] PtxCstParser.RecoveryNodesPreserveSourceAndRecoveryInvariants
+[       OK ] PtxCstParser.RecoveryNodesPreserveSourceAndRecoveryInvariants (0 ms)
+[ RUN      ] PtxCstParser.UnterminatedCommentOnlyTerminatesAndRoundTrips
+[       OK ] PtxCstParser.UnterminatedCommentOnlyTerminatesAndRoundTrips (0 ms)
+[ RUN      ] PtxCstParser.UnterminatedCrLfBlockCommentReportsCorrectRange
+[       OK ] PtxCstParser.UnterminatedCrLfBlockCommentReportsCorrectRange (0 ms)
+[ RUN      ] PtxCstParser.UnterminatedCommentAfterModulePrefixTerminatesAndRoundTrips
+[       OK ] PtxCstParser.UnterminatedCommentAfterModulePrefixTerminatesAndRoundTrips (0 ms)
+[ RUN      ] PtxCstParser.UnterminatedCommentInFunctionTerminatesAndRoundTrips
+[       OK ] PtxCstParser.UnterminatedCommentInFunctionTerminatesAndRoundTrips (0 ms)
+[ RUN      ] PtxCstParser.RecoversLexicalErrorBeforeValidModuleItem
+[       OK ] PtxCstParser.RecoversLexicalErrorBeforeValidModuleItem (0 ms)
+[ RUN      ] PtxCstParser.RecoversMissingBodySemicolonBeforeNextInstruction
+[       OK ] PtxCstParser.RecoversMissingBodySemicolonBeforeNextInstruction (0 ms)
+[ RUN      ] PtxCstParser.RecoversNestedBlockAndModuleItemsInSourceOrder
+[       OK ] PtxCstParser.RecoversNestedBlockAndModuleItemsInSourceOrder (0 ms)
+[ RUN      ] PtxCstParser.RecoversMissingFunctionBraceBeforeNextFunctionAndAtEof
+[       OK ] PtxCstParser.RecoversMissingFunctionBraceBeforeNextFunctionAndAtEof (0 ms)
+[ RUN      ] PtxCstParser.RecoversStrayModuleTokenAndEofWithoutSyntheticTokens
+[       OK ] PtxCstParser.RecoversStrayModuleTokenAndEofWithoutSyntheticTokens (0 ms)
+[ RUN      ] PtxCstParser.DiagnosesExcessiveNestedBlockDepthWithoutCrashing
+[       OK ] PtxCstParser.DiagnosesExcessiveNestedBlockDepthWithoutCrashing (0 ms)
+[ RUN      ] PtxCstParser.RecoversLegacyDwarfAtStructuralBoundaries
+[       OK ] PtxCstParser.RecoversLegacyDwarfAtStructuralBoundaries (0 ms)
+[ RUN      ] PtxCstParser.RecoveryPreservesAliasAfterUnknownDirective
+[       OK ] PtxCstParser.RecoveryPreservesAliasAfterUnknownDirective (0 ms)
+[ RUN      ] PtxCstParser.AliasSpellingRemainsInsideRecoveredSection
+[       OK ] PtxCstParser.AliasSpellingRemainsInsideRecoveredSection (0 ms)
+[ RUN      ] PtxCstParser.SharedBodyRecoveryRetainsNestedAndFunctionTermination
+[       OK ] PtxCstParser.SharedBodyRecoveryRetainsNestedAndFunctionTermination (0 ms)
+[----------] 20 tests from PtxCstParser (5 ms total)
+
+[----------] 2 tests from PtxCstFuzz
+[ RUN      ] PtxCstFuzz.HandlesRepresentativeByteSeeds
+[       OK ] PtxCstFuzz.HandlesRepresentativeByteSeeds (0 ms)
+[ RUN      ] PtxCstFuzz.HandlesDeepConstantTreeSeeds
+[       OK ] PtxCstFuzz.HandlesDeepConstantTreeSeeds (31 ms)
+[----------] 2 tests from PtxCstFuzz (31 ms total)
+
+[----------] Global test environment tear-down
+[==========] 22 tests from 2 test suites ran. (37 ms total)
+[  PASSED  ] 22 tests.

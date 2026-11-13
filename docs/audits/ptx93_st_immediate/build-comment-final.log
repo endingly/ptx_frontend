@@ -1,0 +1,4 @@
+[0/2] Re-checking globbed directories...
+[1/4] Building CXX object submod/resolved_ir/CMakeFiles/ptx_frontend_resolved_ir.dir/src/ptx_resolved_ir_checker.cpp.o
+[2/4] Linking CXX static library submod/resolved_ir/libptx_frontend_resolved_ir.a
+[3/4] Linking CXX executable ptx93_probe

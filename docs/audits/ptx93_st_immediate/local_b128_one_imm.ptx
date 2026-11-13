@@ -1,0 +1,15 @@
+.version 9.3
+.target sm_100
+.address_size 64
+.visible .entry probe(.param .u64 output) {
+ .reg .b64 %out;
+ .reg .b128 %v;
+ .shared .align 16 .b8 slot[16];
+ .local .align 16 .b8 loc[16];
+ ld.param.u64 %out, [output];
+ ld.global.b128 %v, [%out];
+ st.local.b128 [loc], 1;
+ ld.local.b128 %v, [loc];
+ st.global.b128 [%out], %v;
+ ret;
+}

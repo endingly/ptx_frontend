@@ -1097,7 +1097,7 @@ operand_patterns:
       access: read
       state_space: [global, local, shared]
     - name: src
-      kind: reg
+      kind: reg_or_imm
       role: src
       access: read
       type:
@@ -1113,7 +1113,7 @@ operand_patterns:
       # statically known non-global address.
       state_space: [global]
     - name: src
-      kind: reg
+      kind: reg_or_imm
       role: src
       access: read
       type:
@@ -1258,7 +1258,7 @@ operand_patterns:
           ptx: "2.0"
           sm: 20
     - name: src
-      kind: reg
+      kind: reg_or_imm
       role: src
       access: read
       type:
@@ -1273,7 +1273,7 @@ operand_patterns:
       state_space:
         expr: modifier(state_space)
     - name: src
-      kind: reg
+      kind: reg_or_imm
       role: src
       access: read
       type:
@@ -1292,7 +1292,7 @@ operand_patterns:
       access: read
       state_space: [global]
     - name: src
-      kind: reg
+      kind: reg_or_imm
       role: src
       access: read
       type:
@@ -1339,7 +1339,7 @@ operand_patterns:
       state_space:
         expr: modifier(state_space)
     - name: src
-      kind: reg
+      kind: reg_or_imm
       role: src
       access: read
       type:

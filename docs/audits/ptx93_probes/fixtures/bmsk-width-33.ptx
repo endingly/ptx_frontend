@@ -1,0 +1,4 @@
+.version 9.3
+.target sm_80
+.address_size 64
+.entry k(){.reg .b32 %d;bmsk.wrap.b32 %d,1,33;ret;}

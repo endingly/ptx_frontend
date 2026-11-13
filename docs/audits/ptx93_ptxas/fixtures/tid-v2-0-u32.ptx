@@ -1,0 +1,7 @@
+.version 2.0
+.target sm_20
+.entry kernel() {
+.reg .v4 .u32 V;
+mov.v4.u32 V, %tid;
+ret;
+}

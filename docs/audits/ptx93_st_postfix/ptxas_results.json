@@ -1,0 +1,1128 @@
+{
+  "provenance": {
+    "ptxas_path": "/tmp/ptx93-nvcc/bin/ptxas",
+    "ptxas_sha256": "7fdd01a4cf50e30746da98989c9272a907f491e6fd7fecfda14642e4375f88fb",
+    "frontend_path": "/tmp/ptx93-audit-build/ptx93_probe",
+    "frontend_sha256": "1eb00c8e9a8e0834d699f8ec08838a889fb3cb71d7a87e6a39cbb72544718402",
+    "version": {
+      "command": [
+        "/tmp/ptx93-nvcc/bin/ptxas",
+        "--version"
+      ],
+      "exit_code": 0,
+      "stdout": "ptxas: NVIDIA (R) Ptx optimizing assembler\nCopyright (c) 2005-2026 NVIDIA Corporation\nBuilt on Fri_Apr_24_07:22:02_PM_PDT_2026\nCuda compilation tools, release 13.3, V13.3.33\nBuild cuda_13.3.r13.3/compiler.37862127_0\n",
+      "stderr": "",
+      "stdout_sha256": "8b73f3236c1db9407e43e793fd7aff306c68206ba7ac99f25eaa2b4e297bc0cf",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    "help": {
+      "command": [
+        "/tmp/ptx93-nvcc/bin/ptxas",
+        "--help"
+      ],
+      "exit_code": 0,
+      "stdout": "\nUsage  : ptxas [options] <ptx file>,...\n\nOptions\n=======\n\n--Ofast-compile <0|min|mid|max>                     (-Ofc)                      \n        Specify fast-compile level for device code, which controls the tradeoff between\n        compilation speed and runtime performance by disabling certain optimizations\n        at varying levels. \n        Levels: \n                'max': Focus only on the fastest compilation speed, disabling many\n        optimizations.\n                'mid': Balance compile time and runtime, disabling expensive optimizations.\n                'min': More minimal impact on both compile time and runtime, minimizing\n        some expensive optimizations.\n                '0': Disables fast-compile. \n        The option is disabled by default.\n        Default value:  '0'.\n\n--allow-expensive-optimizations <true|false>        (-allow-expensive-optimizations)\n        Enable (disable) to allow compiler to perform expensive optimizations   \n        using maximum available resources (memory and compile-time).\n        If unspecified default behavior is to enable this feature for optimization\n        level >= O2.\n\n--apply-controls                                    (-apply-controls)           \n        Specify compiler controls file to pass options to compiler components.\n\n--compile-as-tools-patch                            (-astoolspatch)             \n        Compile patch code for CUDA tools. For codes compiled with this mode, compiler\n        sets maxrregcount to the minimum registers required by ABI.\n\n--compile-only                                      (-c)                        \n        Generate relocatable object.\n\n--compiler-annotations                              (-annotate)                 \n        Annotate compiler-internal information in binary output.\n\n--def-load-cache                                    (-dlcm)                     \n        Default cache modifier on global/generic load.\n\n--def-store-cache                                   (-dscm)                     \n        Default cache modifier on global/generic store.\n\n--device-debug                                      (-g)                        \n        Generate debug information for device code.\n\n--device-function-maxrregcount <archmax/archmin/N>  (-func-maxrregcount)        \n        When compiling with -c (--compile-only) option, specify the maximum number\n        of registers that device functions can use. This option is ignored for whole-program\n        compilation and does not affect registers used by entry functions. For device\n        functions, this option overrides the value specified by -maxrregcount option.\n        If neither device-function-maxrregcount nor maxrregcount is specified, then\n        no maximum is assumed.\n        Note: Under certain situations, static device functions can safely inherit\n        a higher register count from the caller entry function. In such cases, PTXAS\n        may apply the higher count for compiling the static function.\n        Value less than the minimum registers required by ABI will be bumped up by\n        the compiler to ABI minimum limit.\n        \n\n--device-stack-protector <true|false>               (-device-stack-protector)   \n        Enable stack canaries in device code. Stack canaries make it more difficult\n        to exploit certain types of memory safety bugs involving stack-local variables.\n        The compiler uses heuristics to assess the risk of such a bug in each function.\n        Only those functions which are deemed high-risk make use of a stack canary.\n        Default value:  false.\n\n--disable-optimizer-constants                       (-disable-optimizer-consts) \n        Disable use of optimizer constant bank.\n\n--disable-warnings                                  (-w)                        \n        Inhibit all warning messages.\n\n--dont-merge-basicblocks                            (-no-bb-merge)              \n        Normally, ptxas attempts to merge consecutive basic blocks as part of its\n        optization process. However, for debuggable code this is very confusing.\n        This option prevents basic block merging, at a slight perfomance cost.\n\n--enable-func-clone-sc <true|false>                 (-enable-func-clone-sc)     \n        Enable intraprocedural optimization for functions that are used only within\n        the translation units by cloning them i.e. creating a copy of them for each\n        entry function calling them. This option is ignored for default whole program\n        compilation and only applicable when compiling with -c (--compile-only).\n        This option can lead to better code generation for such functions but can\n        impact program size and compile time.\n        Default value:  false.\n\n--entry <entry function>,...                        (-e)                        \n        Entry function name.\n\n--extensible-whole-program                          (-ewp)                      \n        Do extensible whole program mode.\n\n--fmad <true|false>                                 (-fmad)                     \n        Enables (disables) the contraction of floating-point multiplies and     \n        adds/subtracts into floating-point multiply-add operations (FMAD, FFMA, \n        or DFMA).\n        Default value:  true.\n\n--force-load-cache                                  (-flcm)                     \n        Force specified cache modifier on global/generic load.\n\n--force-store-cache                                 (-fscm)                     \n        Force specified cache modifier on global/generic store.\n\n--g-tensor-memory-access-check                      (-g-tmem-access-check)      \n        Enable tensor memory access checks for tcgen05 operations. This is enabled\n        by default with -g.\n\n--generate-line-info                                (-lineinfo)                 \n        Generate line-number information for device code.\n\n--gno-tensor-memory-access-check                    (-gno-tmem-access-check)    \n        Disable tensor memory access checks for tcgen05 operations.This option will\n        always override -g-tensor-memory-access-checkif both are specified (irrespective\n        of the order).\n\n--gpu-name <gpu name>                               (-arch)                     \n        Specify name of NVIDIA GPU to generate code for. This option also takes virtual\n        compute architectures, in which case code generation is suppressed. This\n        can be used for parsing only. PTX for .target sm_XY can be compiled to all\n        GPU targets sm_MN, sm_MNa, SM_MNf where MN >= XY. PTX for .target sm_XYf\n        can be compiled to GPU targets sm_XZ, sm_XZf, sm_XZa where Z >= Y and sm_XY\n        and sm_XZ belong in same family. PTX with .target sm_XYa can only be compiled\n        to GPU target sm_XYa.\n        Allowed values for this option:  'compute_100','compute_100a','compute_100f',\n        'compute_103','compute_103a','compute_103f','compute_110','compute_110a',\n        'compute_110f','compute_120','compute_120a','compute_120f','compute_121',\n        'compute_121a','compute_121f','compute_75','compute_80','compute_86','compute_87',\n        'compute_88','compute_89','compute_90','compute_90a','lto_100','lto_100a',\n        'lto_100f','lto_103','lto_103a','lto_103f','lto_110','lto_110a','lto_110f',\n        'lto_120','lto_120a','lto_120f','lto_121','lto_121a','lto_121f','lto_75',\n        'lto_80','lto_86','lto_87','lto_88','lto_89','lto_90','lto_90a','sm_100',\n        'sm_100a','sm_100f','sm_103','sm_103a','sm_103f','sm_110','sm_110a','sm_110f',\n        'sm_120','sm_120a','sm_120f','sm_121','sm_121a','sm_121f','sm_75','sm_80',\n        'sm_86','sm_87','sm_88','sm_89','sm_90','sm_90a'.\n        Default value:  'sm_75'.\n\n--help                                              (-h)                        \n        Print this help information on this tool.\n\n--input-as-string <ptx string>,...                  (-ias)                      \n        This option allows ptx modules to be passed directly as strings instead of\n        via files. It can be used for simple runtime support, or when it is somehow\n        not desired to pass the ptx string via the file system.\n\n--jobserver                                         (-jobserver)                \n        Enable GNU Make Jobserver support (for use with `make -j<N>`).\n\n--legacy-bar-warp-wide-behavior                     (-legacy-bar-warp-wide-behavior)\n        This option will cause PTXAS to retain legacy behavior of PTX bar instructionswhere\n        if any thread in the warp executes bar instruction it is considered as if\n        entire warp has executed it.This option is ignored for programs with .target\n        sm_70 or higher.This is a deprecated option and it will be removed in future\n        release and is not recommended.\n\n--list-arch                                         (-arch-ls)                  \n        Print supported gpu architectures.\n\n--list-version                                      (-version-ls)               \n        Print supported PTX ISA versions.\n\n--machine <bits>                                    (-m)                        \n        Specify 64-bit host architecture.\n                \n        Allowed values for this option:  64.\n        Default value:  64.\n\n--make-errors-visible-at-exit                       (-make-errors-visible-at-exit)\n        Generate required instructions at exit point to make memory faults and errors\n        visible at exit.\n\n--maxntid <Comma separated list of numbers>,...     (-maxntid)                  \n        Specify maxntid configuration. Note this option is ignored if -maxrregcount\n        option is used. For entry functions already using PTX directive .maxntid,\n        this option will be ignored.\n\n--maxrregcount <archmax/archmin/N>                  (-maxrregcount)             \n        Specify the maximum amount of registers that GPU functions can use. Until\n        a function- specific limit, a higher value will generally increase the performance\n        of individual GPU threads that execute this function. However, because thread\n        registers are allocated from a global register pool on each GPU, a higher\n        value of this option will also reduce the maximum thread block size, thereby\n        reducing the amount of thread parallelism. Hence, a good maxrregcount value\n        is the result of a trade-off.\n        If this option is not specified, then no maximum is assumed.\n        Value less than the minimum registers required by ABI will be bumped up by\n        the compiler to ABI minimum limit.\n        User program may not be able to make use of all registers as some registers\n        are reserved by compiler.\n\n--minnctapersm <N>                                  (-minnctapersm)             \n        Specify the minimum number of CTAs to be mapped to a single multiprocessor.\n        Thisoption is ignored if -maxrregcount option is used. For entry functions\n        already usingPTX directive .minnctapersm, this option will be ignored.\n\n--opt-level <N>                                     (-O)                        \n        Specify optimization level.\n        Default value:  3.\n\n--optimize-float-atomics                            (-opt-fp-atomics)           \n        This option enables optimizations on floating point atomics that may affect\n        FP precision.\n\n--options-file <file>,...                           (-optf)                     \n        Include command line options from specified file.\n\n--output-file <file>                                (-o)                        \n        Specify name of output file.\n        Default value:  'elf.o'.\n\n--override-directive-values                         (-override-directive-values)\n        Specify that values provided with the PTX directives are overriden by the\n        corresponding option values. Effective only for -minnctapersm, -maxntid and\n        -maxrregcount options.\n\n--position-independent-code <true|false>            (-pic)                      \n        Generate position independent code. This mode is enabled by default for whole\n        program compilation.\n        For other compilation modes, this is disabled by default.\n        Default value:  false.\n\n--preserve-relocs                                   (-preserve-relocs)          \n        This option will make PTXAS to generate relocatable references for variables\n        and preserve relocations generated for them in linked executable.\n\n--register-usage-level <0..10>                      (-regUsageLevel)            \n        Controls the aggressiveness of optimizations that affect register usage.\n        ([0..10], default = 5) Higher values aggressively optimize the source program,\n        trading off additional register usage for potential improvements in the generated\n        code. Lower values inhibit optimizations that aggressively increase register\n        usage. This option can work in conjunction with -maxrregcount and CUDA launch\n        bounds. This is a BETA feature for advanced users and there is no guarantee\n        that the implementation stays consistent between ptxas releases.\n        Default value:  5.\n\n--return-at-end                                     (-ret-end)                  \n        Normally, ptxas optimizes return instructions at the end of the program.\n        However, for debuggable code this causes problems setting breakpoint at the\n        end. This option prevents ptxas from optimizing this last return instruction.\n\n--sanitize <string>                                 (-sanitize)                 \n        Generate instrumented code with specified sanitizer tool.\n        Allowed values for this option:  'memcheck','threadsteer'.\n\n--sp-bounds-check                                   (-sp-bounds-check)          \n        Generate stack-pointer bounds-checking code sequence. This option is turned\n        on automatically when device-debug (-g) or opt-level(-O) 0 is specified.\n\n--split-compile <N>                                 (-split-compile)            \n        Specify the maximum amount of concurrent threads to be utilized when running\n        compiler optimizations. If <N> is 1, this option is ignored. If <N> is 0,\n        the number of threads will be the number of CPUs on the machine. This option\n        will have minimal (if any) impact on performance of the compiled binary.\n\n--suppress-async-bulk-multicast-advisory-warning    (-suppress-async-bulk-multicast-advisory-warning)\n        Suppress advisory warning for .multicast::cluster.\n\n--suppress-debug-info                               (-suppress-debug-info)      \n        Do not generate debug information sections in final output object file.\n        Note: This option is ignored if used without --device-debug or --generate-line-info\n        option.\n\n--suppress-double-demote-warning                    (-suppress-double-demote-warning)\n        Suppress the warning that is otherwise emitted when a double precision instruction\n        is encountered in PTX that is targeted for an SM version that does not have\n        double precision support.\n\n--suppress-sparse-mma-advisory-info                 (-suppress-sparse-mma-advisory-info)\n        Suppress advisory info for mma.sp.\n\n--suppress-stack-size-warning                       (-suppress-stack-size-warning)\n        Suppress the warning that otherwise is printed when stack size cannot be\n        determined.\n\n--verbose                                           (-v)                        \n        Enable verbose mode which prints code generation statistics.\n\n--verbose2                                          (-v2)                       \n        Enable extended verbose mode. Extends basic verbose mode with progress indicators,\n        names of processed modules, etc.\n\n--version                                           (-V)                        \n        Print version information on this tool.\n\n--warn-on-double-precision-use                      (-warn-double-usage)        \n        Warning if double(s) are used in an instruction.\n\n--warn-on-local-memory-usage                        (-warn-lmem-usage)          \n        Warning if local memory is used.\n\n--warn-on-spills                                    (-warn-spills)              \n        Warning if registers are spilled to local memory.\n\n--warning-as-error                                  (-Werror)                   \n        Make all warnings into errors.\n\n\n",
+      "stderr": "",
+      "stdout_sha256": "2a09ea0c2032ee318b0739fac63b7862f24a242365f182a4b480d60aaf3baf2c",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    "flags": [
+      "-O0",
+      "--gpu-name=<fixture target>",
+      "--output-file=<temporary cubin>"
+    ],
+    "timeout_seconds_per_process": 30
+  },
+  "cases": [
+    {
+      "case": "control-valid",
+      "fixture": "../ptx93_ptxas/fixtures/control-valid.ptx",
+      "sha256": "7b1121f0134232fcc980aa18fe48baae429db4920c9711a1b6aeef7be87bec50",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/control-valid.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/control-valid.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "697183d903f1dd110ae6c7cfdd204df6ac230c394349e87e9dc97f0192971cca",
+        "output_bytes": 3240
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/control-valid.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "control-invalid-opcode",
+      "fixture": "../ptx93_ptxas/fixtures/control-invalid-opcode.ptx",
+      "sha256": "65add2ecaabeeaba6b8c9bca58ea92fc89dd8b871feda4f38a0a8679fa06a186",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/control-invalid-opcode.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/control-invalid-opcode.ptx"
+        ],
+        "exit_code": 255,
+        "stdout": "",
+        "stderr": "ptxas /tmp/ptx93-st-final-original-comparison/fixtures/control-invalid-opcode.ptx, line 7; error   : Not a name of any known instruction: 'not_an_instruction'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "906d12f7d46a95d3ed0c06a5f9ca1f3a473a771dfcc9088bc0d6f52f677e2cf0",
+        "truncated": false,
+        "classification": "rejected-input"
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/control-invalid-opcode.ptx"
+        ],
+        "exit_code": 3,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=Resolution range=7:1-7:19 message=\"Unknown PTX opcode 'not_an_instruction'.\"\n",
+        "stderr": "",
+        "stdout_sha256": "6aa242400dead976e5abfbc92468d1a027f9f52a9a94e5786764239870a31b9f",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "rejected-input"
+      }
+    },
+    {
+      "case": "file-single",
+      "fixture": "../ptx93_ptxas/fixtures/file-single.ptx",
+      "sha256": "e22d2d43cba4702d118356527ec46068c549aabff9fba8a124717bab7af6c98d",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/file-single.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/file-single.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "697183d903f1dd110ae6c7cfdd204df6ac230c394349e87e9dc97f0192971cca",
+        "output_bytes": 3240
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/file-single.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "file-repeated-example",
+      "fixture": "../ptx93_ptxas/fixtures/file-repeated-example.ptx",
+      "sha256": "c7adad6cf2db37a14c135e0cfc89f8847a1cd51bd17180c00542941ff7df0315",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/file-repeated-example.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/file-repeated-example.ptx"
+        ],
+        "exit_code": 255,
+        "stdout": "",
+        "stderr": "ptxas /tmp/ptx93-st-final-original-comparison/fixtures/file-repeated-example.ptx, line 6; error   : Duplicate file index #1\nptxas fatal   : Ptx assembly aborted due to errors\n",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "434f75f310172fbd1b417f57c08869a5d1cf0add8ec3c23c12a01b71efb07150",
+        "truncated": false,
+        "classification": "rejected-input"
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/file-repeated-example.ptx"
+        ],
+        "exit_code": 3,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=Binding kind=DuplicateSymbol range=6:7-6:8 previous_range=4:7-4:8 message=\"Duplicate symbol '1' in debug metadata.\"\n",
+        "stderr": "",
+        "stdout_sha256": "f8eead2f01a6e08ec6555ec7ebc6f46493c6d306e814cf5fb23d265f9fd53691",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "rejected-input"
+      }
+    },
+    {
+      "case": "file-repeated-identical",
+      "fixture": "../ptx93_ptxas/fixtures/file-repeated-identical.ptx",
+      "sha256": "0b3a77609177458855ec68f8bc046ce90e2d8fac9a897bb17c4e607d8f121830",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/file-repeated-identical.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/file-repeated-identical.ptx"
+        ],
+        "exit_code": 255,
+        "stdout": "",
+        "stderr": "ptxas /tmp/ptx93-st-final-original-comparison/fixtures/file-repeated-identical.ptx, line 6; error   : Duplicate file index #1\nptxas fatal   : Ptx assembly aborted due to errors\n",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "ea53abd4136222b1757de1e4b15ef17fb8105fcac0ec60bfd45dae05dba72d27",
+        "truncated": false,
+        "classification": "rejected-input"
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/file-repeated-identical.ptx"
+        ],
+        "exit_code": 3,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=Binding kind=DuplicateSymbol range=5:7-5:8 previous_range=4:7-4:8 message=\"Duplicate symbol '1' in debug metadata.\"\n",
+        "stderr": "",
+        "stdout_sha256": "c37df7989391d2d9bdef483c5c4b1bb4718d92fae9610e256632875ea1bbd5ba",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "rejected-input"
+      }
+    },
+    {
+      "case": "pm0-64-mov-u32",
+      "fixture": "../ptx93_ptxas/fixtures/pm0-64-mov-u32.ptx",
+      "sha256": "8057d4108cb3671ac33936839f800d5ca1e2774e21a38439fb02cca593bc20b2",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/pm0-64-mov-u32.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/pm0-64-mov-u32.ptx"
+        ],
+        "exit_code": 255,
+        "stdout": "",
+        "stderr": "ptxas /tmp/ptx93-st-final-original-comparison/fixtures/pm0-64-mov-u32.ptx, line 8; error   : Arguments mismatch for instruction 'mov'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "08873d9b2b21e41683c7fe2f6081fec26de7428e4c6d0b6c91d6ae34a6d54de8",
+        "truncated": false,
+        "classification": "rejected-input"
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/pm0-64-mov-u32.ptx"
+        ],
+        "exit_code": 3,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=Checking kind=OperandTypeMismatch range=8:16-8:23 message=\"Special-register operand 'src' has declared type 'U64' but instruction type source 'type' is 'U32'.\"\n",
+        "stderr": "",
+        "stdout_sha256": "d3c0d16399c6661f99f5cc5ac17325115379dbbe94d75228c7e566e922507457",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "rejected-input"
+      }
+    },
+    {
+      "case": "pm0-64-mov-u64",
+      "fixture": "../ptx93_ptxas/fixtures/pm0-64-mov-u64.ptx",
+      "sha256": "2e2f1c03c5e4c686f40af4d7216b32f29a53a89478fa45536523244b6c1fd4f7",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/pm0-64-mov-u64.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/pm0-64-mov-u64.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "6fae060b8727ca8d39d12c548175290f2dafee98a804d575a83e8fbe4b2467d2",
+        "output_bytes": 3368
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/pm0-64-mov-u64.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "pm7-64-mov-u32",
+      "fixture": "../ptx93_ptxas/fixtures/pm7-64-mov-u32.ptx",
+      "sha256": "67e6f21a7b86dbd5f02b12be31ce59d9b05eef34bcc1940e892c5de4ade394dd",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/pm7-64-mov-u32.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/pm7-64-mov-u32.ptx"
+        ],
+        "exit_code": 255,
+        "stdout": "",
+        "stderr": "ptxas /tmp/ptx93-st-final-original-comparison/fixtures/pm7-64-mov-u32.ptx, line 8; error   : Arguments mismatch for instruction 'mov'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "6a6c162fd29811d6ff4d19ca061f73c60a54ff0fd921d7f10b83b2f4b80cb847",
+        "truncated": false,
+        "classification": "rejected-input"
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/pm7-64-mov-u32.ptx"
+        ],
+        "exit_code": 3,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=Checking kind=OperandTypeMismatch range=8:16-8:23 message=\"Special-register operand 'src' has declared type 'U64' but instruction type source 'type' is 'U32'.\"\n",
+        "stderr": "",
+        "stdout_sha256": "d3c0d16399c6661f99f5cc5ac17325115379dbbe94d75228c7e566e922507457",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "rejected-input"
+      }
+    },
+    {
+      "case": "pm7-64-mov-u64",
+      "fixture": "../ptx93_ptxas/fixtures/pm7-64-mov-u64.ptx",
+      "sha256": "f7f316225ba2b9bc223aa8dc589c7aec3ae12b90ffdf6f4c31d64f47e213bf5a",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/pm7-64-mov-u64.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/pm7-64-mov-u64.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "4cc7435b08fc145d03ccbe99a382973897f1007104afc7ee4b2d6f9dff419a9d",
+        "output_bytes": 3368
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/pm7-64-mov-u64.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "bfe-b32",
+      "fixture": "../ptx93_ptxas/fixtures/bfe-b32.ptx",
+      "sha256": "0e644e5468e7cae6f8106599e0f4b67893b8eda180af73986bed819aa3a2ca50",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/bfe-b32.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/bfe-b32.ptx"
+        ],
+        "exit_code": 255,
+        "stdout": "",
+        "stderr": "ptxas /tmp/ptx93-st-final-original-comparison/fixtures/bfe-b32.ptx, line 9; error   : Unexpected instruction types specified for 'bfe'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "f541f95ea36b21a0b044cb1b3dccf251c53057fff79594aab6138ead1a092bbb",
+        "truncated": false,
+        "classification": "rejected-input"
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/bfe-b32.ptx"
+        ],
+        "exit_code": 3,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=Resolution range=9:4-9:8 message=\"Unknown modifier '.b32'.\"\n",
+        "stderr": "",
+        "stdout_sha256": "143d0a277cb027b4db49b63a6598674d8f0d3c567efce66841ad659f2cc3df9e",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "rejected-input"
+      }
+    },
+    {
+      "case": "bfe-u32",
+      "fixture": "../ptx93_ptxas/fixtures/bfe-u32.ptx",
+      "sha256": "bc86be8c3e7140702e7b87a04f157a4cfde63819e473e7da2787f8b3c5a9331b",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/bfe-u32.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/bfe-u32.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "d74c2c5e5be6d3cd5c7fd583b35c03d819a2c650c0408af69927b4595bd91b7c",
+        "output_bytes": 3496
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/bfe-u32.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "bfe-s32",
+      "fixture": "../ptx93_ptxas/fixtures/bfe-s32.ptx",
+      "sha256": "0bf2122be127c94178a80954a4aba956d49af6f66e78782b4fc4eacef14a2759",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/bfe-s32.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/bfe-s32.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "0b8716fb75180ff59c7ebddc8f5650dcb2e866fa5db729884c3f4509ea3abc5c",
+        "output_bytes": 3496
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/bfe-s32.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "bmsk-wrap-width-2",
+      "fixture": "../ptx93_ptxas/fixtures/bmsk-wrap-width-2.ptx",
+      "sha256": "ed365b839f3f77b1e2d871c1cca298dfb494f47a7a022e9ec3f5d593c09224ac",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/bmsk-wrap-width-2.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/bmsk-wrap-width-2.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "1b2256c3bdc3a58799a5ec5211092d667494f75a4dd504f68f596f0039a4c6cd",
+        "output_bytes": 3240
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/bmsk-wrap-width-2.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "bmsk-wrap-width-33",
+      "fixture": "../ptx93_ptxas/fixtures/bmsk-wrap-width-33.ptx",
+      "sha256": "e0c95f4c131c5927ea1df0eaf6a61fd862682630195e15203d5cd4f337066ae7",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/bmsk-wrap-width-33.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/bmsk-wrap-width-33.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "d333dbfad8394b752e0ef1e1f700ee4795ce046f03d4b8cf06837fc0f07fcd2e",
+        "output_bytes": 3240
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/bmsk-wrap-width-33.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "bmsk-clamp-width-32",
+      "fixture": "../ptx93_ptxas/fixtures/bmsk-clamp-width-32.ptx",
+      "sha256": "8e8f2499ecea7f2cc93b0e21a1fa11fd1c7b17a3653e4ac4d9ae4e0bdeaacaed",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/bmsk-clamp-width-32.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/bmsk-clamp-width-32.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "213d712c77cd0f47617504ad4941a538fcdb9ba0fea9264e3b0894c7afb592c5",
+        "output_bytes": 3240
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/bmsk-clamp-width-32.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "bmsk-clamp-width-33",
+      "fixture": "../ptx93_ptxas/fixtures/bmsk-clamp-width-33.ptx",
+      "sha256": "1b193a8b745f255e17fb48904951d3f3aaa79a5c5ff3ab13d633988208521171",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/bmsk-clamp-width-33.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/bmsk-clamp-width-33.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "48f8cb99f78288b6916de142be54d1f5ae97087abb2b527a2282541e39d50364",
+        "output_bytes": 3240
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/bmsk-clamp-width-33.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "multimem-red-max-f64",
+      "fixture": "../ptx93_ptxas/fixtures/multimem-red-max-f64.ptx",
+      "sha256": "caef5163ed6820687b85dc9369e36fcf19d35a86a8693db074d4109391e03b32",
+      "target": "sm_90",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_90",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/multimem-red-max-f64.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/multimem-red-max-f64.ptx"
+        ],
+        "exit_code": 255,
+        "stdout": "",
+        "stderr": "ptxas /tmp/ptx93-st-final-original-comparison/fixtures/multimem-red-max-f64.ptx, line 9; error   : Incorrect type '.f64' for operation '.max' in instruction 'multimem.red'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "3408001397af5dc6d7fe23342c0906dbca69c73bcfdf3c0ef4e13fcfa0ad7353",
+        "truncated": false,
+        "classification": "rejected-input"
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/multimem-red-max-f64.ptx"
+        ],
+        "exit_code": 3,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=Resolution range=9:1-9:48 message=\"No variant of instruction 'multimem' accepts this modifier combination.\"\n",
+        "stderr": "",
+        "stdout_sha256": "eb6a00773b1c67b8703fc594f1a8de48ba0b1616a140c2877cabdee4f2f680d5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "rejected-input"
+      }
+    },
+    {
+      "case": "multimem-red-add-f64",
+      "fixture": "../ptx93_ptxas/fixtures/multimem-red-add-f64.ptx",
+      "sha256": "e16e3b249f2c4b9fc2c608b5bb4e78594c1769c34c4db8400ca1332c4f1f55a4",
+      "target": "sm_90",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_90",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/multimem-red-add-f64.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/multimem-red-add-f64.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "6e01db36b2e63ca8e6065d31ac379e13f6d2f6955fa0cbc5e3d5f5121217a6bf",
+        "output_bytes": 3824
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/multimem-red-add-f64.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "tid-v1-0-u16",
+      "fixture": "../ptx93_ptxas/fixtures/tid-v1-0-u16.ptx",
+      "sha256": "7df3fc1a02d0ce81855fb35e540ce16ab5656264d625b8eacea57c31e0df4d5a",
+      "target": "sm_10",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_10",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/tid-v1-0-u16.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/tid-v1-0-u16.ptx"
+        ],
+        "exit_code": 255,
+        "stdout": "",
+        "stderr": "ptxas fatal   : Value 'sm_10' is not defined for option 'gpu-name'\n",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "61cfc25ad24ec275a58de069ca5eb59f32b619ad0e1d0b9e85f2719181475b88",
+        "truncated": false,
+        "classification": "unsupported-PTX/target"
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/tid-v1-0-u16.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "tid-v2-0-u32",
+      "fixture": "../ptx93_ptxas/fixtures/tid-v2-0-u32.ptx",
+      "sha256": "eeb9e0bab84e21d0a53758f39c5d5caa4419fc0fcf0b267ed41aababe6f8fa53",
+      "target": "sm_20",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_20",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/tid-v2-0-u32.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/tid-v2-0-u32.ptx"
+        ],
+        "exit_code": 255,
+        "stdout": "",
+        "stderr": "ptxas fatal   : Value 'sm_20' is not defined for option 'gpu-name'\n",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "d1fd1f8d8155b50ef10fd46fb854a69bd9cfb5ea8cc8074f40afaefadcac733a",
+        "truncated": false,
+        "classification": "unsupported-PTX/target"
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/tid-v2-0-u32.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "tid-v9-3-u16",
+      "fixture": "../ptx93_ptxas/fixtures/tid-v9-3-u16.ptx",
+      "sha256": "b3e3f316810edc676067434008e6e31803aeef09165e7076703c1da75cd47adf",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/tid-v9-3-u16.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/tid-v9-3-u16.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "af2c9edf1e06bfae64ac7c960d821d6dc1d613d99e1ca83c02fedb73f5018dc3",
+        "output_bytes": 3368
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/tid-v9-3-u16.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "tid-v9-3-u32",
+      "fixture": "../ptx93_ptxas/fixtures/tid-v9-3-u32.ptx",
+      "sha256": "84baf89963adcefb4ddec6a31d0c65687f29dd763bc3d9e1300b39d6f32572aa",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/tid-v9-3-u32.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/tid-v9-3-u32.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "9ca9a39bdc373bbf3cf874475992e4c94cf2d64d2790cf73227c0b530e4de851",
+        "output_bytes": 3368
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/tid-v9-3-u32.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "ntid-v9-3-u16",
+      "fixture": "../ptx93_ptxas/fixtures/ntid-v9-3-u16.ptx",
+      "sha256": "e19ec99fa4d7904f32600671843cb512432bf53427c14e35738320c049c830ec",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/ntid-v9-3-u16.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/ntid-v9-3-u16.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "1b40c93024a56b493de2add8fba7a19fc15e75eea5af48faf3631cb322857289",
+        "output_bytes": 3368
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/ntid-v9-3-u16.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "ctaid-v9-3-u16",
+      "fixture": "../ptx93_ptxas/fixtures/ctaid-v9-3-u16.ptx",
+      "sha256": "298fff75e4d62067c1d4b91a70b36022c526adb7e3f1031991edec7b27944104",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/ctaid-v9-3-u16.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/ctaid-v9-3-u16.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "f5e65b67be0762070569405551ebce0ac820770feb2bcdbfadf800412735ced1",
+        "output_bytes": 3368
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/ctaid-v9-3-u16.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "nctaid-v9-3-u16",
+      "fixture": "../ptx93_ptxas/fixtures/nctaid-v9-3-u16.ptx",
+      "sha256": "8b173f3d84ee6eae00457e1dd605f00f4d9f90a18ce6f981745d9f168ed11f7c",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/nctaid-v9-3-u16.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/nctaid-v9-3-u16.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "be02abbc352c2703ac4dba6cebe6697477aa107b231f5fe4804e7879418f3993",
+        "output_bytes": 3368
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/nctaid-v9-3-u16.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "tid-v9-3-s16",
+      "fixture": "../ptx93_ptxas/fixtures/tid-v9-3-s16.ptx",
+      "sha256": "bb5dabaf83d687e372a3d8f04c79a4035ef3bebce4986c69d8ab7e5b5405c10b",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/tid-v9-3-s16.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/tid-v9-3-s16.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "af2c9edf1e06bfae64ac7c960d821d6dc1d613d99e1ca83c02fedb73f5018dc3",
+        "output_bytes": 3368
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/tid-v9-3-s16.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "tid-v9-3-b16",
+      "fixture": "../ptx93_ptxas/fixtures/tid-v9-3-b16.ptx",
+      "sha256": "4e91cc56b3dc1f1e43289e021a38382be1a6f8c6575876266409f145f4001b37",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/tid-v9-3-b16.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/tid-v9-3-b16.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "af2c9edf1e06bfae64ac7c960d821d6dc1d613d99e1ca83c02fedb73f5018dc3",
+        "output_bytes": 3368
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/tid-v9-3-b16.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "reg-v2-f64",
+      "fixture": "../ptx93_ptxas/fixtures/reg-v2-f64.ptx",
+      "sha256": "eddb342a7b817cc9bfad70b3c0659ca068dece3d9f144d612bd257920f7d514c",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/reg-v2-f64.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/reg-v2-f64.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted",
+        "output_sha256": "697183d903f1dd110ae6c7cfdd204df6ac230c394349e87e9dc97f0192971cca",
+        "output_bytes": 3240
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/reg-v2-f64.ptx"
+        ],
+        "exit_code": 0,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=1 diagnostics=0\n",
+        "stderr": "",
+        "stdout_sha256": "8abd09682f129add29bcfeaebb181924200e9852cd776f277ef6386cf6b671e5",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "accepted"
+      }
+    },
+    {
+      "case": "reg-v4-f64",
+      "fixture": "../ptx93_ptxas/fixtures/reg-v4-f64.ptx",
+      "sha256": "a5161506b3707f650b4af34a62e888d23af3ef48dd48f37aed3759102bdb5292",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/reg-v4-f64.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/reg-v4-f64.ptx"
+        ],
+        "exit_code": 255,
+        "stdout": "",
+        "stderr": "ptxas /tmp/ptx93-st-final-original-comparison/fixtures/reg-v4-f64.ptx, line 7; error   : Vector type too large, exceeds 128 bit limit\nptxas fatal   : Ptx assembly aborted due to errors\n",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "57613efbcb00e1bf4930491c606c9759d56d2d9fbc4de88b1117563bfa3af266",
+        "truncated": false,
+        "classification": "rejected-input"
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/reg-v4-f64.ptx"
+        ],
+        "exit_code": 3,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=DeclarationSemantics kind=InvalidRegisterDeclarationShape range=7:6-7:9 message=\"Non-predicate register vectors may not exceed 128 bits.\"\n",
+        "stderr": "",
+        "stdout_sha256": "18da6c7102c48072f3f8e604c793501a2834672d2dfca814cef5b6f30e6d9028",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "rejected-input"
+      }
+    },
+    {
+      "case": "reg-v2-pred",
+      "fixture": "../ptx93_ptxas/fixtures/reg-v2-pred.ptx",
+      "sha256": "1e87eedebd652f590a27d70c30045d0239413a0f4592ae43fc4a6864653288f8",
+      "target": "sm_80",
+      "ptxas": {
+        "command": [
+          "/tmp/ptx93-nvcc/bin/ptxas",
+          "-O0",
+          "--gpu-name=sm_80",
+          "--output-file=/tmp/ptx93-ptxas-results-fssb68ab/reg-v2-pred.cubin",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/reg-v2-pred.ptx"
+        ],
+        "exit_code": 255,
+        "stdout": "",
+        "stderr": "ptxas /tmp/ptx93-st-final-original-comparison/fixtures/reg-v2-pred.ptx, line 7; error   : Predicate type can only be used to define scalar register variables\nptxas fatal   : Ptx assembly aborted due to errors\n",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "fd92b2ec3895caa020d9cb3f0d13f1e43f734da0f47957d96d6762802f671339",
+        "truncated": false,
+        "classification": "rejected-input"
+      },
+      "frontend": {
+        "command": [
+          "/tmp/ptx93-audit-build/ptx93_probe",
+          "/tmp/ptx93-st-final-original-comparison/fixtures/reg-v2-pred.ptx"
+        ],
+        "exit_code": 3,
+        "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=DeclarationSemantics kind=InvalidRegisterDeclarationShape range=7:6-7:9 message=\"Predicate register declarations must be scalar.\"\n",
+        "stderr": "",
+        "stdout_sha256": "77ebcbd868510ec82bb9b82bec0423805b11ced31507f537d272081fe2d89fdd",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "truncated": false,
+        "classification": "rejected-input"
+      }
+    }
+  ]
+}

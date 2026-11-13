@@ -1,0 +1,48 @@
+Running main() from /tmp/ptx93-audit-deps/googletest/googletest/src/gtest_main.cc
+[==========] Running 18 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 12 tests from VectorMov
+[ RUN      ] VectorMov.ResolvesSupportedLayoutsAndSources
+[       OK ] VectorMov.ResolvesSupportedLayoutsAndSources (58 ms)
+[ RUN      ] VectorMov.ResolvesEverySupportedElementCohort
+[       OK ] VectorMov.ResolvesEverySupportedElementCohort (16 ms)
+[ RUN      ] VectorMov.RejectsUnsupportedDomainsAndDuplicates
+[       OK ] VectorMov.RejectsUnsupportedDomainsAndDuplicates (32 ms)
+[ RUN      ] VectorMov.OwnsNamedAndBracePayloadsAfterSourceRelease
+[       OK ] VectorMov.OwnsNamedAndBracePayloadsAfterSourceRelease (2 ms)
+[ RUN      ] VectorMov.RejectsNamedSourceAndDestinationTampering
+[       OK ] VectorMov.RejectsNamedSourceAndDestinationTampering (6 ms)
+[ RUN      ] VectorMov.RejoinsCoherentCachesToActualDeclarations
+[       OK ] VectorMov.RejoinsCoherentCachesToActualDeclarations (2 ms)
+[ RUN      ] VectorMov.OwnsTypedImmediateConversionAndRejectsTampering
+[       OK ] VectorMov.OwnsTypedImmediateConversionAndRejectsTampering (2 ms)
+[ RUN      ] VectorMov.RejectsBraceAndHardwareTampering
+[       OK ] VectorMov.RejectsBraceAndHardwareTampering (6 ms)
+[ RUN      ] VectorMov.PreservesAvailabilityAndModernMemoryFences
+[       OK ] VectorMov.PreservesAvailabilityAndModernMemoryFences (6 ms)
+[ RUN      ] VectorMov.OwnsWholeHardware16And32BitCohorts
+[       OK ] VectorMov.OwnsWholeHardware16And32BitCohorts (108 ms)
+[ RUN      ] VectorMov.RejectsWholeHardwareOutsideContextualCohorts
+[       OK ] VectorMov.RejectsWholeHardwareOutsideContextualCohorts (19 ms)
+[ RUN      ] VectorMov.RejectsWholeHardware16BitTampering
+[       OK ] VectorMov.RejectsWholeHardware16BitTampering (6 ms)
+[----------] 12 tests from VectorMov (270 ms total)
+
+[----------] 6 tests from MovCompleteness
+[ RUN      ] MovCompleteness.PreservesPlainAndNegatedPredicateSources
+[       OK ] MovCompleteness.PreservesPlainAndNegatedPredicateSources (1 ms)
+[ RUN      ] MovCompleteness.RejectsNegatedPredicateDestination
+[       OK ] MovCompleteness.RejectsNegatedPredicateDestination (0 ms)
+[ RUN      ] MovCompleteness.ResolvesPredicateConstantsAndNegatedSpecialRegisters
+[       OK ] MovCompleteness.ResolvesPredicateConstantsAndNegatedSpecialRegisters (1 ms)
+[ RUN      ] MovCompleteness.RejectsFloatingPredicateConstants
+[       OK ] MovCompleteness.RejectsFloatingPredicateConstants (0 ms)
+[ RUN      ] MovCompleteness.SeparatesScalarFromBitPackUnpack
+[       OK ] MovCompleteness.SeparatesScalarFromBitPackUnpack (2 ms)
+[ RUN      ] MovCompleteness.RevalidatesTheScalarTypeDomain
+[       OK ] MovCompleteness.RevalidatesTheScalarTypeDomain (0 ms)
+[----------] 6 tests from MovCompleteness (6 ms total)
+
+[----------] Global test environment tear-down
+[==========] 18 tests from 2 test suites ran. (276 ms total)
+[  PASSED  ] 18 tests.

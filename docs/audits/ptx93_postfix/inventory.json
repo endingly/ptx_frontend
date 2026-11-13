@@ -1,0 +1,16 @@
+{
+  "manual_url": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html",
+  "document_title": "1. Introduction \u2014 PTX ISA 9.3 documentation",
+  "html_sha256": "40026f79b65fee3f8c8b3e717c6f80c6385e8d97215318d6e4b7f6106f58d5a4",
+  "html_bytes": 3577575,
+  "named_sections": 715,
+  "instruction_heading_units": 213,
+  "instruction_heading_roots": 137,
+  "canonical_roots": 137,
+  "missing_canonical_roots": [],
+  "canonical_roots_without_instruction_heading": [],
+  "sdk_archived_fragment_link_occurrences": 168,
+  "sdk_missing_fragment_occurrences": 0,
+  "sdk_distinct_missing_fragments": 0,
+  "limitation": "Heading/root presence only; no production, form, operand, modifier, type, target, or semantic conformance verdict."
+}

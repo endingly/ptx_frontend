@@ -1,0 +1,31 @@
+{
+  "classification": "Handwritten audit minimization; original natural histogram input is retained unmodified in corpus.",
+  "sha256": "8e4b705b97cd1172f576fee6db7a4f3afa8b4dd7b3226eb8f06fb6c444bc76c8",
+  "manual": {
+    "url": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-st",
+    "section": "9.7.9.11 Notes",
+    "quote": "Operand b must be in the .reg state space."
+  },
+  "frontend": {
+    "command": [
+      "/tmp/ptx93-audit-build/ptx93_probe",
+      "docs/audits/ptx93_real_inputs/st_immediate_minimized.ptx"
+    ],
+    "returncode": 3,
+    "stdout": "parse value=1 diagnostics=0\nresolveAndValidate value=0 diagnostics=1\nstage=Resolution range=10:2-10:24 message=\"Operands do not match any layout of instruction variant 'ExplicitScalar'.\"\n",
+    "stderr": ""
+  },
+  "ptxas": {
+    "command": [
+      "/tmp/ptx93-nvcc/bin/ptxas",
+      "-arch=sm_100",
+      "docs/audits/ptx93_real_inputs/st_immediate_minimized.ptx",
+      "-o",
+      "/tmp/ptx93-st-immediate.cubin"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": "",
+    "cubin_sha256": "ca1725acb9aa4d3acd2cf0d1bf56e89c5804eea22f6478bacd18f054b96109ce"
+  }
+}

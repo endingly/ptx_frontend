@@ -319,14 +319,16 @@ TEST(FloatingBitConstants,
     EXPECT_FALSE(valid_value_vector_immediate(value));
   }
   const auto vector = resolveBitConstantSource(
-      ".entry kernel() { .reg .v2 .b32 V; "
-      "mov.v2.b32 V, {0f3f800000,0f80000000}; }");
+      ".global .u32 A; .entry kernel() { .reg .v2 .b32 V; "
+      "mov.v2.b32 V, {0f3f800000,0f80000000}; st.global.b32 [A], 0f3f800000; "
+      "}");
   ASSERT_TRUE(vector.has_value()) << vector.error().front().message;
   EXPECT_TRUE(validateModule(*vector));
   for (const auto body :
        {"mov.b32 0f3f800000, %q;", "shl.b64 %d, %d, 1.0;",
-        "st.global.b32 [A], 0f3f800000;", "mov.b32 %q, (+0f3f800000);",
-        "mov.b32 %q, +0f3f800000;", "mov.b64 %d, (1 ? 2.0 : 0f3f800000);"}) {
+        "st.global.v2.b32 [%d], {0f3f800000, %q};",
+        "mov.b32 %q, (+0f3f800000);", "mov.b32 %q, +0f3f800000;",
+        "mov.b64 %d, (1 ? 2.0 : 0f3f800000);"}) {
     SCOPED_TRACE(body);
     EXPECT_FALSE(resolveBitConstantSource(
         ".global .u32 A; .entry kernel() { .reg .b32 %q; .reg .b64 %d; " +

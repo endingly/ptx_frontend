@@ -1,5 +1,6 @@
 #include <optional>
 #include <string>
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/model/data_movement/ld.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/st.gen.hpp>
@@ -27,7 +28,7 @@ std::optional<ir::ResolvedModule> resolve_owned() {
   ld.global.nc.L2::cache_hint.u32 %r0, [data], %policy;
   ld.global.nc.L2::cache_hint.v2.u32 {%r0,%r1}, [data];
   ld.global.nc.L2::cache_hint.v2.u32 {%r0,%r1}, [data], %policy;
-  st.global.L2::cache_hint.u32 [data], %r0;
+  st.global.L2::cache_hint.u32 [data], 0;
   st.global.L2::cache_hint.u32 [data], %r0, %policy;
   st.global.L2::cache_hint.v2.u32 [data], {%r0,%r1};
   st.global.L2::cache_hint.v2.u32 [data], {%r0,%r1}, %policy;
@@ -85,6 +86,13 @@ int main() {
       ld_policy.cache_policy->value.declared_type != ir::ScalarType::U64 ||
       ld_policy.cache_policy->locs.empty())
     return 3;
+  const auto* immediate = std::get_if<ir::ResolvedImmediate>(&st.src.value);
+  const auto* register_source =
+      std::get_if<ir::ResolvedRegisterRef>(&st_policy.src.value);
+  if (!immediate || immediate->type != ir::ScalarType::U32 ||
+      immediate->bits != 0 || immediate->integer_source_bits != 0 ||
+      !register_source || !register_source->symbol_id || st.src.locs.empty())
+    return 5;
   ld_policy.cache_policy.reset();
   if (ir::validateModule(*module,
                          ir::ModuleValidationPolicy::RequireCompleteContext))

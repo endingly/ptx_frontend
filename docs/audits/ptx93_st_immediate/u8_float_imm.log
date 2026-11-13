@@ -1,0 +1,2 @@
+ptxas /workspace/ptx_frontend/docs/audits/ptx93_st_immediate/u8_float_imm.ptx, line 11; error   : Arguments mismatch for instruction 'st'
+ptxas fatal   : Ptx assembly aborted due to errors

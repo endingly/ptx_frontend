@@ -699,7 +699,7 @@ TEST(InstructionConstantExpressions,
         "ld.global.u32 %r0, [(4 * 4)];", "ld.global.u32 %r0, [010 + (2 * 4)];",
         "ld.global.u32 %r0, [(1 + 2 < 4 ? 16 : 32)];",
         "ld.global.u32 %r0, [%rd0 + (4 * 4)];", "bar.sync (1 - 1);",
-        "shl.b32 %r0, %r1, (1 + 2);"}) {
+        "shl.b32 %r0, %r1, (1 + 2);", "st.global.u32 [%rd0], (1 + 2);"}) {
     SCOPED_TRACE(body);
     PtxSyntaxParser parser(moduleSource(body));
     auto ast = parser.parseModule();
@@ -709,9 +709,9 @@ TEST(InstructionConstantExpressions,
     ASSERT_TRUE(resolved) << resolved.error().front().message;
     EXPECT_TRUE(validateModule(*resolved));
   }
-  for (const auto body :
-       {"add.u32 (1 + 2), %r0, %r1;", "st.global.u32 [%rd0], (1 + 2);",
-        "mov.b64 %rd0, {(1 + 2), (3 + 4)};"}) {
+  for (const auto body : {"add.u32 (1 + 2), %r0, %r1;",
+                          "st.global.v2.u32 [%rd0], {(1 + 2), %r0};",
+                          "mov.b64 %rd0, {(1 + 2), (3 + 4)};"}) {
     PtxSyntaxParser parser(moduleSource(body));
     auto ast = parser.parseModule();
     ASSERT_TRUE(ast.has_value());

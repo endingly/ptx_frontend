@@ -1,0 +1,11 @@
+[0/2] Re-checking globbed directories...
+[1/11] Building CXX object submod/resolved_ir/CMakeFiles/ptx_frontend_resolved_ir.dir/src/ptx_resolved_ir_checker.cpp.o
+[2/11] Building CXX object submod/resolved_ir/CMakeFiles/test_resolved_ir.dir/test/test_floating_bit_constants.cpp.o
+[3/11] Building CXX object CMakeFiles/ptx93_st_tests.dir/submod/resolved_ir/test/test_st_immediate.cpp.o
+[4/11] Building CXX object submod/resolved_ir/CMakeFiles/test_resolved_ir.dir/test/test_instruction_constant_expressions.cpp.o
+[5/11] Building CXX object submod/resolved_ir/CMakeFiles/test_resolved_ir.dir/test/test_miscellaneous_coverage.cpp.o
+[6/11] Building CXX object submod/resolved_ir/CMakeFiles/test_resolved_ir.dir/test/test_select_variant_add.cpp.o
+[7/11] Linking CXX static library submod/resolved_ir/libptx_frontend_resolved_ir.a
+[8/11] Linking CXX executable ptx93_st_tests
+[9/11] Linking CXX executable ptx93_probe
+[10/11] Linking CXX executable submod/resolved_ir/test_resolved_ir

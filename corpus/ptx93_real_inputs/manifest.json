@@ -1,0 +1,281 @@
+{
+  "schema": "ptx_frontend.ptx93_real_inputs/v1",
+  "scope": "Bounded observational corpus; not a support contract or extension of corpus/provenance.json.",
+  "toolchain": {
+    "manifest_url": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_13.3.0.json",
+    "manifest_sha256": "507eddaab1360336bc0fe17b77552e0b7dfe1e74da888671c3a2f5fad7775db1",
+    "components": {
+      "cuda_nvcc": {
+        "relative_path": "cuda_nvcc/linux-x86_64/cuda_nvcc-linux-x86_64-13.3.33-archive.tar.xz",
+        "sha256": "93b098bda4a562ebf3541523ce82adc43f106a81dcf28bcbf8f0d8e093d1c66f",
+        "md5": "5180c45363243f1bce6db068e39b7080",
+        "size": "31609400"
+      },
+      "cuda_crt": {
+        "relative_path": "cuda_crt/linux-x86_64/cuda_crt-linux-x86_64-13.3.33-archive.tar.xz",
+        "sha256": "4755d36d24c6ef7697a2d3e1dbb23c4562c9c0d97d48390d4cbd8ab32dec5b5f",
+        "md5": "40633d5ea63dc795e273ea70835a863f",
+        "size": "99372"
+      },
+      "libnvvm": {
+        "relative_path": "libnvvm/linux-x86_64/libnvvm-linux-x86_64-13.3.33-archive.tar.xz",
+        "sha256": "fc9c1fd5844e44c0e5eeb051378c1b13cf0e3bb3fe4966d5103c38885424f802",
+        "md5": "422e0db4d9a8b03471e7379618f38210",
+        "size": "49180068"
+      },
+      "cuda_cudart": {
+        "relative_path": "cuda_cudart/linux-x86_64/cuda_cudart-linux-x86_64-13.3.29-archive.tar.xz",
+        "sha256": "1e59c4888267d27ba1a9bd0f3669a6439db1334a96e754cd9013c7c73e18dc9d",
+        "md5": "a6f87957617815446daa9a4af727c92c",
+        "size": "1573744"
+      }
+    }
+  },
+  "sources": [
+    {
+      "path": "corpus/ptx93_real_inputs/sources/calls_control.cu",
+      "sha256": "5bfe5fd5ee97ef02df24cd9d0c44025c66370c3044f86ffbdbe4802e210fea25",
+      "license": "MIT",
+      "provenance": "project-authored ordinary CUDA, no inline PTX"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/sources/histogram.cu",
+      "sha256": "73d97071b1fd3eba3bc041d4bbc167c53828100b80acdcac6f5fa772c5ee6552",
+      "license": "MIT",
+      "provenance": "project-authored ordinary CUDA, no inline PTX"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/sources/reduction.cu",
+      "sha256": "42ad28b0d1ddc9ba6ea283e12eed60f4b31acd91926766d2255cac4528ac8013",
+      "license": "MIT",
+      "provenance": "project-authored ordinary CUDA, no inline PTX"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/sources/tiled_matmul.cu",
+      "sha256": "5afe507667de22324c35a43d1ccc5de0f0b68512e34f312eca1ced8b382fd9dd",
+      "license": "MIT",
+      "provenance": "project-authored ordinary CUDA, no inline PTX"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/upstream/LICENSE.cuda-samples",
+      "sha256": "b3e40c5bfed1fca5c62d2c1f2208bf51f8d2c910219f94c443f657ace9001be3",
+      "url": "https://raw.githubusercontent.com/NVIDIA/cuda-samples/9c688d7ff78455ed42e345124d1495aad6bf66de/LICENSE"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/upstream/third_party/matrixMul_kernel_32_ptxdump.c",
+      "sha256": "53bff6e1579afddf1fa0ac4759002e3a7f9b43d977c2b2783843d9d792d47b90",
+      "url": "https://raw.githubusercontent.com/NVIDIA/cuda-samples/9c688d7ff78455ed42e345124d1495aad6bf66de/Samples/0_Introduction/matrixMulDynlinkJIT/matrixMul_kernel_32_ptxdump.c",
+      "license": "NVIDIA BSD-3-Clause header retained verbatim"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/upstream/README.TXT",
+      "sha256": "8bd92d18dd7abb170524a37f01de285efed4a8bfc3844edf993743541b519370",
+      "url": "https://raw.githubusercontent.com/NVIDIA/cuda-samples/9c688d7ff78455ed42e345124d1495aad6bf66de/Samples/0_Introduction/matrixMulDynlinkJIT/extras/README.TXT"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "corpus/ptx93_real_inputs/generated/calls_control_sm_80.ptx",
+      "kind": "natural_compiler_emission",
+      "source": "corpus/ptx93_real_inputs/sources/calls_control.cu",
+      "nvcc_flags": [
+        "-ptx",
+        "-arch=sm_80",
+        "-O3"
+      ],
+      "compiler": "NVIDIA nvcc V13.3.33 / NVVM 7.0.1 / CL-37862127",
+      "sha256": "0f0fbc1850f8c8da3012ba36d0e028023acdc55a7c00d4a5f332d87c8b60fb88",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/calls_control_sm_90a.ptx",
+      "kind": "natural_compiler_emission",
+      "source": "corpus/ptx93_real_inputs/sources/calls_control.cu",
+      "nvcc_flags": [
+        "-ptx",
+        "-arch=sm_90a",
+        "-O3",
+        "-lineinfo"
+      ],
+      "compiler": "NVIDIA nvcc V13.3.33 / NVVM 7.0.1 / CL-37862127",
+      "sha256": "1934c06ad27724035ca5b93ad34db729d97771073691fdd33bd82d23322fc349",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/calls_control_sm_100.ptx",
+      "kind": "natural_compiler_emission",
+      "source": "corpus/ptx93_real_inputs/sources/calls_control.cu",
+      "nvcc_flags": [
+        "-ptx",
+        "-arch=sm_100",
+        "-O0"
+      ],
+      "compiler": "NVIDIA nvcc V13.3.33 / NVVM 23.0.0 / CL-37862127",
+      "sha256": "2dc94d460e7598889398b783401be3b13dc414af521ec496c5f880b729480003",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/histogram_sm_80.ptx",
+      "kind": "natural_compiler_emission",
+      "source": "corpus/ptx93_real_inputs/sources/histogram.cu",
+      "nvcc_flags": [
+        "-ptx",
+        "-arch=sm_80",
+        "-O3"
+      ],
+      "compiler": "NVIDIA nvcc V13.3.33 / NVVM 7.0.1 / CL-37862127",
+      "sha256": "f84dab2da1e777421a4f9a46cecb27ca2302d3f95fee5cc712c1a2716b333a06",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/histogram_sm_90a.ptx",
+      "kind": "natural_compiler_emission",
+      "source": "corpus/ptx93_real_inputs/sources/histogram.cu",
+      "nvcc_flags": [
+        "-ptx",
+        "-arch=sm_90a",
+        "-O3",
+        "-lineinfo"
+      ],
+      "compiler": "NVIDIA nvcc V13.3.33 / NVVM 7.0.1 / CL-37862127",
+      "sha256": "6354fe8bb5eab01daabae11d6bce33e4daa7257654f3deb219de62525b8a69e7",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/histogram_sm_100.ptx",
+      "kind": "natural_compiler_emission",
+      "source": "corpus/ptx93_real_inputs/sources/histogram.cu",
+      "nvcc_flags": [
+        "-ptx",
+        "-arch=sm_100",
+        "-O0"
+      ],
+      "compiler": "NVIDIA nvcc V13.3.33 / NVVM 23.0.0 / CL-37862127",
+      "sha256": "dc8b7b2a9bd1f40671a5df49aa9a7c262f1c2f92f30ac274f29b7491ffdaed22",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/reduction_sm_80.ptx",
+      "kind": "natural_compiler_emission",
+      "source": "corpus/ptx93_real_inputs/sources/reduction.cu",
+      "nvcc_flags": [
+        "-ptx",
+        "-arch=sm_80",
+        "-O3"
+      ],
+      "compiler": "NVIDIA nvcc V13.3.33 / NVVM 7.0.1 / CL-37862127",
+      "sha256": "644528cf219ca926b8ff529ab7b5aa33534eb94f94339719733c542ed2be9def",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/reduction_sm_90a.ptx",
+      "kind": "natural_compiler_emission",
+      "source": "corpus/ptx93_real_inputs/sources/reduction.cu",
+      "nvcc_flags": [
+        "-ptx",
+        "-arch=sm_90a",
+        "-O3",
+        "-lineinfo"
+      ],
+      "compiler": "NVIDIA nvcc V13.3.33 / NVVM 7.0.1 / CL-37862127",
+      "sha256": "42f7ffdb419eeac48b05898334c6edb5602d52e80c6c39c524b1a911249e2c46",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/reduction_sm_100.ptx",
+      "kind": "natural_compiler_emission",
+      "source": "corpus/ptx93_real_inputs/sources/reduction.cu",
+      "nvcc_flags": [
+        "-ptx",
+        "-arch=sm_100",
+        "-O0"
+      ],
+      "compiler": "NVIDIA nvcc V13.3.33 / NVVM 23.0.0 / CL-37862127",
+      "sha256": "cc4274c185eceaa73bbd4e029a4699eb662cbd13d607e1360abf3fcadf231bfe",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/tiled_matmul_sm_80.ptx",
+      "kind": "natural_compiler_emission",
+      "source": "corpus/ptx93_real_inputs/sources/tiled_matmul.cu",
+      "nvcc_flags": [
+        "-ptx",
+        "-arch=sm_80",
+        "-O3"
+      ],
+      "compiler": "NVIDIA nvcc V13.3.33 / NVVM 7.0.1 / CL-37862127",
+      "sha256": "0e74fe05f41763bfa8cf51eb6dda1dc84cf1954ef7a26fc49a8760d92c3dbc08",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/tiled_matmul_sm_90a.ptx",
+      "kind": "natural_compiler_emission",
+      "source": "corpus/ptx93_real_inputs/sources/tiled_matmul.cu",
+      "nvcc_flags": [
+        "-ptx",
+        "-arch=sm_90a",
+        "-O3",
+        "-lineinfo"
+      ],
+      "compiler": "NVIDIA nvcc V13.3.33 / NVVM 7.0.1 / CL-37862127",
+      "sha256": "b7c73da4b5612fa9dff437d3611b4c4f2bf4018f298672fd7b21dbaf8a18c7e1",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/generated/tiled_matmul_sm_100.ptx",
+      "kind": "natural_compiler_emission",
+      "source": "corpus/ptx93_real_inputs/sources/tiled_matmul.cu",
+      "nvcc_flags": [
+        "-ptx",
+        "-arch=sm_100",
+        "-O0"
+      ],
+      "compiler": "NVIDIA nvcc V13.3.33 / NVVM 23.0.0 / CL-37862127",
+      "sha256": "5b303e4ec6b5179fa98c197983b7b1952a334f83a03efc1524741be11c0b6053",
+      "license": "MIT"
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/upstream/matrixMul_kernel_32.ptx",
+      "kind": "upstream_compiler_output",
+      "sha256": "0abd6995836f0ab1a81d8c7c2ab0a10ee6caa5673462b3e72dcd0c7151224478",
+      "url": "https://raw.githubusercontent.com/NVIDIA/cuda-samples/9c688d7ff78455ed42e345124d1495aad6bf66de/Samples/0_Introduction/matrixMulDynlinkJIT/extras/matrixMul_kernel_32.ptx",
+      "upstream_commit": "9c688d7ff78455ed42e345124d1495aad6bf66de",
+      "upstream_ref": "v12.5",
+      "compiler_banner": "nvopencc 4.0 built on 2011-02-21; CUDA v4.0 be.exe",
+      "target": "sm_20, map_f64_to_f32",
+      "license_file": "corpus/ptx93_real_inputs/upstream/LICENSE.cuda-samples",
+      "notes": "Original checked-in compiler-produced bytes. Their historical compiler emission is not certified as conforming to the fixed PTX 9.3 contract."
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/upstream/matrixMul_kernel_64.ptx",
+      "kind": "upstream_compiler_output",
+      "sha256": "d5497aa5bfb904de37103142cb9644788cce5f4ea724a51f3b4d6fce00616ce9",
+      "url": "https://raw.githubusercontent.com/NVIDIA/cuda-samples/9c688d7ff78455ed42e345124d1495aad6bf66de/Samples/0_Introduction/matrixMulDynlinkJIT/extras/matrixMul_kernel_64.ptx",
+      "upstream_commit": "9c688d7ff78455ed42e345124d1495aad6bf66de",
+      "upstream_ref": "v12.5",
+      "compiler_banner": "nvopencc 4.0 built on 2011-02-21; CUDA v4.0 be.exe",
+      "target": "sm_20, map_f64_to_f32",
+      "license_file": "corpus/ptx93_real_inputs/upstream/LICENSE.cuda-samples",
+      "notes": "Original checked-in compiler-produced bytes. Their historical compiler emission is not certified as conforming to the fixed PTX 9.3 contract."
+    },
+    {
+      "path": "corpus/ptx93_real_inputs/upstream/matrixMul_kernel_32_embedded.ptx",
+      "kind": "upstream_encoded_compiler_output",
+      "sha256": "da8c72187c67b336d571119a7253d1dce9f837a13be574c0b6e6e8550c6df561",
+      "source": "corpus/ptx93_real_inputs/upstream/third_party/matrixMul_kernel_32_ptxdump.c",
+      "url": "https://raw.githubusercontent.com/NVIDIA/cuda-samples/9c688d7ff78455ed42e345124d1495aad6bf66de/Samples/0_Introduction/matrixMulDynlinkJIT/matrixMul_kernel_32_ptxdump.c",
+      "upstream_commit": "9c688d7ff78455ed42e345124d1495aad6bf66de",
+      "compiler_banner": "nvopencc 4.0 built on 2011-02-21",
+      "target": "sm_10, map_f64_to_f32",
+      "license_file": "corpus/ptx93_real_inputs/upstream/LICENSE.cuda-samples",
+      "extraction": "All 0xHH array bytes in original upstream .c, exactly one terminal C NUL removed. No PTX edits or normalization."
+    }
+  ],
+  "upstream_license_evidence": {
+    "sample_source_url": "https://raw.githubusercontent.com/NVIDIA/cuda-samples/9c688d7ff78455ed42e345124d1495aad6bf66de/Samples/0_Introduction/matrixMulDynlinkJIT/matrixMulDynlinkJIT.cpp",
+    "sample_source_sha256": "7d217435419f2672a13c1f7ad6da1661bd5cfc4fac1e00241635d8dfc57c3043",
+    "license": "NVIDIA BSD-3-Clause header, matching retained root LICENSE",
+    "companion_readme": "corpus/ptx93_real_inputs/upstream/README.TXT",
+    "note": "No CUDA kernel .cu is checked into this sample directory. Its companion README identifies the checked-in PTX as nvcc output. The retained auto-generated .c explicitly licenses its encoded compiler output under the same NVIDIA BSD terms."
+  }
+}

@@ -1,0 +1,4 @@
+.version 9.3
+.target sm_80
+.address_size 64
+.entry k(){.reg .u32 r;mov.u32 r,%envreg32;ret;}

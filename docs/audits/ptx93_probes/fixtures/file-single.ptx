@@ -1,0 +1,5 @@
+.version 9.3
+.target sm_80
+.address_size 64
+.file 1 "kernel.cu", 1339013327, 64118
+.entry k(){ret;}

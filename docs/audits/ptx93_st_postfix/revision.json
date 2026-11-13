@@ -1,0 +1,144 @@
+{
+  "schema": 1,
+  "recorded_utc": "2026-11-13T07:16:15.834561+00:00",
+  "base_commit": "1b44ad8212aa254610b3afb447c9e774df03710d",
+  "branch": "audit/ptx93-manual-conformance",
+  "tracked_diff_sha256": "41e6c01ec6c9c8c7a853dca9564fed4a0ef956e8fb7e71f053bca676720c98ba",
+  "tracked_file_hashes": {
+    "docs/sdk_support.md": "3a33df980c325c98a0c88005ec447962382dad83b2f9fe55d9c6e4efdf4aeb18",
+    "docs/us-en/resolved_ir_design.md": "ba815f2588161bc1848f0c52fa52857ed99dc926ad9cacd8b1b3d9b422e458e8",
+    "docs/zh-han/resolved_ir_design.md": "c3ae61f2d932f7bdadc1a59534060ee115c527f4858cc5c14f7d7a2dc09e4063",
+    "examples/memory_cache_hint_consumer/main.cpp": "afc0270f5dfb1bf28a42417b57be380f3354af33a6cec171d46e0b25904926a1",
+    "python/src/ptx_frontend/spec/resources/ptx_spec/data_movement_and_conversion.yaml": "41167a079ba47b46e15b55a3dd2619d58c66082e3c0fadeaf3e23aa12dc7b493",
+    "python/tests/ir/test_resolved_ir_memory.py": "521b0610957240225e105cc8c46035d32f6762c4958f2c95f1e9f2db7b0ebdce",
+    "python/tests/spec/test_ld_st_completeness.py": "06d802be828096df0c65c05082f2fd5be14646581243dc1f9b852f7704be9532",
+    "submod/resolved_ir/src/ptx_resolved_ir_checker.cpp": "b7d58f8d5a2d67e104cffda9708c73583415874a737ece668934cfebffc3a9fb",
+    "submod/resolved_ir/test/test_floating_bit_constants.cpp": "3cbfad0673dfac31f73bea858ecea51e50c5a1448c4143c06d0e9b3469229c57",
+    "submod/resolved_ir/test/test_instruction_constant_expressions.cpp": "69494ccb88299123d6e9e522d5e464344ac9e7bc1a358583d1555599827619f8",
+    "submod/resolved_ir/test/test_miscellaneous_coverage.cpp": "efd8342c65e5ccb2750b9bb1e2295d62fb62f33131ee60c6fafa0b23f5e1ed4c",
+    "submod/resolved_ir/test/test_select_variant_add.cpp": "b0c0e1a1942df51dc56df51f7584dd4ac2125ae647be2bfc3d40ea5b5e8eeb0b",
+    "submod/resolved_ir/test/test_vector_mov.cpp": "bb239a6272465c466e66b6d32e64a16ac78fa320685dbca573e5d3f86fbbf91f"
+  },
+  "new_core_file_hashes": {
+    "submod/resolved_ir/test/test_st_immediate.cpp": "249cfb0dfc9b521a0a7e6c366773831ffa3f321eda5527da093c7cdf45af60ec"
+  },
+  "checker_sha256": "b7d58f8d5a2d67e104cffda9708c73583415874a737ece668934cfebffc3a9fb",
+  "real_input_run_checker_sha256": "b62d6d00cfd68b11d994da054acc15b90839e5c8a7b13b34ae3bb588e02f514b",
+  "post_run_checker_change": {
+    "kind": "Two Doxygen comment lines only; no source line count change.",
+    "reverting_comments_reproduces_run_checker_sha256": "b62d6d00cfd68b11d994da054acc15b90839e5c8a7b13b34ae3bb588e02f514b",
+    "comment_rebuild_record": "../ptx93_st_immediate/comment-rebuild-identity.json",
+    "rebuilt_probe_and_production_archive_byte_identical": true
+  },
+  "frontend": {
+    "path": "/tmp/ptx93-audit-build/ptx93_probe",
+    "sha256": "1eb00c8e9a8e0834d699f8ec08838a889fb3cb71d7a87e6a39cbb72544718402"
+  },
+  "parser_probe": {
+    "path": "/tmp/ptx93-audit-build/ptx93_parse_probe",
+    "sha256": "50b9747b427fb48a371cd1b987098a1d60808ba50cfb94464db2913dab05eebb"
+  },
+  "ptxas": {
+    "path": "/tmp/ptx93-nvcc/bin/ptxas",
+    "sha256": "7fdd01a4cf50e30746da98989c9272a907f491e6fd7fecfda14642e4375f88fb",
+    "version": "13.3.33"
+  },
+  "corpus_manifest_sha256": "1120d246aff94812fffebe2875d50c82caf799b03af784d00a37eb19986040b6",
+  "corpus_runner_sha256": "064931749950a47108f7527af14eba627800130491923cf16b7a1a3eb321f45f",
+  "scalar_store_comparison": {
+    "cases": 422,
+    "categories": {
+      "agree_accept": 333,
+      "agree_reject": 59,
+      "retained_b128_immediate_limit": 10,
+      "retained_integer_source_range": 4,
+      "retained_cache_modifier_order": 8,
+      "assembler_target_unavailable": 6,
+      "retained_register_policy_operand": 2
+    }
+  },
+  "original_comparison": {
+    "cases": 30,
+    "both_accept": 19,
+    "both_reject": 9,
+    "retired_target_unavailable": 2
+  },
+  "real_inputs": {
+    "fixtures": 15,
+    "natural_inputs": 12,
+    "natural_both_accept": 12,
+    "historical_frontend_accept": 1,
+    "historical_frontend_binding_reject": 2,
+    "historical_assembler_target_unavailable": 3
+  },
+  "official_examples": {
+    "selected": 347,
+    "parse_clean": 340,
+    "previously_reviewed_malformed_fragments": 7,
+    "parser_binary_and_all_candidate_records_unchanged": true
+  },
+  "manual_inventory": {
+    "manual_url": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html",
+    "document_title": "1. Introduction \u2014 PTX ISA 9.3 documentation",
+    "html_sha256": "40026f79b65fee3f8c8b3e717c6f80c6385e8d97215318d6e4b7f6106f58d5a4",
+    "html_bytes": 3577575,
+    "named_sections": 715,
+    "instruction_heading_units": 213,
+    "instruction_heading_roots": 137,
+    "canonical_roots": 137,
+    "missing_canonical_roots": [],
+    "canonical_roots_without_instruction_heading": [],
+    "sdk_archived_fragment_link_occurrences": 168,
+    "sdk_missing_fragment_occurrences": 0,
+    "sdk_distinct_missing_fragments": 0,
+    "limitation": "Heading/root presence only; no production, form, operand, modifier, type, target, or semantic conformance verdict."
+  },
+  "checks": {
+    "full_resolved_ir": {
+      "registered": 2081,
+      "passed": 2079,
+      "skipped": 2,
+      "failed": 0,
+      "skip_reason": "Existing tests require disabled PTX_ATOMIC_VALUE_CHECKER_WRAP and PTX_PACKED_SETP_CHECKER_WRAP instrumentation."
+    },
+    "repaired_focused_passed": 12,
+    "python_focused_passed": 132,
+    "final_generated_api_model_rerun_passed": 1,
+    "installed_consumer_ctest_passed": 1,
+    "tracked_cpp_format_gate": true,
+    "final_changed_cpp_format_checks": true,
+    "git_diff_check": true
+  },
+  "core_review": {
+    "record": "../ptx93_semantic_review.md",
+    "verdict": "accept",
+    "reviewer_assignment": "Authority Sol / gpt-6.1-sol / high; independent implementation review",
+    "reviewed_tracked_diff_sha256": "41e6c01ec6c9c8c7a853dca9564fed4a0ef956e8fb7e71f053bca676720c98ba",
+    "reviewed_new_core_file_hashes": {
+      "submod/resolved_ir/test/test_st_immediate.cpp": "249cfb0dfc9b521a0a7e6c366773831ffa3f321eda5527da093c7cdf45af60ec"
+    },
+    "record_sha256": "4aec1618ec6a4b445a1ca968cf611928de4a074cb05f642f7401423d71bc76ba"
+  },
+  "evidence_file_hashes": {
+    "docs/audits/ptx93_st_postfix/ptxas_results.json": "a84f869368b1ba7505e1f767d8d7fd5978c11a5eb5a374c5facd0564f11ee11c",
+    "docs/audits/ptx93_st_postfix/real_input_results.json": "a70418aa804695645adaf9671c54a2c53192ad2bc664323f0c020bfc9fe0a635",
+    "docs/audits/ptx93_st_postfix/example_summary.json": "bc0b012a4c91dd7eed6df65ecfa2e3b177e766c00fb011b3c8d33430da649288",
+    "docs/audits/ptx93_st_postfix/inventory.json": "078933efcdde66a41b3cf0fc05c09a7f0d8863a07ec83e01a26087822142390e",
+    "docs/audits/ptx93_st_postfix/missing_manual_links.tsv": "25b148f8fed446d447f0e1c877c75d840b9f346559510c1a27c997dfb4c0645b",
+    "docs/audits/ptx93_st_postfix/format.log": "3459fae950512c0ffdc7d640b5dfff2c19137b82863b38e6c71de21930ee6a6b",
+    "docs/audits/ptx93_st_immediate/frontend-comparison.json": "108e1af2c80895e1a7b45798474b1ace30778e26509cbbcabdf18e1db725a91d",
+    "docs/audits/ptx93_st_immediate/cpp-full-final.log": "36bddc98c3823bfb3d091ae4e5df5563762f0dd6261b615a90e89f65a02a406c",
+    "docs/audits/ptx93_st_immediate/cpp-repaired-focused-final.log": "ee3601dda5a9a7f0b8f030e057b16d34be20a8f0fa90cc146646ed0fcd819135",
+    "docs/audits/ptx93_st_immediate/consumer-ctest-final.log": "d7fc7e942e64f6276c92da3bc7ad45fde3b1e368882a14dfd972d5bd766196d0",
+    "docs/audits/ptx93_st_immediate/python-focused.log": "ea00840d246d23cf35b74c9b48be779890ba68ea2c4bf288c0894f44dcfc8eaf",
+    "docs/audits/ptx93_st_immediate/python-model-final.log": "9826ad46bbb9645431944e1e10b64589269fed4fb0e8a5eeda03a6c0698063be",
+    "docs/audits/ptx93_st_immediate/comment-rebuild-identity.json": "e74f1c500741dc310c40187b93931eba11d150afde48a1a1de69cb6499f89fba",
+    "docs/audits/ptx93_st_postfix/README.md": "73dcd61f4b09333d8fdc44641250b3cee043326f68dd7745addbc630a4b5e4f2"
+  },
+  "full_other_component_suites_run": false,
+  "release_configuration_run": false,
+  "gpu_execution": false,
+  "fuzz_expansion": false,
+  "staged_or_committed": false,
+  "pushed_or_published": false
+}

@@ -1,0 +1,55 @@
+{
+  "schema": "ptx_frontend.ptx93_postfix/v1",
+  "base_commit": "1b44ad8212aa254610b3afb447c9e774df03710d",
+  "tracked_diff_sha256": "9fa8101ebfcbaa5ee8750185c4362e1b4ff5c4730ccd92b0b82f99cfcfed301d",
+  "tracked_file_hashes": {
+    "docs/sdk_support.md": "314da89a5fa21dcf6362e94a8252f6952a52f49e40cc98b8e812004f577edb00",
+    "docs/us-en/resolved_ir_design.md": "0098fc1feb2881eb3ae36e2c2327822cdaae822d84861321f0977d926e18aa73",
+    "docs/zh-han/resolved_ir_design.md": "dac684b7282420db0c72ebe7c74d10a0ba145969da50e477bcb97ad9aad5ce0c",
+    "submod/resolved_ir/src/ptx_resolved_ir_checker.cpp": "671c6e68077fc2a8949e2f96b2c160e8784bb6e7a3e3c054600438a2a88db9f7",
+    "submod/resolved_ir/test/test_vector_mov.cpp": "bb239a6272465c466e66b6d32e64a16ac78fa320685dbca573e5d3f86fbbf91f"
+  },
+  "manual_final_fetch_utc": "2026-11-13T06:23:04.270260+00:00",
+  "manual_html_sha256": "40026f79b65fee3f8c8b3e717c6f80c6385e8d97215318d6e4b7f6106f58d5a4",
+  "manual_same_as_baseline": true,
+  "frontend": "bb86076da340ab9a007425a4771a62eeac302c1126bb224d089a04da705b1a97",
+  "checker_sha256": "671c6e68077fc2a8949e2f96b2c160e8784bb6e7a3e3c054600438a2a88db9f7",
+  "ptxas": "7fdd01a4cf50e30746da98989c9272a907f491e6fd7fecfda14642e4375f88fb",
+  "comparison_cases": 30,
+  "modern_comparable_cases": 28,
+  "modern_disagreements": [],
+  "retired_target_unavailable": 2,
+  "focused_tests_passed": 18,
+  "focused_red_failures": 2,
+  "corpus_record": "../ptx93_real_inputs/results.json",
+  "corpus_record_sha256": "5cd9bbadc2f98cfbdb70763361a2146b08effcca32b4a1a08ef5cbabd1303496",
+  "corpus_fixture_count": 15,
+  "corpus_outcomes": [
+    {
+      "kind": "natural_compiler_emission",
+      "frontend_accepted": true,
+      "ptxas_outcome": "accepted",
+      "count": 11
+    },
+    {
+      "kind": "natural_compiler_emission",
+      "frontend_accepted": false,
+      "ptxas_outcome": "accepted",
+      "count": 1
+    },
+    {
+      "kind": "upstream_compiler_output",
+      "frontend_accepted": false,
+      "ptxas_outcome": "unsupported_target",
+      "count": 2
+    },
+    {
+      "kind": "upstream_encoded_compiler_output",
+      "frontend_accepted": true,
+      "ptxas_outcome": "unsupported_target",
+      "count": 1
+    }
+  ],
+  "full_suite_run": false,
+  "gpu_execution": false
+}

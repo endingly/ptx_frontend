@@ -1,0 +1,44 @@
+Running main() from /tmp/ptx93-audit-deps/googletest/googletest/src/gtest_main.cc
+[==========] Running 16 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 7 tests from StImmediate
+[ RUN      ] StImmediate.PreservesIntegerSourceAndNarrowedBits
+[       OK ] StImmediate.PreservesIntegerSourceAndNarrowedBits (12 ms)
+[ RUN      ] StImmediate.PreservesFloatingWordsAndRejectsOtherOrigins
+[       OK ] StImmediate.PreservesFloatingWordsAndRejectsOtherOrigins (3 ms)
+[ RUN      ] StImmediate.CoversSpacesQualifiersAndRetainsRegisterOnlyRoles
+[       OK ] StImmediate.CoversSpacesQualifiersAndRetainsRegisterOnlyRoles (3 ms)
+[ RUN      ] StImmediate.RejectsForgedWidthAndFloatingOrigin
+[       OK ] StImmediate.RejectsForgedWidthAndFloatingOrigin (0 ms)
+[ RUN      ] StImmediate.OwnsSourcesAfterReleaseAndPreservesAstCorrespondence
+[       OK ] StImmediate.OwnsSourcesAfterReleaseAndPreservesAstCorrespondence (2 ms)
+[ RUN      ] StImmediate.KeepsOtherNumericImmediateRoles
+[       OK ] StImmediate.KeepsOtherNumericImmediateRoles (0 ms)
+[ RUN      ] StImmediate.PreservesParameterAndCallStagingRules
+[       OK ] StImmediate.PreservesParameterAndCallStagingRules (5 ms)
+[----------] 7 tests from StImmediate (28 ms total)
+
+[----------] 9 tests from StCompleteness
+[ RUN      ] StCompleteness.ResolvesCoreAndSharedFamilies
+[       OK ] StCompleteness.ResolvesCoreAndSharedFamilies (2 ms)
+[ RUN      ] StCompleteness.ResolvesCacheControlFamilies
+[       OK ] StCompleteness.ResolvesCacheControlFamilies (9 ms)
+[ RUN      ] StCompleteness.RejectsKnownNonglobalCacheHintAddress
+[       OK ] StCompleteness.RejectsKnownNonglobalCacheHintAddress (1 ms)
+[ RUN      ] StCompleteness.EnforcesModernL2EvictionBoundary
+[       OK ] StCompleteness.EnforcesModernL2EvictionBoundary (1 ms)
+[ RUN      ] StCompleteness.EnforcesTypeAndCacheControlAvailability
+[       OK ] StCompleteness.EnforcesTypeAndCacheControlAvailability (1 ms)
+[ RUN      ] StCompleteness.MaterializesOptionalL1EvictionDefault
+[       OK ] StCompleteness.MaterializesOptionalL1EvictionDefault (0 ms)
+[ RUN      ] StCompleteness.RejectsUnifiedAddressWrites
+[       OK ] StCompleteness.RejectsUnifiedAddressWrites (1 ms)
+[ RUN      ] StCompleteness.EnforcesMmioSemanticsAndAvailability
+[       OK ] StCompleteness.EnforcesMmioSemanticsAndAvailability (1 ms)
+[ RUN      ] StCompleteness.PreservesParameterPolicyAndRevalidatesMutation
+[       OK ] StCompleteness.PreservesParameterPolicyAndRevalidatesMutation (1 ms)
+[----------] 9 tests from StCompleteness (21 ms total)
+
+[----------] Global test environment tear-down
+[==========] 16 tests from 2 test suites ran. (50 ms total)
+[  PASSED  ] 16 tests.

@@ -65,3 +65,16 @@ UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 `Frontend fuzz smoke` 工作流复用 Linux 依赖设置，使用独立 Clang/ASan/UBSan
 构建。每目标最多 2,000 次或 30 秒，job 上限 45 分钟，失败日志、语料/artifact
 及构建配置保留七天。此 smoke 不证明完整 PTX 语义覆盖，也不替代确定性回归测试。
+
+CI 的 sanitizer 构建使用独立的 `.cache/ccache-fuzz` 编译缓存，本地大小上限为
+2 GB。缓存键按操作系统/架构、已安装工具链及 sanitizer/构建配置划分；普通
+Debug/Release 缓存不作为回退来源。ccache 仍校验源码、头文件与编译参数。
+缓存未命中时仍执行完整插桩构建与全部检查。成功的 PR 运行保存不可变的 PR
+局部快照；成功的 main push 生成可信种子；手动运行仅恢复缓存。可信维护流程
+在每个精确键族/ref/version 内保留当前及上一份 main 种子，PR 每个键族保留两份
+快照直至 PR 关闭。新配置首次运行及缓存被淘汰后的运行仍需冷构建；main 种子
+仅在完整验证成功后可用。
+
+构建/缓存计数及墙钟耗时保留 14 天。压缩缓存传输字节数与耗时以 cache action
+日志为准，本地大小上限并非上传压缩包大小。此缓存配置尚无托管 CI 加速实测，
+详见[优化证据](../audits/ci_fuzz_cache_optimization.md)。

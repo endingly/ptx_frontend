@@ -11,6 +11,11 @@ on:
       - 'cmake/**'
       - 'CMakeLists.txt'
       - '.github/workflows/frontend-fuzz.yml'
+      - '.github/actions/setup-linux/action.yml'
+      - '.github/scripts/**'
+      - 'vcpkg.json'
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -18,13 +23,15 @@ permissions:
 
 concurrency:
   group: frontend-fuzz-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   VCPKG_ROOT: ${{ github.workspace }}/.vcpkg
   VCPKG_DOWNLOADS: ${{ github.workspace }}/.cache/vcpkg/downloads
   VCPKG_BINARY_CACHE: ${{ github.workspace }}/.cache/vcpkg/archives
   VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/.cache/vcpkg/archives,readwrite"
+  CCACHE_DIR: ${{ github.workspace }}/.cache/ccache-fuzz
+  CCACHE_MAXSIZE: 2G
   PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
   CC: /usr/bin/clang-21
   CXX: /usr/bin/clang++-21
@@ -33,23 +40,72 @@ jobs:
   fuzz:
     runs-on: ubuntu-26.04
     timeout-minutes: 45
+    cache-mode: write
+    outputs:
+      cache-prefix: ${{ steps.profile.outputs.prefix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Set up Linux dependencies
+        id: setup
         uses: ./.github/actions/setup-linux
       - name: Install sanitizer runtime
         run: sudo apt-get install -y --no-install-recommends libclang-rt-21-dev
+      # Hash the exact build/flag recipe as well as installed tools. This lineage
+      # cannot fall back to ordinary Debug/Release objects or another compiler.
+      - name: Identify isolated sanitizer cache profile
+        id: profile
+        env:
+          PROFILE: ${{ hashFiles('.github/workflows/frontend-fuzz.yml', '.github/actions/setup-linux/action.yml', 'cmake/frontend_fuzz.cmake', 'CMakeLists.txt', 'vcpkg.json') }}
+          COMPILER: ${{ steps.setup.outputs.compiler-identity }}
+        run: |
+          echo "prefix=ccache-v1-${{ runner.os }}-${{ runner.arch }}-frontend-fuzz-asan-${COMPILER}-${PROFILE}-" >> "$GITHUB_OUTPUT"
+          echo "CCACHE_METRICS_DIR=$RUNNER_TEMP/ccache-metrics/frontend-fuzz-asan" >> "$GITHUB_ENV"
+      - name: Restore isolated sanitizer compiler cache
+        id: ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/ccache-fuzz
+          key: ${{ steps.profile.outputs.prefix }}${{ github.sha }}
+          restore-keys: ${{ steps.profile.outputs.prefix }}
+      - name: Reset sanitizer compiler-cache statistics
+        run: |
+          mkdir -p "$CCACHE_METRICS_DIR"
+          ccache --zero-stats
+          date +%s > "$CCACHE_METRICS_DIR/build.started-at"
       - name: Configure isolated sanitizer build
+        id: configure
         run: >-
           cmake -S . -B out/build/fuzz-asan -G Ninja
           -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
           -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
-          -DPTX_FRONTEND_BUILD_FUZZERS=ON -DBUILD_TESTING=OFF -DPTX_USE_CCACHE=OFF
+          -DPTX_FRONTEND_BUILD_FUZZERS=ON -DBUILD_TESTING=OFF -DPTX_USE_CCACHE=ON
           -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS_RELEASE="-O1 -gline-tables-only -DNDEBUG"
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
       - name: Build fuzz targets
-        run: cmake --build out/build/fuzz-asan --parallel 4 --target fuzz_lexer_cst fuzz_frontend fuzz_frontend_canary
+        id: build
+        run: |
+          date +%s > "$CCACHE_METRICS_DIR/build.build-started-at"
+          set +e
+          cmake --build out/build/fuzz-asan --parallel 4 --target fuzz_lexer_cst fuzz_frontend fuzz_frontend_canary
+          build_exit_code=$?
+          date +%s > "$CCACHE_METRICS_DIR/build.finished-at"
+          echo "$build_exit_code" > "$CCACHE_METRICS_DIR/build.exit-code"
+          exit "$build_exit_code"
+      - name: Record sanitizer compiler-cache measurements
+        if: always()
+        run: |
+          python3 .github/scripts/capture_ccache_metrics.py \
+            --phase frontend-fuzz-build \
+            --started-at-file "$CCACHE_METRICS_DIR/build.started-at" \
+            --finished-at-file "$CCACHE_METRICS_DIR/build.finished-at" \
+            --build-started-at-file "$CCACHE_METRICS_DIR/build.build-started-at" \
+            --build-finished-at-file "$CCACHE_METRICS_DIR/build.finished-at" \
+            --build-exit-code-file "$CCACHE_METRICS_DIR/build.exit-code" \
+            --status "${{ steps.configure.outcome }}" --status "${{ steps.build.outcome }}" \
+            --output "$CCACHE_METRICS_DIR/build.json" || true
+          ccache --show-stats || true
       - name: Replay seeds and bounded fixed-seed campaigns
+        id: smoke
         run: .venv/bin/python fuzz/run_smoke.py --runs 2000 --seconds 30
       - name: Retain failure reproductions and logs
         if: failure()
@@ -61,3 +117,57 @@ jobs:
             out/fuzz-smoke
             out/build/fuzz-asan/compile_commands.json
             out/build/fuzz-asan/CMakeCache.txt
+
+      - name: Upload sanitizer compiler-cache measurements
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontend-fuzz-ccache-metrics
+          path: ${{ runner.temp }}/ccache-metrics/frontend-fuzz-asan
+          if-no-files-found: warn
+          retention-days: 14
+      # PR uploads remain on the PR merge ref. Only validated main pushes seed
+      # trusted main; manual nonmain runs only restore compatible entries.
+      - name: Save validated sanitizer compiler cache
+        if: >
+          success() &&
+          (github.event_name == 'pull_request' ||
+           (github.event_name == 'push' && github.ref == 'refs/heads/main')) &&
+          steps.configure.outcome == 'success' &&
+          steps.build.outcome == 'success' &&
+          steps.smoke.outcome == 'success' &&
+          steps.ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/ccache-fuzz
+          key: ${{ steps.profile.outputs.prefix }}${{ github.sha }}
+
+  cleanup:
+    name: Retain trusted sanitizer compiler-cache seeds
+    needs: fuzz
+    if: >
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.fuzz.result == 'success' &&
+      needs.fuzz.outputs.cache-prefix != ''
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Check out trusted cleanup helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Retain current and previous sanitizer seeds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_PREFIX: ${{ needs.fuzz.outputs.cache-prefix }}
+        run: |
+          python3 .github/scripts/cleanup_ccache_seeds.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --ref refs/heads/main \
+            --prefix "$CACHE_PREFIX" \
+            --current-key "${CACHE_PREFIX}${GITHUB_SHA}" \
+            --execute

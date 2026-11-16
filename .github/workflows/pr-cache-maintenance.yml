@@ -2,7 +2,7 @@ name: PR cache maintenance
 
 on:
   workflow_run:
-    workflows: ["Linux CI"]
+    workflows: ["Linux CI", "Frontend fuzz smoke"]
     types: [completed]
 
   pull_request_target:

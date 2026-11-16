@@ -83,3 +83,19 @@ an isolated Clang/ASan/UBSan build. Both campaigns are limited to 2,000 runs or
 30 seconds each; the job has a 45-minute ceiling and retains failure logs,
 corpus/artifacts and build configuration for seven days. This smoke does not
 establish exhaustive PTX semantic coverage or replace deterministic regressions.
+
+The CI sanitizer build uses a separate `.cache/ccache-fuzz` compiler cache with a
+2 GB local size limit. Its keys partition OS/architecture, installed toolchain,
+and the sanitizer/build recipe; ordinary Debug/Release caches are never fallback
+sources. ccache still validates source, headers and compiler arguments. A miss
+runs the complete instrumented build and all checks. Successful PR runs save
+immutable PR-local snapshots, and successful main pushes produce trusted seeds;
+manual runs only restore. Trusted maintenance keeps the current and previous
+main seeds in each exact key/ref/version lineage, and two PR snapshots per
+lineage until PR closure. The first new profile and evicted caches remain cold;
+main seeds become available only after their full validation succeeds.
+
+Build/cache counters and wall times are uploaded for 14 days. Compressed cache
+transfer bytes and times come from the cache-action logs. The local size limit
+is not the uploaded archive size. Hosted speedup has not yet been measured for
+this cache profile; see the [optimization evidence](../audits/ci_fuzz_cache_optimization.md).
